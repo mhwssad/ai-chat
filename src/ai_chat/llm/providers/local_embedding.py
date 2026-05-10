@@ -1,8 +1,10 @@
 """本地嵌入模型策略 — 基于 sentence-transformers。"""
 
-from src.ai_chat.llm.models import EmbeddingProvider, ProviderConfig
+from ..factory import register_embedding
+from ..models import EmbeddingProvider, ProviderConfig
 
 
+@register_embedding("local", lambda: ProviderConfig())
 class LocalEmbeddingProvider(EmbeddingProvider):
     """本地嵌入提供商策略（无需 API，模型在本地运行）。
 

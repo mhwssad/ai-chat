@@ -1,11 +1,17 @@
 """Anthropic Claude 聊天模型策略。"""
 
+from typing import Optional
+
 from langchain_anthropic import ChatAnthropic
 
-from ai_chat.config import settings
-from ai_chat.llm.models import ChatProvider, ChatRequest, ChatResponse, ProviderConfig, extract_usage
+from src.ai_chat.config import settings
+from ..factory import register_chat
+from ..models import ChatProvider, ChatRequest, ChatResponse, ProviderConfig, extract_usage
 
 
+@register_chat("claude", lambda: ProviderConfig(
+    api_key=settings.get_key(settings.anthropic_api_key),
+))
 class ClaudeProvider(ChatProvider):
     """Anthropic Claude 提供商策略。
 
@@ -19,11 +25,8 @@ class ClaudeProvider(ChatProvider):
         "claude-3-haiku-20240307",
     ]
 
-    def __init__(self, config: ProviderConfig | None = None) -> None:
+    def __init__(self, config: Optional[ProviderConfig] = None) -> None:
         self._config = config or ProviderConfig()
-
-    def _api_key(self):
-        return self._config.api_key or settings.get_key(settings.anthropic_api_key)
 
     def supports_model(self, model_name: str) -> bool:
         return model_name in self.SUPPORTED_MODELS
@@ -33,16 +36,16 @@ class ClaudeProvider(ChatProvider):
 
     def get_client(self, model_name: str) -> ChatAnthropic:
         return ChatAnthropic(
-            model=model_name,
-            api_key=self._api_key(),
+            model_name=model_name,
+            api_key=self._config.api_key,
         )
 
     def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
         llm = ChatAnthropic(
-            model=model_name,
-            api_key=self._api_key(),
+            model_name=model_name,
+            api_key=self._config.api_key,
             temperature=request.temperature,
-            max_tokens=request.max_tokens or 4096,
+            max_tokens_to_sample=request.max_tokens or 4096,
             timeout=self._config.timeout,
         )
         result = llm.invoke(request.messages)

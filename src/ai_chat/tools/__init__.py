@@ -1,22 +1,11 @@
-# registry 必须在 common 之前导入（common 依赖它）
+"""工具包 — 自动发现并注册所有工具。"""
+
 from .registry import tool_registry, registered_tool
 
-from .common import (
-    write_file,
-    append_file,
-    replace_exact,
-    replace_regex,
-    read_file,
-    read_lines,
-)
+# 自动扫描当前包下所有模块，触发 @registered_tool 装饰器注册
+tool_registry.scan(__name__)
 
 __all__ = [
     "tool_registry",
     "registered_tool",
-    "write_file",
-    "append_file",
-    "replace_exact",
-    "replace_regex",
-    "read_file",
-    "read_lines",
 ]

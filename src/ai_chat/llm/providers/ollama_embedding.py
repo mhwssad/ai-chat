@@ -1,11 +1,17 @@
 """Ollama 本地嵌入模型策略。"""
 
+from typing import Optional
+
 from langchain_ollama import OllamaEmbeddings
 
-from ai_chat.config import settings
-from ai_chat.llm.models import EmbeddingProvider, ProviderConfig
+from ..factory import register_embedding
+from ..models import EmbeddingProvider, ProviderConfig
+from src.ai_chat.config import settings
 
 
+@register_embedding("ollama_emb", lambda: ProviderConfig(
+    base_url=settings.ollama_base_url,
+))
 class OllamaEmbeddingProvider(EmbeddingProvider):
     """Ollama 本地嵌入提供商策略。
 
@@ -17,15 +23,13 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         "nomic-embed-text",
         "mxbai-embed-large",
         "bge-m3",
+        "bge-m3:latest",
         "snowflake-arctic-embed",
         "all-minilm",
     ]
 
-    def __init__(self, config: ProviderConfig | None = None) -> None:
+    def __init__(self, config: Optional[ProviderConfig] = None) -> None:
         self._config = config or ProviderConfig()
-
-    def _base_url(self):
-        return self._config.base_url or settings.ollama_base_url
 
     def supports_model(self, model_name: str) -> bool:
         return model_name in self.SUPPORTED_MODELS
@@ -36,7 +40,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
     def _build_client(self, model_name: str) -> OllamaEmbeddings:
         return OllamaEmbeddings(
             model=model_name,
-            base_url=self._base_url(),
+            base_url=self._config.base_url,
         )
 
     def embed(self, text: str, model_name: str) -> list[float]:

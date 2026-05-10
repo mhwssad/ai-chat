@@ -1,11 +1,17 @@
 """Ollama 本地聊天模型策略。"""
 
+from typing import Optional
+
 from langchain_ollama import ChatOllama
 
-from ai_chat.config import settings
-from ai_chat.llm.models import ChatProvider, ChatRequest, ChatResponse, ProviderConfig, extract_usage
+from src.ai_chat.config import settings
+from ..factory import register_chat
+from ..models import ChatProvider, ChatRequest, ChatResponse, ProviderConfig, extract_usage
 
 
+@register_chat("ollama", lambda: ProviderConfig(
+    base_url=settings.ollama_base_url,
+))
 class OllamaProvider(ChatProvider):
     """Ollama 本地聊天提供商策略。
 
@@ -28,11 +34,8 @@ class OllamaProvider(ChatProvider):
         "phi4",
     ]
 
-    def __init__(self, config: ProviderConfig | None = None) -> None:
+    def __init__(self, config: Optional[ProviderConfig] = None) -> None:
         self._config = config or ProviderConfig()
-
-    def _base_url(self):
-        return self._config.base_url or settings.ollama_base_url
 
     def supports_model(self, model_name: str) -> bool:
         return model_name in self.SUPPORTED_MODELS
@@ -43,13 +46,13 @@ class OllamaProvider(ChatProvider):
     def get_client(self, model_name: str) -> ChatOllama:
         return ChatOllama(
             model=model_name,
-            base_url=self._base_url(),
+            base_url=self._config.base_url,
         )
 
     def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
         llm = ChatOllama(
             model=model_name,
-            base_url=self._base_url(),
+            base_url=self._config.base_url,
             temperature=request.temperature,
             num_predict=request.max_tokens,
         )

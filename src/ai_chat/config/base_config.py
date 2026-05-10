@@ -10,7 +10,7 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-project_root: Path = Path(__file__).parent.parent.parent
+project_root: Path = Path(__file__).parent.parent.parent.parent
 env_file_path: Path = project_root / ".env"  # 环境变量文件路径
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))

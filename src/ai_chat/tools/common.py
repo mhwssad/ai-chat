@@ -7,16 +7,14 @@
 import re
 from pathlib import Path
 
-from langchain_core.tools import tool
-
-from ai_chat.tools.registry import tool_registry
+from ai_chat.tools.registry import registered_tool
 
 
 # ---------------------------------------------------------------------------
 # 写入
 # ---------------------------------------------------------------------------
 
-@tool
+@registered_tool
 def write_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
     """覆盖写入文件。文件不存在时自动创建（含父目录）。
 
@@ -36,7 +34,7 @@ def write_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
         return f"[ERROR] 写入失败：{e}"
 
 
-@tool
+@registered_tool
 def append_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
     """向文件末尾追加内容。文件不存在时自动创建（含父目录）。
 
@@ -61,7 +59,7 @@ def append_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
 # 替换
 # ---------------------------------------------------------------------------
 
-@tool
+@registered_tool
 def replace_exact(file_path: str, old: str, new: str, encoding: str = "utf-8") -> str:
     """按字符串精确匹配，替换文件中的所有匹配项。
 
@@ -97,7 +95,7 @@ def replace_exact(file_path: str, old: str, new: str, encoding: str = "utf-8") -
         return f"[ERROR] 写入失败：{e}"
 
 
-@tool
+@registered_tool
 def replace_regex(file_path: str, pattern: str, replacement: str, encoding: str = "utf-8") -> str:
     """按正则表达式匹配，替换文件中的所有匹配项。
 
@@ -141,7 +139,7 @@ def replace_regex(file_path: str, pattern: str, replacement: str, encoding: str 
 # 读取
 # ---------------------------------------------------------------------------
 
-@tool
+@registered_tool
 def read_file(file_path: str, encoding: str = "utf-8") -> str:
     """读取文件的全部内容。
 
@@ -164,7 +162,7 @@ def read_file(file_path: str, encoding: str = "utf-8") -> str:
         return f"[ERROR] 读取失败：{e}"
 
 
-@tool
+@registered_tool
 def read_lines(file_path: str, start: int = 1, end: int = 0, encoding: str = "utf-8") -> str:
     """按行读取文件内容，支持指定行号范围（从 1 开始）。
 
@@ -200,17 +198,3 @@ def read_lines(file_path: str, start: int = 1, end: int = 0, encoding: str = "ut
     selected = lines[actual_start - 1 : actual_end]
     numbered = [f"{i + actual_start:>4} | {line}" for i, line in enumerate(selected)]
     return "".join(numbered)
-
-
-# ---------------------------------------------------------------------------
-# 自动注册到全局工厂
-# ---------------------------------------------------------------------------
-
-tool_registry.register_many([
-    write_file,
-    append_file,
-    replace_exact,
-    replace_regex,
-    read_file,
-    read_lines,
-])

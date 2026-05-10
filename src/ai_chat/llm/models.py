@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import SecretStr
 
@@ -37,7 +37,7 @@ class ProviderConfig:
     timeout: int = 60
 
 
-def mask_key(key: SecretStr | str | None) -> str:
+def mask_key(key: Union[SecretStr, str, None]) -> str:
     """API Key 脱敏，仅显示前后 4 位。如 ``sk-a****9xyz``。"""
     if key is None:
         return "<none>"
@@ -57,7 +57,7 @@ class ChatRequest:
 
     messages: list[BaseMessage]
     temperature: float = 0.7
-    max_tokens: int | None = None
+    max_tokens: Optional[int] = None
     extra: dict = field(default_factory=dict)
 
 
@@ -67,10 +67,10 @@ class ChatResponse:
 
     content: str
     model: str
-    usage: dict | None = None
+    usage: Optional[dict] = None
 
 
-def extract_usage(result: AIMessage) -> dict | None:
+def extract_usage(result: AIMessage) -> Optional[dict]:
     """从 LangChain AIMessage 响应中提取 token 使用量。
 
     兼容不同提供商的 metadata 格式：

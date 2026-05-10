@@ -35,6 +35,7 @@ class Settings(BaseSettingsConfig):
     # ── minmax ────────────────────────────────────────
     minmax_api_key: SecretStr = SecretStr("")
     minmax_base_url: str = "https://api.minimaxi.com/v1"
+
     # ── 工具方法 ────────────────────────────────────────
 
     def get_key(self, key: SecretStr) -> Optional[SecretStr]:

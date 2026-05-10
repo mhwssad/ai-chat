@@ -1,11 +1,18 @@
 """OpenAI 聊天模型策略。"""
 
+from typing import Optional
+
 from langchain_openai import ChatOpenAI
 
 from src.ai_chat.config import settings
-from src.ai_chat.llm.models import ChatProvider, ChatRequest, ChatResponse, extract_usage
+from ..factory import register_chat
+from ..models import ChatProvider, ChatRequest, ChatResponse, ProviderConfig
 
 
+@register_chat("openai", lambda: ProviderConfig(
+    api_key=settings.get_key(settings.openai_api_key),
+    base_url=settings.openai_base_url or None,
+))
 class OpenAIProvider(ChatProvider):
     """OpenAI 提供商策略。
 
@@ -22,6 +29,9 @@ class OpenAIProvider(ChatProvider):
         "o1-mini",
     ]
 
+    def __init__(self, config: Optional[ProviderConfig] = None) -> None:
+        self._config = config or ProviderConfig()
+
     def supports_model(self, model_name: str) -> bool:
         return model_name in self.SUPPORTED_MODELS
 
@@ -31,15 +41,15 @@ class OpenAIProvider(ChatProvider):
     def get_client(self, model_name: str) -> ChatOpenAI:
         return ChatOpenAI(
             model=model_name,
-            api_key=settings.get_key(settings.openai_api_key),
-            base_url=settings.openai_base_url or None,
+            api_key=self._config.api_key,
+            base_url=self._config.base_url,
         )
 
     def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
         llm = ChatOpenAI(
             model=model_name,
-            api_key=settings.get_key(settings.openai_api_key),
-            base_url=settings.openai_base_url or None,
+            api_key=self._config.api_key,
+            base_url=self._config.base_url,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
         )
