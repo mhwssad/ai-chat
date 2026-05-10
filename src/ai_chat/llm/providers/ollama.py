@@ -1,0 +1,61 @@
+"""Ollama 本地聊天模型策略。"""
+
+from langchain_ollama import ChatOllama
+
+from ai_chat.config import settings
+from ai_chat.llm.models import ChatProvider, ChatRequest, ChatResponse, ProviderConfig, extract_usage
+
+
+class OllamaProvider(ChatProvider):
+    """Ollama 本地聊天提供商策略。
+
+    支持 Ollama 本地运行的所有模型，模型名称需与本地已拉取的模型一致。
+    常见模型：qwen2.5, llama3.1, mistral, gemma2, deepseek-r1 …
+    """
+
+    SUPPORTED_MODELS = [
+        "qwen2.5",
+        "qwen2.5:7b",
+        "qwen2.5:14b",
+        "llama3.1",
+        "llama3.1:8b",
+        "llama3.1:70b",
+        "mistral",
+        "gemma2",
+        "gemma2:9b",
+        "deepseek-r1",
+        "deepseek-r1:8b",
+        "phi4",
+    ]
+
+    def __init__(self, config: ProviderConfig | None = None) -> None:
+        self._config = config or ProviderConfig()
+
+    def _base_url(self):
+        return self._config.base_url or settings.ollama_base_url
+
+    def supports_model(self, model_name: str) -> bool:
+        return model_name in self.SUPPORTED_MODELS
+
+    def get_supported_models(self) -> list[str]:
+        return list(self.SUPPORTED_MODELS)
+
+    def get_client(self, model_name: str) -> ChatOllama:
+        return ChatOllama(
+            model=model_name,
+            base_url=self._base_url(),
+        )
+
+    def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
+        llm = ChatOllama(
+            model=model_name,
+            base_url=self._base_url(),
+            temperature=request.temperature,
+            num_predict=request.max_tokens,
+        )
+        result = llm.invoke(request.messages)
+        return ChatResponse(
+            content=result.content,
+            model=model_name,
+            usage=extract_usage(result),
+        )
