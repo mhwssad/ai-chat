@@ -1,6 +1,6 @@
 """OpenAI 聊天模型策略。"""
 
-from typing import Optional
+from typing import Iterator, Optional
 
 from langchain_openai import ChatOpenAI
 
@@ -58,3 +58,16 @@ class OpenAIProvider(ChatProvider):
             content=result.content,
             model=model_name,
         )
+
+    def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
+        llm = ChatOpenAI(
+            model=model_name,
+            api_key=self._config.api_key,
+            base_url=self._config.base_url,
+            temperature=request.temperature,
+            max_tokens=request.max_tokens,
+            streaming=True,
+        )
+        for chunk in llm.stream(request.messages):
+            if isinstance(chunk.content, str) and chunk.content:
+                yield chunk.content

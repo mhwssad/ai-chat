@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from src.ai_chat.config import settings
 from ..factory import register_chat
 from ..models import ChatProvider, ChatRequest, ChatResponse, ProviderConfig
+from typing import Iterator
 
 
 @register_chat("minmax", lambda: ProviderConfig(
@@ -51,3 +52,16 @@ class MinMaxProvider(ChatProvider):
             content=result.content,
             model=model_name,
         )
+
+    def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
+        llm = ChatOpenAI(
+            model=model_name,
+            api_key=self._config.api_key,
+            base_url=self._config.base_url,
+            temperature=request.temperature,
+            max_completion_tokens=request.max_tokens,
+            streaming=True,
+        )
+        for chunk in llm.stream(request.messages):
+            if isinstance(chunk.content, str) and chunk.content:
+                yield chunk.content

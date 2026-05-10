@@ -1,6 +1,6 @@
 """Anthropic Claude 聊天模型策略。"""
 
-from typing import Optional
+from typing import Iterator, Optional
 
 from langchain_anthropic import ChatAnthropic
 
@@ -54,3 +54,15 @@ class ClaudeProvider(ChatProvider):
             model=model_name,
             usage=extract_usage(result),
         )
+
+    def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
+        llm = ChatAnthropic(
+            model_name=model_name,
+            api_key=self._config.api_key,
+            temperature=request.temperature,
+            max_tokens_to_sample=request.max_tokens or 4096,
+            timeout=self._config.timeout,
+        )
+        for chunk in llm.stream(request.messages):
+            if isinstance(chunk.content, str) and chunk.content:
+                yield chunk.content

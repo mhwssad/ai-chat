@@ -1,6 +1,6 @@
 """Google Gemini 聊天模型策略。"""
 
-from typing import Optional
+from typing import Iterator, Optional
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -52,3 +52,14 @@ class GeminiProvider(ChatProvider):
             model=model_name,
             usage=extract_usage(result),
         )
+
+    def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
+        llm = ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=self._config.api_key,
+            temperature=request.temperature,
+            max_output_tokens=request.max_tokens,
+        )
+        for chunk in llm.stream(request.messages):
+            if isinstance(chunk.content, str) and chunk.content:
+                yield chunk.content

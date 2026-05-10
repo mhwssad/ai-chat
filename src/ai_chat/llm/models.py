@@ -2,7 +2,7 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, Union
+from typing import Iterator, Optional, Union
 
 from pydantic import SecretStr
 
@@ -126,6 +126,10 @@ class ChatProvider(ABC):
     @abstractmethod
     def get_client(self, model_name: str) -> BaseChatModel:
         """获取底层 LangChain 客户实例（供链/Agent 使用）。"""
+
+    @abstractmethod
+    def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
+        """流式聊天，逐 token 返回文本片段。"""
 
 
 # ======================================================================

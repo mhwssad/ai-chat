@@ -12,12 +12,11 @@ def main():
             MessagesPlaceholder(variable_name="messages"),
         ]
     )
-    print(chat_prompt)
-
     provider = llm_factory.get_chat_provider("MiniMax-M2.7")
     client = provider.get_client("MiniMax-M2.7")
     chain = chat_prompt | client
-    print(chain.invoke({"messages": [{"role": "user", "content": "你好"}]}))
+    text = chain.invoke({"messages": [{"role": "user", "content": "你好"}]})
+    print(text.content)
 
 
 if __name__ == "__main__":

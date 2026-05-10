@@ -154,6 +154,11 @@ class LLMFactory:
         provider = self.get_chat_provider(model_name)
         return provider.chat(request, model_name)
 
+    def stream(self, request: ChatRequest, model_name: str):
+        """根据模型名称自动路由，流式聊天，逐 token 返回。"""
+        provider = self.get_chat_provider(model_name)
+        return provider.stream(request, model_name)
+
     def embed(self, text: str, model_name: str) -> list[float]:
         """根据模型名称自动路由，获取文本嵌入向量。"""
         provider = self.get_embedding_provider(model_name)

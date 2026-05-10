@@ -1,6 +1,6 @@
 """Ollama 本地聊天模型策略。"""
 
-from typing import Optional
+from typing import Iterator, Optional
 
 from langchain_ollama import ChatOllama
 
@@ -62,3 +62,14 @@ class OllamaProvider(ChatProvider):
             model=model_name,
             usage=extract_usage(result),
         )
+
+    def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
+        llm = ChatOllama(
+            model=model_name,
+            base_url=self._config.base_url,
+            temperature=request.temperature,
+            num_predict=request.max_tokens,
+        )
+        for chunk in llm.stream(request.messages):
+            if isinstance(chunk.content, str) and chunk.content:
+                yield chunk.content
