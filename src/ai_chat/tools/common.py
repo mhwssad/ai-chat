@@ -7,7 +7,7 @@
 import re
 from pathlib import Path
 
-from ai_chat.tools.registry import registered_tool
+from src.ai_chat.tools.registry import registered_tool
 
 
 # ---------------------------------------------------------------------------

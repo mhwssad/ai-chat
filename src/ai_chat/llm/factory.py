@@ -140,6 +140,11 @@ class LLMFactory:
             raise ModelNotSupportedException(model_name, list(self._chat_routing))
         return self.create_chat_provider(provider_name)
 
+    def get_stream_client(self, model_name: str, *, temperature: float = 0.7, max_tokens: Optional[int] = None):
+        """根据模型名称路由，获取带流式配置的 LangChain 客户端。"""
+        provider = self.get_chat_provider(model_name)
+        return provider.get_stream_client(model_name, temperature=temperature, max_tokens=max_tokens)
+
     def get_embedding_provider(self, model_name: str) -> EmbeddingProvider:
         """根据模型名称路由到对应的嵌入 Provider。"""
         provider_name = self._embedding_routing.get(model_name)

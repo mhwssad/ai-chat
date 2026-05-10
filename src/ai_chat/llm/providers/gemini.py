@@ -39,6 +39,14 @@ class GeminiProvider(ChatProvider):
             google_api_key=self._config.api_key,
         )
 
+    def get_stream_client(self, model_name: str, *, temperature: float = 0.7, max_tokens: Optional[int] = None) -> ChatGoogleGenerativeAI:
+        return ChatGoogleGenerativeAI(
+            model=model_name,
+            google_api_key=self._config.api_key,
+            temperature=temperature,
+            max_output_tokens=max_tokens,
+        )
+
     def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
         llm = ChatGoogleGenerativeAI(
             model=model_name,
@@ -54,12 +62,7 @@ class GeminiProvider(ChatProvider):
         )
 
     def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
-        llm = ChatGoogleGenerativeAI(
-            model=model_name,
-            google_api_key=self._config.api_key,
-            temperature=request.temperature,
-            max_output_tokens=request.max_tokens,
-        )
+        llm = self.get_stream_client(model_name, temperature=request.temperature, max_tokens=request.max_tokens)
         for chunk in llm.stream(request.messages):
             if isinstance(chunk.content, str) and chunk.content:
                 yield chunk.content

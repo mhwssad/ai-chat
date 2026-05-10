@@ -1,22 +1,20 @@
-from langchain_core.prompts import MessagesPlaceholder, ChatPromptTemplate
+from src.ai_chat.graphs.chat_agent import ChatAgent
+from src.ai_chat.graphs.chat_graph import ChatGraph
 
-from src.ai_chat.llm import llm_factory
+
+def anget():
+    agent = ChatAgent(model_name="minimax-m2.7")
+    print(agent.invoke("你有哪些技能"))
 
 
 def main():
-    SYSTEM_PROMPT = "你是一个有帮助的 AI 助手。请用中文回答用户的问题。"
-
-    chat_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", SYSTEM_PROMPT),
-            MessagesPlaceholder(variable_name="messages"),
-        ]
-    )
-    provider = llm_factory.get_chat_provider("MiniMax-M2.7")
-    client = provider.get_client("MiniMax-M2.7")
-    chain = chat_prompt | client
-    text = chain.invoke({"messages": [{"role": "user", "content": "你好"}]})
-    print(text.content)
+    a = input("请输入：")
+    if a == "1":
+        agent = ChatAgent(model_name="minimax-m2.7")
+        print(agent.invoke("你有哪些技能"))
+    elif a == "2":
+        agent = ChatGraph(model_name="minimax-m2.7")
+        print(agent.invoke("你最喜欢什么"))
 
 
 if __name__ == "__main__":

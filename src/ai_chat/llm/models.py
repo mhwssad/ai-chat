@@ -128,6 +128,10 @@ class ChatProvider(ABC):
         """获取底层 LangChain 客户实例（供链/Agent 使用）。"""
 
     @abstractmethod
+    def get_stream_client(self, model_name: str, *, temperature: float = 0.7, max_tokens: Optional[int] = None) -> BaseChatModel:
+        """获取带流式配置的 LangChain 客户实例。"""
+
+    @abstractmethod
     def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
         """流式聊天，逐 token 返回文本片段。"""
 

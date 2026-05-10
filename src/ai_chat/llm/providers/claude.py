@@ -40,6 +40,15 @@ class ClaudeProvider(ChatProvider):
             api_key=self._config.api_key,
         )
 
+    def get_stream_client(self, model_name: str, *, temperature: float = 0.7, max_tokens: Optional[int] = None) -> ChatAnthropic:
+        return ChatAnthropic(
+            model_name=model_name,
+            api_key=self._config.api_key,
+            temperature=temperature,
+            max_tokens_to_sample=max_tokens or 4096,
+            timeout=self._config.timeout,
+        )
+
     def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
         llm = ChatAnthropic(
             model_name=model_name,
@@ -56,13 +65,7 @@ class ClaudeProvider(ChatProvider):
         )
 
     def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
-        llm = ChatAnthropic(
-            model_name=model_name,
-            api_key=self._config.api_key,
-            temperature=request.temperature,
-            max_tokens_to_sample=request.max_tokens or 4096,
-            timeout=self._config.timeout,
-        )
+        llm = self.get_stream_client(model_name, temperature=request.temperature, max_tokens=request.max_tokens)
         for chunk in llm.stream(request.messages):
             if isinstance(chunk.content, str) and chunk.content:
                 yield chunk.content

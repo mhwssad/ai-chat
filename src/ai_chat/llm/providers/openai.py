@@ -45,6 +45,16 @@ class OpenAIProvider(ChatProvider):
             base_url=self._config.base_url,
         )
 
+    def get_stream_client(self, model_name: str, *, temperature: float = 0.7, max_tokens: Optional[int] = None) -> ChatOpenAI:
+        return ChatOpenAI(
+            model=model_name,
+            api_key=self._config.api_key,
+            base_url=self._config.base_url,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            streaming=True,
+        )
+
     def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
         llm = ChatOpenAI(
             model=model_name,
@@ -60,14 +70,7 @@ class OpenAIProvider(ChatProvider):
         )
 
     def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
-        llm = ChatOpenAI(
-            model=model_name,
-            api_key=self._config.api_key,
-            base_url=self._config.base_url,
-            temperature=request.temperature,
-            max_tokens=request.max_tokens,
-            streaming=True,
-        )
+        llm = self.get_stream_client(model_name, temperature=request.temperature, max_tokens=request.max_tokens)
         for chunk in llm.stream(request.messages):
             if isinstance(chunk.content, str) and chunk.content:
                 yield chunk.content

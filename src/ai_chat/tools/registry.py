@@ -17,7 +17,7 @@
 import importlib
 import inspect
 import threading
-from typing import Self
+from typing import Self, Optional
 
 from langchain_core.tools import BaseTool, tool
 
@@ -30,7 +30,7 @@ class ToolRegistry:
     - 不允许重复注册同名工具，重复时抛出 ``ValueError``。
     """
 
-    _instance: Self | None = None
+    _instance: Optional[Self] = None
     _lock: threading.Lock = threading.Lock()
 
     _tools: dict[str, BaseTool]
@@ -51,11 +51,11 @@ class ToolRegistry:
     # ------------------------------------------------------------------
 
     def register(self, tool_obj: BaseTool) -> None:
-        """注册一个工具。若同名工具已存在，抛出 ``ValueError``。"""
+        """注册一个工具。同名工具已存在时静默跳过。"""
         name = tool_obj.name
         with self._init_lock:
             if name in self._tools:
-                raise ValueError(f"工具名称重复：'{name}' 已注册")
+                return
             self._tools[name] = tool_obj
 
     def register_many(self, tools_list: list[BaseTool]) -> None:
