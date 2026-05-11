@@ -3,7 +3,7 @@
 流程：用户输入 → 分类意图 → 条件路由 → {chat / rag} → 结束
 """
 
-from typing import Annotated, Iterator, Optional
+from typing import TYPE_CHECKING, Annotated, Iterator, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
@@ -12,6 +12,9 @@ from typing_extensions import TypedDict
 
 from src.ai_chat.llm import llm_factory
 from src.ai_chat.rag import rag_factory
+
+if TYPE_CHECKING:
+    from src.ai_chat.memory.manager import ConversationMemory
 
 
 class ChatGraphState(TypedDict):
@@ -42,11 +45,13 @@ class ChatGraph:
         system_prompt: Optional[str] = None,
         rag_store_name: str = "faiss",
         rag_k: int = 4,
+        memory: Optional["ConversationMemory"] = None,
     ) -> None:
         self._model_name = model_name or self._get_default_model()
         self._system_prompt = system_prompt or "你是一个有帮助的 AI 助手。请用中文回答用户的问题。"
         self._rag_store = rag_factory.create_store(rag_store_name)
         self._rag_k = rag_k
+        self._memory = memory
 
         provider = llm_factory.get_chat_provider(self._model_name)
         self._llm = provider.get_client(self._model_name)
@@ -142,18 +147,33 @@ class ChatGraph:
 
     def invoke(self, message: str, history: Optional[list[BaseMessage]] = None) -> str:
         """同步调用，返回最终回复文本。"""
+        if self._memory is not None:
+            history = self._memory.load_history()
+
         messages = list(history) if history else []
         messages.append(HumanMessage(content=message))
 
         result = self._graph.invoke({"messages": messages, "intent": "", "context": ""})  # type: ignore[arg-type]
-        return result["messages"][-1].content
+        ai_content = result["messages"][-1].content
+
+        if self._memory is not None:
+            self._memory.save_interaction(
+                HumanMessage(content=message),
+                AIMessage(content=ai_content),
+            )
+
+        return ai_content
 
     def stream(self, message: str, history: Optional[list[BaseMessage]] = None) -> Iterator[str]:
         """流式调用，逐 token 返回。"""
+        if self._memory is not None:
+            history = self._memory.load_history()
+
         messages = list(history) if history else []
         messages.append(HumanMessage(content=message))
 
         seen_ids: set[str] = set()
+        collected: list[str] = []
         for event in self._graph.stream(
             {"messages": messages, "intent": "", "context": ""},  # type: ignore[arg-type]
             stream_mode="values",
@@ -168,7 +188,15 @@ class ChatGraph:
                 and last.id not in seen_ids
             ):
                 seen_ids.add(last.id)
+                collected.append(last.content)
                 yield last.content
+
+        if self._memory is not None and collected:
+            full_response = "".join(collected)
+            self._memory.save_interaction(
+                HumanMessage(content=message),
+                AIMessage(content=full_response),
+            )
 
     @staticmethod
     def _get_default_model() -> str:

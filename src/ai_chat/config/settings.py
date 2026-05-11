@@ -36,6 +36,18 @@ class Settings(BaseSettingsConfig):
     minmax_api_key: SecretStr = SecretStr("")
     minmax_base_url: str = "https://api.minimaxi.com/v1"
 
+    # ── qwen ────────────────────────────────────────
+    qwen_api_key: SecretStr = SecretStr("")
+    qwen_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    # ── Memory ────────────────────────────────────────────
+    memory_backend: str = "sqlite"
+    memory_persist_path: str = ""
+    memory_max_short_term_messages: int = 20
+    memory_summary_model: str = ""
+    memory_summary_token_limit: int = 1000
+    memory_enable_summary: bool = True
+
     # ── 工具方法 ────────────────────────────────────────
 
     def get_key(self, key: SecretStr) -> Optional[SecretStr]:
