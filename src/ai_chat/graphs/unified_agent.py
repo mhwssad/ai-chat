@@ -1,6 +1,7 @@
 """整合所有功能的统一对话智能体 — 记忆 + 工具 + RAG + 意图路由。"""
 
-from typing import Annotated, Iterator, Optional
+import asyncio
+from typing import Annotated, AsyncIterator, Iterator, Optional
 
 from langchain.agents import create_agent
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -137,8 +138,8 @@ class UnifiedAgent:
     def _make_react_node(self):
         agent = self._react_agent
 
-        def react(state: UnifiedState) -> dict:
-            result = agent.invoke({"messages": state["messages"]})  # type: ignore[arg-type]
+        async def react(state: UnifiedState) -> dict:
+            result = await agent.ainvoke({"messages": state["messages"]})  # type: ignore[arg-type]
             return {"messages": result["messages"]}
 
         return react
@@ -182,31 +183,57 @@ class UnifiedAgent:
 
     # ── 公共接口 ───────────────────────────────────────
 
-    def invoke(self, message: str) -> str:
-        """同步调用，自动加载历史、路由处理、保存交互。"""
+    def _build_messages(self, message: str) -> list[BaseMessage]:
         history = self._memory.load_history()
         messages = list(history)
         messages.append(HumanMessage(content=message))
+        return messages
 
-        result = self._graph.invoke({"messages": messages, "intent": "", "context": ""})  # type: ignore[arg-type]
-        ai_content = result["messages"][-1].content
-
+    def _save(self, message: str, ai_content: str) -> None:
         self._memory.save_interaction(
             HumanMessage(content=message),
             AIMessage(content=ai_content),
         )
 
+    async def ainvoke(
+        self,
+        message: str,
+        system_prompt_override: Optional[str] = None,
+        tools_override: Optional[list] = None,
+        model_override: Optional[str] = None,
+    ) -> str:
+        """异步调用，自动加载历史、路由处理、保存交互。"""
+        messages = self._build_messages(message)
+
+        if system_prompt_override or tools_override or model_override:
+            # 技能模式：跳过意图分类，直接用临时 react agent
+            from langchain.agents import create_agent as _create_agent
+
+            model_name = model_override or self._model_name
+            tools = tools_override if tools_override is not None else self._tools
+            system = system_prompt_override or self._system_prompt
+
+            if model_override and model_override != self._model_name:
+                provider = llm_factory.get_chat_provider(model_override)
+                llm = provider.get_client(model_override)
+            else:
+                llm = self._llm
+
+            temp_agent = _create_agent(model=llm, tools=tools, system_prompt=system)
+            result = await temp_agent.ainvoke({"messages": messages})  # type: ignore[arg-type]
+        else:
+            result = await self._graph.ainvoke({"messages": messages, "intent": "", "context": ""})  # type: ignore[arg-type]
+
+        ai_content = result["messages"][-1].content
+        self._save(message, ai_content)
         return ai_content
 
-    def stream(self, message: str) -> Iterator[str]:
-        """流式调用，逐 token 返回，结束后自动保存。"""
-        history = self._memory.load_history()
-        messages = list(history)
-        messages.append(HumanMessage(content=message))
-
+    async def astream(self, message: str) -> AsyncIterator[str]:
+        """异步流式调用，逐 token 返回。"""
+        messages = self._build_messages(message)
         seen_ids: set[str] = set()
         collected: list[str] = []
-        for event in self._graph.stream(
+        async for event in self._graph.astream(
             {"messages": messages, "intent": "", "context": ""},  # type: ignore[arg-type]
             stream_mode="values",
         ):
@@ -224,11 +251,54 @@ class UnifiedAgent:
                 yield last.content
 
         if collected:
-            full_response = "".join(collected)
-            self._memory.save_interaction(
-                HumanMessage(content=message),
-                AIMessage(content=full_response),
-            )
+            self._save(message, "".join(collected))
+
+    def invoke(
+        self,
+        message: str,
+        system_prompt_override: Optional[str] = None,
+        tools_override: Optional[list] = None,
+        model_override: Optional[str] = None,
+    ) -> str:
+        """同步调用，自动加载历史、路由处理、保存交互。"""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        else:
+            loop = True
+
+        coro = self.ainvoke(message, system_prompt_override, tools_override, model_override)
+        if loop:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, coro).result()
+        else:
+            return asyncio.run(coro)
+
+    def stream(self, message: str) -> Iterator[str]:
+        """同步流式调用，逐 token 返回。"""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        else:
+            loop = True
+
+        async def _collect():
+            chunks = []
+            async for chunk in self.astream(message):
+                chunks.append(chunk)
+            return chunks
+
+        if loop:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                for chunk in pool.submit(asyncio.run, _collect()).result():
+                    yield chunk
+        else:
+            for chunk in asyncio.run(_collect()):
+                yield chunk
 
     def chat(self) -> None:
         """进入交互式多轮对话循环。"""

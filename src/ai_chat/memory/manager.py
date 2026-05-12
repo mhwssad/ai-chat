@@ -1,6 +1,5 @@
 """ConversationMemory — 管理短期缓冲 + 长期摘要的高层编排器。"""
 
-from datetime import datetime
 from typing import Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
@@ -93,7 +92,7 @@ class ConversationMemory:
         """持久化一轮对话并触发摘要检查。"""
         self._store.add_message(message_to_record(human_message, self.session_id))
         self._store.add_message(message_to_record(ai_message, self.session_id))
-        self._session.updated_at = datetime.now()
+        self._store.update_session_timestamp(self.session_id)
 
         if self._config.enable_summary:
             self._maybe_summarize()
@@ -101,7 +100,7 @@ class ConversationMemory:
     def save_message(self, message: BaseMessage) -> None:
         """持久化单条消息。"""
         self._store.add_message(message_to_record(message, self.session_id))
-        self._session.updated_at = datetime.now()
+        self._store.update_session_timestamp(self.session_id)
 
     def clear(self) -> None:
         """删除当前会话及所有数据。"""

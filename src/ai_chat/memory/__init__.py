@@ -12,6 +12,7 @@ from src.ai_chat.memory.models import (
     message_to_record,
     record_to_message,
 )
+from src.ai_chat.memory.menu import menu_memory
 
 # 触发自动发现
 from src.ai_chat.memory import providers as _providers
@@ -28,4 +29,5 @@ __all__ = [
     "SessionNotFoundException",
     "message_to_record",
     "record_to_message",
+    "menu_memory",
 ]

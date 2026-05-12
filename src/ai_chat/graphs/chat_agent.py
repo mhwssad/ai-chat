@@ -1,6 +1,7 @@
 """基于 LangGraph 的 ReAct Agent。"""
 
-from typing import TYPE_CHECKING, Iterator, Optional
+import asyncio
+from typing import TYPE_CHECKING, AsyncIterator, Iterator, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain.agents import create_agent
@@ -40,35 +41,62 @@ class ChatAgent:
             system_prompt=self._system_prompt,
         )
 
-    def invoke(self, message: str, history: Optional[list[BaseMessage]] = None) -> str:
-        """同步调用，返回最终回复文本。"""
+    def _build_messages(self, message: str, history: Optional[list[BaseMessage]] = None) -> list[BaseMessage]:
         if self._memory is not None:
             history = self._memory.load_history()
-
         messages = list(history) if history else []
         messages.append(HumanMessage(content=message))
+        return messages
 
-        result = self._agent.invoke({"messages": messages})  # type: ignore[arg-type]
-        ai_content = result["messages"][-1].content
-
+    def _save_if_needed(self, message: str, ai_content: str) -> None:
         if self._memory is not None:
             self._memory.save_interaction(
                 HumanMessage(content=message),
                 AIMessage(content=ai_content),
             )
 
+    def _build_temp_agent(self, system_prompt_override=None, tools_override=None, model_override=None):
+        """根据覆盖参数创建临时 Agent。"""
+        from langchain.agents import create_agent
+
+        model_name = model_override or self._model_name
+        tools = tools_override if tools_override is not None else self._tools
+        system = system_prompt_override or self._system_prompt
+
+        if model_override and model_override != self._model_name:
+            provider = llm_factory.get_chat_provider(model_override)
+            llm = provider.get_client(model_override)
+        else:
+            llm = self._llm
+
+        return create_agent(model=llm, tools=tools, system_prompt=system)
+
+    async def ainvoke(
+        self,
+        message: str,
+        history: Optional[list[BaseMessage]] = None,
+        system_prompt_override: Optional[str] = None,
+        tools_override: Optional[list] = None,
+        model_override: Optional[str] = None,
+    ) -> str:
+        """异步调用，返回最终回复文本。"""
+        messages = self._build_messages(message, history)
+
+        if system_prompt_override or tools_override or model_override:
+            agent = self._build_temp_agent(system_prompt_override, tools_override, model_override)
+        else:
+            agent = self._agent
+
+        result = await agent.ainvoke({"messages": messages})  # type: ignore[arg-type]
+        ai_content = result["messages"][-1].content
+        self._save_if_needed(message, ai_content)
         return ai_content
 
-    def stream(self, message: str, history: Optional[list[BaseMessage]] = None) -> Iterator[str]:
-        """流式调用，逐 token 返回。"""
-        if self._memory is not None:
-            history = self._memory.load_history()
-
-        messages = list(history) if history else []
-        messages.append(HumanMessage(content=message))
-
+    async def astream(self, message: str, history: Optional[list[BaseMessage]] = None) -> AsyncIterator[str]:
+        """异步流式调用，逐 token 返回。"""
+        messages = self._build_messages(message, history)
         collected: list[str] = []
-        for event in self._agent.stream({"messages": messages}, stream_mode="values"):  # type: ignore[arg-type]
+        async for event in self._agent.astream({"messages": messages}, stream_mode="values"):  # type: ignore[arg-type]
             if not event.get("messages"):
                 continue
             last = event["messages"][-1]
@@ -76,12 +104,54 @@ class ChatAgent:
                 collected.append(last.content)
                 yield last.content
 
-        if self._memory is not None and collected:
-            full_response = "".join(collected)
-            self._memory.save_interaction(
-                HumanMessage(content=message),
-                AIMessage(content=full_response),
-            )
+        if collected:
+            self._save_if_needed(message, "".join(collected))
+
+    def invoke(
+        self,
+        message: str,
+        history: Optional[list[BaseMessage]] = None,
+        system_prompt_override: Optional[str] = None,
+        tools_override: Optional[list] = None,
+        model_override: Optional[str] = None,
+    ) -> str:
+        """同步调用，返回最终回复文本。"""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        else:
+            loop = True
+
+        coro = self.ainvoke(message, history, system_prompt_override, tools_override, model_override)
+        if loop:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, coro).result()
+        else:
+            return asyncio.run(coro)
+
+    def stream(self, message: str, history: Optional[list[BaseMessage]] = None) -> Iterator[str]:
+        """同步流式调用，逐 token 返回。"""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        async def _collect():
+            chunks = []
+            async for chunk in self.astream(message, history):
+                chunks.append(chunk)
+            return chunks
+
+        if loop:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                for chunk in pool.submit(asyncio.run, _collect()).result():
+                    yield chunk
+        else:
+            for chunk in asyncio.run(_collect()):
+                yield chunk
 
     @staticmethod
     def _get_default_model() -> str:

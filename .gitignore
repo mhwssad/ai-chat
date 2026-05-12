@@ -5,12 +5,23 @@ build/
 dist/
 wheels/
 *.egg-info
+.pytest_cache/
+*.log
 
 # Virtual environments
-.venv
+.venv/
 
 # Environment variables
 .env
 
+# uv
+uv.lock
+
+# IDE
+.idea/
+
 # Data
 data/
+
+# Docs
+docs/

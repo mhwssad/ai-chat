@@ -1,6 +1,7 @@
 """内置记忆的对话智能体 — 开箱即用的多轮对话 Agent。"""
 
-from typing import Iterator, Optional
+import asyncio
+from typing import AsyncIterator, Iterator, Optional
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain.agents import create_agent
@@ -56,30 +57,31 @@ class MemoryAgent:
     def session_id(self) -> str:
         return self._memory.session_id
 
-    def invoke(self, message: str) -> str:
-        """同步调用，自动加载历史并保存交互。"""
+    def _build_messages(self, message: str) -> list[BaseMessage]:
         history = self._memory.load_history()
         messages = list(history)
         messages.append(HumanMessage(content=message))
+        return messages
 
-        result = self._agent.invoke({"messages": messages})  # type: ignore[arg-type]
-        ai_content = result["messages"][-1].content
-
+    def _save(self, message: str, ai_content: str) -> None:
         self._memory.save_interaction(
             HumanMessage(content=message),
             AIMessage(content=ai_content),
         )
 
+    async def ainvoke(self, message: str) -> str:
+        """异步调用，自动加载历史并保存交互。"""
+        messages = self._build_messages(message)
+        result = await self._agent.ainvoke({"messages": messages})  # type: ignore[arg-type]
+        ai_content = result["messages"][-1].content
+        self._save(message, ai_content)
         return ai_content
 
-    def stream(self, message: str) -> Iterator[str]:
-        """流式调用，逐 token 返回，结束后自动保存。"""
-        history = self._memory.load_history()
-        messages = list(history)
-        messages.append(HumanMessage(content=message))
-
+    async def astream(self, message: str) -> AsyncIterator[str]:
+        """异步流式调用，逐 token 返回。"""
+        messages = self._build_messages(message)
         collected: list[str] = []
-        for event in self._agent.stream({"messages": messages}, stream_mode="values"):  # type: ignore[arg-type]
+        async for event in self._agent.astream({"messages": messages}, stream_mode="values"):  # type: ignore[arg-type]
             if not event.get("messages"):
                 continue
             last = event["messages"][-1]
@@ -88,11 +90,47 @@ class MemoryAgent:
                 yield last.content
 
         if collected:
-            full_response = "".join(collected)
-            self._memory.save_interaction(
-                HumanMessage(content=message),
-                AIMessage(content=full_response),
-            )
+            self._save(message, "".join(collected))
+
+    def invoke(self, message: str) -> str:
+        """同步调用，自动加载历史并保存交互。"""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        else:
+            loop = True
+
+        if loop:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                return pool.submit(asyncio.run, self.ainvoke(message)).result()
+        else:
+            return asyncio.run(self.ainvoke(message))
+
+    def stream(self, message: str) -> Iterator[str]:
+        """同步流式调用，逐 token 返回。"""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        else:
+            loop = True
+
+        async def _collect():
+            chunks = []
+            async for chunk in self.astream(message):
+                chunks.append(chunk)
+            return chunks
+
+        if loop:
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                for chunk in pool.submit(asyncio.run, _collect()).result():
+                    yield chunk
+        else:
+            for chunk in asyncio.run(_collect()):
+                yield chunk
 
     def chat(self) -> None:
         """进入交互式多轮对话循环。"""

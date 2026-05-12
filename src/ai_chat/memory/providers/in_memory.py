@@ -75,3 +75,7 @@ class InMemoryStore(MemoryProvider):
 
     def load_summary(self, session_id: str) -> Optional[str]:
         return self._summaries.get(session_id)
+
+    def update_session_timestamp(self, session_id: str) -> None:
+        if session_id in self._sessions:
+            self._sessions[session_id].updated_at = datetime.now()

@@ -1,10 +1,10 @@
-"""Memory 模块 — 基类、数据类与异常定义。"""
+"""Memory 模块 — SQLModel 表模型、传输模型、ABC 与转换函数。"""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import Column, JSON
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
@@ -12,6 +12,8 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
+from pydantic import BaseModel
+from sqlmodel import SQLModel, Field
 
 
 # ======================================================================
@@ -37,35 +39,66 @@ class SessionNotFoundException(Exception):
 
 
 # ======================================================================
-# 数据类
+# 数据库表模型（SQLModel table=True = Pydantic + SQLAlchemy）
 # ======================================================================
 
 
-@dataclass
-class MessageRecord:
-    """单条消息记录。"""
+class SessionTable(SQLModel, table=True):
+    __tablename__ = "sessions"
 
-    id: Optional[int] = None
-    session_id: str = ""
-    role: str = ""  # "human", "ai", "system", "tool"
-    content: str = ""
-    created_at: datetime = field(default_factory=datetime.now)
-    metadata: dict = field(default_factory=dict)
+    session_id: str = Field(primary_key=True)
+    title: str = Field(default="")
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    metadata_: dict = Field(default={}, sa_column=Column("metadata", JSON))
 
 
-@dataclass
-class Session:
+class MessageTable(SQLModel, table=True):
+    __tablename__ = "messages"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    session_id: str = Field(foreign_key="sessions.session_id")
+    role: str
+    content: str
+    created_at: datetime = Field(default_factory=datetime.now)
+    metadata_: dict = Field(default={}, sa_column=Column("metadata", JSON))
+
+
+class SummaryTable(SQLModel, table=True):
+    __tablename__ = "summaries"
+
+    session_id: str = Field(primary_key=True, foreign_key="sessions.session_id")
+    summary: str
+    updated_at: datetime = Field(default_factory=datetime.now)
+
+
+# ======================================================================
+# 对外传输模型（纯 Pydantic，不映射表）
+# ======================================================================
+
+
+class Session(BaseModel):
     """单个会话。"""
 
     session_id: str
     title: str = ""
-    created_at: datetime = field(default_factory=datetime.now)
-    updated_at: datetime = field(default_factory=datetime.now)
-    metadata: dict = field(default_factory=dict)
+    created_at: datetime = Field(default_factory=datetime.now)
+    updated_at: datetime = Field(default_factory=datetime.now)
+    metadata: dict = {}
 
 
-@dataclass
-class MemoryConfig:
+class MessageRecord(BaseModel):
+    """单条消息记录。"""
+
+    id: Optional[int] = None
+    session_id: str = ""
+    role: str = ""
+    content: str = ""
+    created_at: datetime = Field(default_factory=datetime.now)
+    metadata: dict = {}
+
+
+class MemoryConfig(BaseModel):
     """存储后端配置。"""
 
     backend: str = "sqlite"
@@ -125,6 +158,10 @@ class MemoryProvider(ABC):
     def load_summary(self, session_id: str) -> Optional[str]:
         """加载会话摘要，不存在则返回 None。"""
 
+    @abstractmethod
+    def update_session_timestamp(self, session_id: str) -> None:
+        """更新会话的 updated_at 为当前时间。"""
+
 
 # ======================================================================
 # 转换函数 — LangChain BaseMessage ↔ MessageRecord
@@ -160,4 +197,28 @@ def message_to_record(msg: BaseMessage, session_id: str) -> MessageRecord:
         role=role,
         content=content,
         metadata=getattr(msg, "additional_kwargs", {}),
+    )
+
+
+# ── 表模型 ↔ 传输模型 转换 ────────────────────────────
+
+
+def _table_to_session(row: SessionTable) -> Session:
+    return Session(
+        session_id=row.session_id,
+        title=row.title,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        metadata=row.metadata_,
+    )
+
+
+def _table_to_message_record(row: MessageTable) -> MessageRecord:
+    return MessageRecord(
+        id=row.id,
+        session_id=row.session_id,
+        role=row.role,
+        content=row.content,
+        created_at=row.created_at,
+        metadata=row.metadata_,
     )

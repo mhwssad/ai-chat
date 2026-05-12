@@ -12,7 +12,7 @@ from typing import Optional
 
 from pydantic import Field
 
-from src.config.base_config import BaseSettingsConfig
+from src.ai_chat.config.base_config import BaseSettingsConfig
 
 
 class LogLevel(str, Enum):
