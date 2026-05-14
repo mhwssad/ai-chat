@@ -8,7 +8,7 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from src.ai_chat.mcp.config import mcp_settings
-from src.ai_chat.tools.registry import tool_registry
+from src.ai_chat.tools.registry import ToolType, tool_registry
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +54,12 @@ class MCPClientManager:
 
             count = 0
             for tool_obj in self._mcp_tools:
-                tool_registry.register(tool_obj)
-                count += 1
+                if tool_registry.register(
+                    tool_obj,
+                    tool_type=ToolType.MCP,
+                    source_module="mcp",
+                ):
+                    count += 1
 
             self._initialized = True
             logger.info(f"MCP 工具加载完成：{count} 个工具已注册")

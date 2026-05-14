@@ -1,269 +1,268 @@
-"""常用调用链 — 基于 LCEL 模式的即用型链。
+"""常用调用链 — 基于 prompts registry 的即用型链。"""
 
-每条链封装 prompt + llm + parser，通过 llm_factory 自动路由模型。
-"""
+from __future__ import annotations
 
-from typing import Iterator, Optional
+from typing import Any, Iterator, Optional
 
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage
 from langchain_core.output_parsers import StrOutputParser
 
 from src.ai_chat.llm import llm_factory
+from src.ai_chat.prompts import render_messages
 
 
-# ======================================================================
-# ChatChain — 简单对话（系统提示 + 用户消息）
-# ======================================================================
+PromptContext = dict[str, Any]
 
 
-class ChatChain:
-    """简单对话链：system_prompt + 用户输入 → LLM 回复。
+def _merge_context(
+    base: Optional[PromptContext],
+    override: Optional[PromptContext],
+    final: PromptContext,
+) -> PromptContext:
+    context: PromptContext = {}
+    if base:
+        context.update(base)
+    if override:
+        context.update(override)
+    context.update(final)
+    return context
 
-    Usage::
 
-        chain = ChatChain(model_name="qwen-turbo")
-        reply = chain.invoke("你好")
-        reply = chain.invoke("我刚才说了什么", history=messages)
-    """
+class _BasePromptChain:
+    """基于 prompt_key 的调用链基类。"""
 
     def __init__(
         self,
-        model_name: Optional[str] = None,
-        system_prompt: Optional[str] = None,
+        model_name: Optional[str],
+        prompt_key: str,
+        prompt_context: Optional[PromptContext] = None,
     ) -> None:
         self._model_name = model_name or self._get_default_model()
-        self._system_prompt = system_prompt
+        self._prompt_key = prompt_key
+        self._prompt_context = dict(prompt_context or {})
         self._llm = llm_factory.get_chat_provider(self._model_name).get_client(self._model_name)
         self._chain = self._llm | StrOutputParser()
-
-    def invoke(self, message: str, history: Optional[list[BaseMessage]] = None) -> str:
-        messages = list(history) if history else []
-        if self._system_prompt:
-            messages = [SystemMessage(content=self._system_prompt)] + messages
-        messages.append(HumanMessage(content=message))
-        return self._chain.invoke(messages)
-
-    def stream(self, message: str, history: Optional[list[BaseMessage]] = None) -> Iterator[str]:
-        messages = list(history) if history else []
-        if self._system_prompt:
-            messages = [SystemMessage(content=self._system_prompt)] + messages
-        messages.append(HumanMessage(content=message))
-        for chunk in self._chain.stream(messages):
-            if chunk:
-                yield chunk
 
     @staticmethod
     def _get_default_model() -> str:
         from src.ai_chat.config import settings
+
         return settings.model_name
 
-
-# ======================================================================
-# SummarizeChain — 文本摘要
-# ======================================================================
-
-
-class SummarizeChain:
-    """文本摘要链：输入长文本 → 输出摘要。
-
-    Usage::
-
-        chain = SummarizeChain(model_name="qwen-turbo")
-        summary = chain.invoke(long_text)
-        summary = chain.invoke(long_text, instruction="用三句话总结")
-    """
-
-    def __init__(
+    def _build_context(
         self,
-        model_name: Optional[str] = None,
-        language: str = "中文",
-    ) -> None:
-        self._model_name = model_name or self._get_default_model()
-        self._language = language
-        self._llm = llm_factory.get_chat_provider(self._model_name).get_client(self._model_name)
-        self._chain = self._llm | StrOutputParser()
+        prompt_context: Optional[PromptContext],
+        **final: Any,
+    ) -> PromptContext:
+        return _merge_context(self._prompt_context, prompt_context, final)
 
-    def invoke(self, text: str, instruction: Optional[str] = None) -> str:
-        system = f"你是一个专业的文本摘要助手。请用{self._language}输出摘要。"
-        user = instruction or "请简洁地总结以下内容，保留关键信息："
-        messages = [
-            SystemMessage(content=system),
-            HumanMessage(content=f"{user}\n\n{text}"),
-        ]
+    def _invoke_messages(self, messages: list[BaseMessage]) -> str:
         return self._chain.invoke(messages)
 
-    def stream(self, text: str, instruction: Optional[str] = None) -> Iterator[str]:
-        system = f"你是一个专业的文本摘要助手。请用{self._language}输出摘要。"
-        user = instruction or "请简洁地总结以下内容，保留关键信息："
-        messages = [
-            SystemMessage(content=system),
-            HumanMessage(content=f"{user}\n\n{text}"),
-        ]
+    def _stream_messages(self, messages: list[BaseMessage]) -> Iterator[str]:
         for chunk in self._chain.stream(messages):
             if chunk:
                 yield chunk
 
-    @staticmethod
-    def _get_default_model() -> str:
-        from src.ai_chat.config import settings
-        return settings.model_name
 
-
-# ======================================================================
-# TranslateChain — 翻译
-# ======================================================================
-
-
-class TranslateChain:
-    """翻译链：输入文本 → 输出译文。
-
-    Usage::
-
-        chain = TranslateChain(model_name="qwen-turbo")
-        result = chain.invoke("Hello world", target="中文")
-        result = chain.invoke("你好世界", target="English")
-    """
+class ChatChain(_BasePromptChain):
+    """简单对话链。"""
 
     def __init__(
         self,
         model_name: Optional[str] = None,
-        target: str = "中文",
+        prompt_key: str = "chain.chat",
+        prompt_context: Optional[PromptContext] = None,
     ) -> None:
-        self._model_name = model_name or self._get_default_model()
-        self._default_target = target
-        self._llm = llm_factory.get_chat_provider(self._model_name).get_client(self._model_name)
-        self._chain = self._llm | StrOutputParser()
+        super().__init__(model_name, prompt_key, prompt_context)
 
-    def invoke(self, text: str, target: Optional[str] = None) -> str:
-        language = target or self._default_target
-        messages = [
-            SystemMessage(content=f"你是一个专业翻译。请将以下文本翻译成{language}，只输出译文，不要解释。"),
-            HumanMessage(content=text),
-        ]
-        return self._chain.invoke(messages)
+    def _build_messages(
+        self,
+        message: str,
+        history: Optional[list[BaseMessage]] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> list[BaseMessage]:
+        context = self._build_context(prompt_context, message=message)
+        prompt_messages = render_messages(self._prompt_key, **context)
+        return list(prompt_messages[:-1]) + list(history or []) + [prompt_messages[-1]]
 
-    def stream(self, text: str, target: Optional[str] = None) -> Iterator[str]:
-        language = target or self._default_target
-        messages = [
-            SystemMessage(content=f"你是一个专业翻译。请将以下文本翻译成{language}，只输出译文，不要解释。"),
-            HumanMessage(content=text),
-        ]
-        for chunk in self._chain.stream(messages):
-            if chunk:
-                yield chunk
+    def invoke(
+        self,
+        message: str,
+        history: Optional[list[BaseMessage]] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return self._invoke_messages(self._build_messages(message, history, prompt_context))
 
-    @staticmethod
-    def _get_default_model() -> str:
-        from src.ai_chat.config import settings
-        return settings.model_name
-
-
-# ======================================================================
-# ExtractionChain — 结构化信息抽取
-# ======================================================================
+    def stream(
+        self,
+        message: str,
+        history: Optional[list[BaseMessage]] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> Iterator[str]:
+        yield from self._stream_messages(self._build_messages(message, history, prompt_context))
 
 
-class ExtractionChain:
-    """结构化抽取链：从文本中提取指定字段，输出 JSON。
+class SummarizeChain(_BasePromptChain):
+    """文本摘要链。"""
 
-    Usage::
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        prompt_key: str = "chain.summarize",
+        prompt_context: Optional[PromptContext] = None,
+    ) -> None:
+        defaults = {"language": "中文", "instruction": "请简洁地总结以下内容，保留关键信息："}
+        merged_defaults = _merge_context(defaults, prompt_context, {})
+        super().__init__(model_name, prompt_key, merged_defaults)
 
-        chain = ExtractionChain(model_name="qwen-turbo")
-        result = chain.invoke(
-            "张三，男，1990年3月15日出生，住址：北京市海淀区",
-            fields=["姓名", "性别", "出生日期", "住址"],
+    def _build_messages(
+        self,
+        text: str,
+        instruction: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> list[BaseMessage]:
+        final = {"text": text}
+        if instruction is not None:
+            final["instruction"] = instruction
+        context = self._build_context(prompt_context, **final)
+        return render_messages(self._prompt_key, **context)
+
+    def invoke(
+        self,
+        text: str,
+        instruction: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return self._invoke_messages(self._build_messages(text, instruction, prompt_context))
+
+    def stream(
+        self,
+        text: str,
+        instruction: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> Iterator[str]:
+        yield from self._stream_messages(self._build_messages(text, instruction, prompt_context))
+
+
+class TranslateChain(_BasePromptChain):
+    """翻译链。"""
+
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        prompt_key: str = "chain.translate",
+        prompt_context: Optional[PromptContext] = None,
+    ) -> None:
+        defaults = {"target": "中文"}
+        merged_defaults = _merge_context(defaults, prompt_context, {})
+        super().__init__(model_name, prompt_key, merged_defaults)
+
+    def _build_messages(
+        self,
+        text: str,
+        target: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> list[BaseMessage]:
+        final = {"text": text}
+        if target is not None:
+            final["target"] = target
+        context = self._build_context(prompt_context, **final)
+        return render_messages(self._prompt_key, **context)
+
+    def invoke(
+        self,
+        text: str,
+        target: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return self._invoke_messages(self._build_messages(text, target, prompt_context))
+
+    def stream(
+        self,
+        text: str,
+        target: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> Iterator[str]:
+        yield from self._stream_messages(self._build_messages(text, target, prompt_context))
+
+
+class ExtractionChain(_BasePromptChain):
+    """结构化信息抽取链。"""
+
+    def __init__(
+        self,
+        model_name: Optional[str] = None,
+        prompt_key: str = "chain.extraction",
+        prompt_context: Optional[PromptContext] = None,
+    ) -> None:
+        super().__init__(model_name, prompt_key, prompt_context)
+
+    def _build_messages(
+        self,
+        text: str,
+        fields: list[str],
+        prompt_context: Optional[PromptContext] = None,
+    ) -> list[BaseMessage]:
+        context = self._build_context(
+            prompt_context,
+            text=text,
+            fields=fields,
+            fields_desc="、".join(fields),
         )
-    """
+        return render_messages(self._prompt_key, **context)
 
-    def __init__(self, model_name: Optional[str] = None) -> None:
-        self._model_name = model_name or self._get_default_model()
-        self._llm = llm_factory.get_chat_provider(self._model_name).get_client(self._model_name)
-        self._chain = self._llm | StrOutputParser()
+    def invoke(
+        self,
+        text: str,
+        fields: list[str],
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return self._invoke_messages(self._build_messages(text, fields, prompt_context))
 
-    def invoke(self, text: str, fields: list[str]) -> str:
-        fields_desc = "、".join(fields)
-        messages = [
-            SystemMessage(content=(
-                "你是一个信息抽取助手。从用户提供的文本中提取指定字段。"
-                f"需要提取的字段：{fields_desc}\n"
-                "严格以 JSON 格式输出，字段名即上述名称。如果某字段在文本中找不到，值设为 null。"
-                "只输出 JSON，不要输出其他内容。"
-            )),
-            HumanMessage(content=text),
-        ]
-        return self._chain.invoke(messages)
-
-    def stream(self, text: str, fields: list[str]) -> Iterator[str]:
-        fields_desc = "、".join(fields)
-        messages = [
-            SystemMessage(content=(
-                "你是一个信息抽取助手。从用户提供的文本中提取指定字段。"
-                f"需要提取的字段：{fields_desc}\n"
-                "严格以 JSON 格式输出，字段名即上述名称。如果某字段在文本中找不到，值设为 null。"
-                "只输出 JSON，不要输出其他内容。"
-            )),
-            HumanMessage(content=text),
-        ]
-        for chunk in self._chain.stream(messages):
-            if chunk:
-                yield chunk
-
-    @staticmethod
-    def _get_default_model() -> str:
-        from src.ai_chat.config import settings
-        return settings.model_name
+    def stream(
+        self,
+        text: str,
+        fields: list[str],
+        prompt_context: Optional[PromptContext] = None,
+    ) -> Iterator[str]:
+        yield from self._stream_messages(self._build_messages(text, fields, prompt_context))
 
 
-# ======================================================================
-# RefineChain — 迭代优化文本
-# ======================================================================
-
-
-class RefineChain:
-    """文本优化链：按指令迭代优化文本。
-
-    Usage::
-
-        chain = RefineChain(model_name="qwen-turbo")
-        result = chain.invoke(
-            "这篇文章的结构不够清晰",
-            text="（原始文本内容）",
-        )
-    """
+class RefineChain(_BasePromptChain):
+    """文本优化链。"""
 
     def __init__(
         self,
         model_name: Optional[str] = None,
-        language: str = "中文",
+        prompt_key: str = "chain.refine",
+        prompt_context: Optional[PromptContext] = None,
     ) -> None:
-        self._model_name = model_name or self._get_default_model()
-        self._language = language
-        self._llm = llm_factory.get_chat_provider(self._model_name).get_client(self._model_name)
-        self._chain = self._llm | StrOutputParser()
+        defaults = {"language": "中文"}
+        merged_defaults = _merge_context(defaults, prompt_context, {})
+        super().__init__(model_name, prompt_key, merged_defaults)
 
-    def invoke(self, instruction: str, text: str) -> str:
-        messages = [
-            SystemMessage(content=(
-                f"你是一个专业的文本编辑。请用{self._language}输出优化后的文本。"
-                "根据用户的指令对提供的文本进行优化，只输出优化后的完整文本，不要解释。"
-            )),
-            HumanMessage(content=f"优化指令：{instruction}\n\n原始文本：\n{text}"),
-        ]
-        return self._chain.invoke(messages)
+    def _build_messages(
+        self,
+        instruction: str,
+        text: str,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> list[BaseMessage]:
+        context = self._build_context(prompt_context, instruction=instruction, text=text)
+        return render_messages(self._prompt_key, **context)
 
-    def stream(self, instruction: str, text: str) -> Iterator[str]:
-        messages = [
-            SystemMessage(content=(
-                f"你是一个专业的文本编辑。请用{self._language}输出优化后的文本。"
-                "根据用户的指令对提供的文本进行优化，只输出优化后的完整文本，不要解释。"
-            )),
-            HumanMessage(content=f"优化指令：{instruction}\n\n原始文本：\n{text}"),
-        ]
-        for chunk in self._chain.stream(messages):
-            if chunk:
-                yield chunk
+    def invoke(
+        self,
+        instruction: str,
+        text: str,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return self._invoke_messages(self._build_messages(instruction, text, prompt_context))
 
-    @staticmethod
-    def _get_default_model() -> str:
-        from src.ai_chat.config import settings
-        return settings.model_name
+    def stream(
+        self,
+        instruction: str,
+        text: str,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> Iterator[str]:
+        yield from self._stream_messages(self._build_messages(instruction, text, prompt_context))

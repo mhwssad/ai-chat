@@ -1,6 +1,6 @@
 """Tools 模块管理入口。"""
 
-from src.ai_chat.tools import tool_registry
+from src.ai_chat.tools.registry import tool_registry
 
 
 def _choose(prompt: str, options: list[str]) -> int:
@@ -29,5 +29,6 @@ def menu_tools():
             continue
         for t in tools:
             desc = t.description.split("\n")[0] if t.description else "无描述"
-            print(f"  {t.name}: {desc}")
+            tool_type = tool_registry.get_record(t.name).tool_type.value
+            print(f"  {t.name} [{tool_type}]: {desc}")
         print()

@@ -1,59 +1,59 @@
-"""整合所有功能的统一对话智能体 — 记忆 + 工具 + RAG + 意图路由。"""
+"""整合所有功能的统一对话智能体。"""
+
+from __future__ import annotations
 
 import asyncio
-from typing import Annotated, AsyncIterator, Iterator, Optional
+from typing import Any, Annotated, AsyncIterator, Iterator, Optional
 
 from langchain.agents import create_agent
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
 from src.ai_chat.llm import llm_factory
 from src.ai_chat.memory import ConversationMemory, MemoryConfig
-from src.ai_chat.prompts import prompt_registry
+from src.ai_chat.prompts import render_messages, render_system_prompt
 from src.ai_chat.rag import rag_factory
 from src.ai_chat.tools.registry import tool_registry
 
 
-class UnifiedState(TypedDict):
-    """图状态 — 节点间流转的数据。"""
+PromptContext = dict[str, Any]
 
+
+class UnifiedState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     intent: str
     context: str
 
 
-_CLASSIFY_PROMPT = """\
-你是一个意图分类器。根据用户消息判断意图，只回答一个词：
-
-- "rag"：用户在询问事实性问题，需要检索知识库来回答
-- "react"：普通聊天、问候、创意写作、关于你自身的问题、需要使用工具完成操作
-
-只回答 "rag" 或 "react"，不要输出其他内容。"""
-
-_RAG_SYSTEM = "你是一个有帮助的 AI 助手。请根据提供的参考资料回答用户问题。如果资料中没有相关信息，请说明。请用中文回答。"
+def _merge_context(
+    base: Optional[PromptContext],
+    override: Optional[PromptContext],
+    final: Optional[PromptContext] = None,
+) -> PromptContext:
+    context: PromptContext = {}
+    if base:
+        context.update(base)
+    if override:
+        context.update(override)
+    if final:
+        context.update(final)
+    return context
 
 
 class UnifiedAgent:
-    """整合记忆 + 工具 + RAG 的统一智能体。
-
-    使用 LangGraph StateGraph 实现意图分类路由：
-    - react 路径：ReAct agent，支持工具调用和普通对话
-    - rag 路径：检索知识库后生成回答
-
-    内置 ConversationMemory，自动管理上下文。
-
-    Usage::
-
-        agent = UnifiedAgent(model_name="qwen-turbo")
-        agent.chat()  # 进入交互式多轮对话
-    """
+    """整合记忆 + 工具 + RAG 的统一智能体。"""
 
     def __init__(
         self,
         model_name: Optional[str] = None,
-        system_prompt: Optional[str] = None,
+        react_prompt_key: str = "agent.react.system",
+        react_prompt_context: Optional[PromptContext] = None,
+        classify_prompt_key: str = "graph.intent.react_or_rag",
+        classify_prompt_context: Optional[PromptContext] = None,
+        rag_prompt_key: str = "graph.rag.answer",
+        rag_prompt_context: Optional[PromptContext] = None,
         tools: Optional[list] = None,
         session_id: Optional[str] = None,
         memory_config: Optional[MemoryConfig] = None,
@@ -61,30 +61,28 @@ class UnifiedAgent:
         rag_k: int = 4,
     ) -> None:
         self._model_name = model_name or self._get_default_model()
-        if system_prompt:
-            self._system_prompt = system_prompt
-        elif "chat" in prompt_registry:
-            self._system_prompt = str(prompt_registry.get("chat").format_messages()[0].content)
-        else:
-            self._system_prompt = "你是一个有帮助的 AI 助手。请用中文回答用户的问题。你可以使用工具来完成任务。"
+        self._react_prompt_key = react_prompt_key
+        self._react_prompt_context = dict(react_prompt_context or {})
+        self._classify_prompt_key = classify_prompt_key
+        self._classify_prompt_context = dict(classify_prompt_context or {})
+        self._rag_prompt_key = rag_prompt_key
+        self._rag_prompt_context = dict(rag_prompt_context or {})
         self._tools = tools or tool_registry.get_all()
         self._rag_store = rag_factory.create_store(rag_store_name)
         self._rag_k = rag_k
 
         provider = llm_factory.get_chat_provider(self._model_name)
         self._llm = provider.get_client(self._model_name)
-
+        self._react_system_prompt = render_system_prompt(
+            self._react_prompt_key,
+            **self._react_prompt_context,
+        )
         self._react_agent = create_agent(
             model=self._llm,
             tools=self._tools,
-            system_prompt=self._system_prompt,
+            system_prompt=self._react_system_prompt,
         )
-
-        self._memory = ConversationMemory(
-            session_id=session_id,
-            config=memory_config,
-        )
-
+        self._memory = ConversationMemory(session_id=session_id, config=memory_config)
         self._graph = self._build_graph()
 
     @property
@@ -93,44 +91,30 @@ class UnifiedAgent:
 
     def _build_graph(self) -> StateGraph:
         workflow = StateGraph(UnifiedState)
-
         workflow.add_node("classify", self._make_classify_node())
         workflow.add_node("react", self._make_react_node())
         workflow.add_node("rag", self._make_rag_node())
-
         workflow.add_edge(START, "classify")
-        workflow.add_conditional_edges(
-            "classify",
-            _route_by_intent,
-            {"react": "react", "rag": "rag"},
-        )
+        workflow.add_conditional_edges("classify", _route_by_intent, {"react": "react", "rag": "rag"})
         workflow.add_edge("react", END)
         workflow.add_edge("rag", END)
-
         return workflow.compile()
-
-    # ── 节点工厂 ───────────────────────────────────────
 
     def _make_classify_node(self):
         llm = self._llm
+        prompt_key = self._classify_prompt_key
+        prompt_context = self._classify_prompt_context
 
         def classify(state: UnifiedState) -> dict:
-            messages = state["messages"]
-            question = ""
-            for msg in reversed(messages):
-                if isinstance(msg, HumanMessage):
-                    question = msg.content if isinstance(msg.content, str) else str(msg.content)
-                    break
-
-            classify_messages = [
-                SystemMessage(content=_CLASSIFY_PROMPT),
-                HumanMessage(content=question),
-            ]
-            result = llm.invoke(classify_messages)
+            question = _extract_last_human_message(state["messages"])
+            messages = render_messages(
+                prompt_key,
+                **_merge_context(prompt_context, None, {"question": question}),
+            )
+            result = llm.invoke(messages)
             intent = result.content.strip().lower() if isinstance(result.content, str) else "react"
             if intent not in ("react", "rag"):
                 intent = "react"
-
             return {"intent": intent}
 
         return classify
@@ -148,40 +132,25 @@ class UnifiedAgent:
         llm = self._llm
         store = self._rag_store
         rag_k = self._rag_k
-        use_registry = "rag" in prompt_registry
+        prompt_key = self._rag_prompt_key
+        prompt_context = self._rag_prompt_context
 
         def rag(state: UnifiedState) -> dict:
-            messages = state["messages"]
-            question = ""
-            for msg in reversed(messages):
-                if isinstance(msg, HumanMessage):
-                    question = msg.content if isinstance(msg.content, str) else str(msg.content)
-                    break
-
+            question = _extract_last_human_message(state["messages"])
             docs = store.similarity_search(question, k=rag_k)
-            context = "\n\n".join(d["content"] for d in docs)
-
-            if use_registry:
-                rag_messages = prompt_registry.get("rag").format_messages(
-                    context=context, question=question,
-                )
-            else:
-                rag_prompt = (
-                    f"参考资料：\n{context}\n\n"
-                    f"用户问题：{question}\n\n"
-                    "请根据参考资料回答用户问题。如果资料中没有相关信息，请说明。"
-                )
-                rag_messages = [
-                    SystemMessage(content=_RAG_SYSTEM),
-                    HumanMessage(content=rag_prompt),
-                ]
-
-            result = llm.invoke(rag_messages)
-            return {"context": context, "messages": [result]}
+            context_text = "\n\n".join(d["content"] for d in docs)
+            messages = render_messages(
+                prompt_key,
+                **_merge_context(
+                    prompt_context,
+                    None,
+                    {"context": context_text, "question": question},
+                ),
+            )
+            result = llm.invoke(messages)
+            return {"context": context_text, "messages": [result]}
 
         return rag
-
-    # ── 公共接口 ───────────────────────────────────────
 
     def _build_messages(self, message: str) -> list[BaseMessage]:
         history = self._memory.load_history()
@@ -190,10 +159,17 @@ class UnifiedAgent:
         return messages
 
     def _save(self, message: str, ai_content: str) -> None:
-        self._memory.save_interaction(
-            HumanMessage(content=message),
-            AIMessage(content=ai_content),
-        )
+        self._memory.save_interaction(HumanMessage(content=message), AIMessage(content=ai_content))
+
+    def _resolve_react_system_prompt(
+        self,
+        system_prompt_override: Optional[str],
+        react_prompt_context_override: Optional[PromptContext] = None,
+    ) -> str:
+        if system_prompt_override is not None:
+            return system_prompt_override
+        context = _merge_context(self._react_prompt_context, react_prompt_context_override)
+        return render_system_prompt(self._react_prompt_key, **context)
 
     async def ainvoke(
         self,
@@ -201,25 +177,25 @@ class UnifiedAgent:
         system_prompt_override: Optional[str] = None,
         tools_override: Optional[list] = None,
         model_override: Optional[str] = None,
+        react_prompt_context_override: Optional[PromptContext] = None,
     ) -> str:
-        """异步调用，自动加载历史、路由处理、保存交互。"""
         messages = self._build_messages(message)
 
-        if system_prompt_override or tools_override or model_override:
-            # 技能模式：跳过意图分类，直接用临时 react agent
-            from langchain.agents import create_agent as _create_agent
-
+        if system_prompt_override or tools_override or model_override or react_prompt_context_override:
             model_name = model_override or self._model_name
             tools = tools_override if tools_override is not None else self._tools
-            system = system_prompt_override or self._system_prompt
+            system = self._resolve_react_system_prompt(
+                system_prompt_override,
+                react_prompt_context_override,
+            )
 
             if model_override and model_override != self._model_name:
-                provider = llm_factory.get_chat_provider(model_override)
-                llm = provider.get_client(model_override)
+                provider = llm_factory.get_chat_provider(model_name)
+                llm = provider.get_client(model_name)
             else:
                 llm = self._llm
 
-            temp_agent = _create_agent(model=llm, tools=tools, system_prompt=system)
+            temp_agent = create_agent(model=llm, tools=tools, system_prompt=system)
             result = await temp_agent.ainvoke({"messages": messages})  # type: ignore[arg-type]
         else:
             result = await self._graph.ainvoke({"messages": messages, "intent": "", "context": ""})  # type: ignore[arg-type]
@@ -229,12 +205,11 @@ class UnifiedAgent:
         return ai_content
 
     async def astream(self, message: str) -> AsyncIterator[str]:
-        """异步流式调用，逐 token 返回。"""
         messages = self._build_messages(message)
         seen_ids: set[str] = set()
         collected: list[str] = []
         async for event in self._graph.astream(
-            {"messages": messages, "intent": "", "context": ""},  # type: ignore[arg-type]
+            {"messages": messages, "intent": "", "context": ""},
             stream_mode="values",
         ):
             if not event.get("messages"):
@@ -259,8 +234,8 @@ class UnifiedAgent:
         system_prompt_override: Optional[str] = None,
         tools_override: Optional[list] = None,
         model_override: Optional[str] = None,
+        react_prompt_context_override: Optional[PromptContext] = None,
     ) -> str:
-        """同步调用，自动加载历史、路由处理、保存交互。"""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -268,16 +243,21 @@ class UnifiedAgent:
         else:
             loop = True
 
-        coro = self.ainvoke(message, system_prompt_override, tools_override, model_override)
+        coro = self.ainvoke(
+            message,
+            system_prompt_override,
+            tools_override,
+            model_override,
+            react_prompt_context_override,
+        )
         if loop:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 return pool.submit(asyncio.run, coro).result()
-        else:
-            return asyncio.run(coro)
+        return asyncio.run(coro)
 
     def stream(self, message: str) -> Iterator[str]:
-        """同步流式调用，逐 token 返回。"""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -293,6 +273,7 @@ class UnifiedAgent:
 
         if loop:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 for chunk in pool.submit(asyncio.run, _collect()).result():
                     yield chunk
@@ -301,7 +282,6 @@ class UnifiedAgent:
                 yield chunk
 
     def chat(self) -> None:
-        """进入交互式多轮对话循环。"""
         print(f"会话 ID: {self.session_id}")
         print("输入 'quit' 或 'exit' 退出\n")
 
@@ -316,23 +296,27 @@ class UnifiedAgent:
             print(f"AI: {response}\n")
 
     def clear(self) -> None:
-        """清除当前会话及所有记忆数据。"""
         self._memory.clear()
 
     def get_summary(self) -> Optional[str]:
-        """获取当前会话的长期摘要。"""
         return self._memory.get_summary()
 
     def get_message_count(self) -> int:
-        """获取当前会话的消息总数。"""
         return self._memory.get_message_count()
 
     @staticmethod
     def _get_default_model() -> str:
         from src.ai_chat.config import settings
+
         return settings.model_name
 
 
+def _extract_last_human_message(messages: list[BaseMessage]) -> str:
+    for msg in reversed(messages):
+        if isinstance(msg, HumanMessage):
+            return msg.content if isinstance(msg.content, str) else str(msg.content)
+    return ""
+
+
 def _route_by_intent(state: UnifiedState) -> str:
-    """条件路由 — 根据分类结果选择处理节点。"""
     return state.get("intent", "") or "react"

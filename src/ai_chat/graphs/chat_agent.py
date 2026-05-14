@@ -1,40 +1,59 @@
 """基于 LangGraph 的 ReAct Agent。"""
 
-import asyncio
-from typing import TYPE_CHECKING, AsyncIterator, Iterator, Optional
+from __future__ import annotations
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
+import asyncio
+from typing import TYPE_CHECKING, Any, AsyncIterator, Iterator, Optional
+
 from langchain.agents import create_agent
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from src.ai_chat.llm import llm_factory
+from src.ai_chat.prompts import render_system_prompt
 from src.ai_chat.tools.registry import tool_registry
 
 if TYPE_CHECKING:
     from src.ai_chat.memory.manager import ConversationMemory
 
 
-class ChatAgent:
-    """ReAct Agent — 能使用工具的对话智能体。
+PromptContext = dict[str, Any]
 
-    整合 LLM + Tools，通过 LangGraph 的 create_agent 实现
-    思考 → 行动 → 观察 的循环推理。
-    """
+
+def _merge_context(
+    base: Optional[PromptContext],
+    override: Optional[PromptContext],
+) -> PromptContext:
+    context: PromptContext = {}
+    if base:
+        context.update(base)
+    if override:
+        context.update(override)
+    return context
+
+
+class ChatAgent:
+    """ReAct Agent — 能使用工具的对话智能体。"""
 
     def __init__(
         self,
         model_name: Optional[str] = None,
-        system_prompt: Optional[str] = None,
+        system_prompt_key: str = "agent.react.system",
+        system_prompt_context: Optional[PromptContext] = None,
         tools: Optional[list] = None,
         memory: Optional["ConversationMemory"] = None,
     ) -> None:
         self._model_name = model_name or self._get_default_model()
-        self._system_prompt = system_prompt or "你是一个有帮助的 AI 助手。请用中文回答用户的问题。你可以使用工具来完成任务。"
+        self._system_prompt_key = system_prompt_key
+        self._system_prompt_context = dict(system_prompt_context or {})
         self._tools = tools or tool_registry.get_all()
         self._memory = memory
 
         provider = llm_factory.get_chat_provider(self._model_name)
         self._llm = provider.get_client(self._model_name)
-
+        self._system_prompt = render_system_prompt(
+            self._system_prompt_key,
+            **self._system_prompt_context,
+        )
         self._agent = create_agent(
             model=self._llm,
             tools=self._tools,
@@ -55,17 +74,30 @@ class ChatAgent:
                 AIMessage(content=ai_content),
             )
 
-    def _build_temp_agent(self, system_prompt_override=None, tools_override=None, model_override=None):
-        """根据覆盖参数创建临时 Agent。"""
-        from langchain.agents import create_agent
+    def _resolve_system_prompt(
+        self,
+        system_prompt_override: Optional[str] = None,
+        system_prompt_context_override: Optional[PromptContext] = None,
+    ) -> str:
+        if system_prompt_override is not None:
+            return system_prompt_override
+        context = _merge_context(self._system_prompt_context, system_prompt_context_override)
+        return render_system_prompt(self._system_prompt_key, **context)
 
+    def _build_temp_agent(
+        self,
+        system_prompt_override: Optional[str] = None,
+        tools_override: Optional[list] = None,
+        model_override: Optional[str] = None,
+        system_prompt_context_override: Optional[PromptContext] = None,
+    ):
         model_name = model_override or self._model_name
         tools = tools_override if tools_override is not None else self._tools
-        system = system_prompt_override or self._system_prompt
+        system = self._resolve_system_prompt(system_prompt_override, system_prompt_context_override)
 
         if model_override and model_override != self._model_name:
-            provider = llm_factory.get_chat_provider(model_override)
-            llm = provider.get_client(model_override)
+            provider = llm_factory.get_chat_provider(model_name)
+            llm = provider.get_client(model_name)
         else:
             llm = self._llm
 
@@ -78,12 +110,16 @@ class ChatAgent:
         system_prompt_override: Optional[str] = None,
         tools_override: Optional[list] = None,
         model_override: Optional[str] = None,
+        system_prompt_context_override: Optional[PromptContext] = None,
     ) -> str:
-        """异步调用，返回最终回复文本。"""
         messages = self._build_messages(message, history)
-
-        if system_prompt_override or tools_override or model_override:
-            agent = self._build_temp_agent(system_prompt_override, tools_override, model_override)
+        if system_prompt_override or tools_override or model_override or system_prompt_context_override:
+            agent = self._build_temp_agent(
+                system_prompt_override,
+                tools_override,
+                model_override,
+                system_prompt_context_override,
+            )
         else:
             agent = self._agent
 
@@ -92,8 +128,11 @@ class ChatAgent:
         self._save_if_needed(message, ai_content)
         return ai_content
 
-    async def astream(self, message: str, history: Optional[list[BaseMessage]] = None) -> AsyncIterator[str]:
-        """异步流式调用，逐 token 返回。"""
+    async def astream(
+        self,
+        message: str,
+        history: Optional[list[BaseMessage]] = None,
+    ) -> AsyncIterator[str]:
         messages = self._build_messages(message, history)
         collected: list[str] = []
         async for event in self._agent.astream({"messages": messages}, stream_mode="values"):  # type: ignore[arg-type]
@@ -114,8 +153,8 @@ class ChatAgent:
         system_prompt_override: Optional[str] = None,
         tools_override: Optional[list] = None,
         model_override: Optional[str] = None,
+        system_prompt_context_override: Optional[PromptContext] = None,
     ) -> str:
-        """同步调用，返回最终回复文本。"""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -123,16 +162,22 @@ class ChatAgent:
         else:
             loop = True
 
-        coro = self.ainvoke(message, history, system_prompt_override, tools_override, model_override)
+        coro = self.ainvoke(
+            message,
+            history,
+            system_prompt_override,
+            tools_override,
+            model_override,
+            system_prompt_context_override,
+        )
         if loop:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 return pool.submit(asyncio.run, coro).result()
-        else:
-            return asyncio.run(coro)
+        return asyncio.run(coro)
 
     def stream(self, message: str, history: Optional[list[BaseMessage]] = None) -> Iterator[str]:
-        """同步流式调用，逐 token 返回。"""
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
@@ -146,6 +191,7 @@ class ChatAgent:
 
         if loop:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 for chunk in pool.submit(asyncio.run, _collect()).result():
                     yield chunk
@@ -156,4 +202,5 @@ class ChatAgent:
     @staticmethod
     def _get_default_model() -> str:
         from src.ai_chat.config import settings
+
         return settings.model_name

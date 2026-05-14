@@ -94,7 +94,7 @@ class SkillRegistry:
         return f"SkillRegistry({len(self)} skills: [{names}])"
 
 
-def registered_skill(func=None, *, registry: SkillRegistry | None = None):
+def registered_skill(func=None, *, registry: Optional[SkillRegistry] = None):
     """装饰器：将函数返回的 SkillConfig 注册为技能。"""
     reg = registry or skill_registry
 

@@ -7,14 +7,14 @@
 import re
 from pathlib import Path
 
-from src.ai_chat.tools.registry import registered_tool
+from src.ai_chat.tools.registry import ToolType, registered_tool
 
 
 # ---------------------------------------------------------------------------
 # 写入
 # ---------------------------------------------------------------------------
 
-@registered_tool
+@registered_tool(tool_type=ToolType.SYSTEM)
 def write_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
     """覆盖写入文件。文件不存在时自动创建（含父目录）。
 
@@ -34,7 +34,7 @@ def write_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
         return f"[ERROR] 写入失败：{e}"
 
 
-@registered_tool
+@registered_tool(tool_type=ToolType.SYSTEM)
 def append_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
     """向文件末尾追加内容。文件不存在时自动创建（含父目录）。
 
@@ -59,7 +59,7 @@ def append_file(file_path: str, content: str, encoding: str = "utf-8") -> str:
 # 替换
 # ---------------------------------------------------------------------------
 
-@registered_tool
+@registered_tool(tool_type=ToolType.SYSTEM)
 def replace_exact(file_path: str, old: str, new: str, encoding: str = "utf-8") -> str:
     """按字符串精确匹配，替换文件中的所有匹配项。
 
@@ -95,7 +95,7 @@ def replace_exact(file_path: str, old: str, new: str, encoding: str = "utf-8") -
         return f"[ERROR] 写入失败：{e}"
 
 
-@registered_tool
+@registered_tool(tool_type=ToolType.SYSTEM)
 def replace_regex(file_path: str, pattern: str, replacement: str, encoding: str = "utf-8") -> str:
     """按正则表达式匹配，替换文件中的所有匹配项。
 
@@ -139,7 +139,7 @@ def replace_regex(file_path: str, pattern: str, replacement: str, encoding: str 
 # 读取
 # ---------------------------------------------------------------------------
 
-@registered_tool
+@registered_tool(tool_type=ToolType.SYSTEM)
 def read_file(file_path: str, encoding: str = "utf-8") -> str:
     """读取文件的全部内容。
 
@@ -162,7 +162,7 @@ def read_file(file_path: str, encoding: str = "utf-8") -> str:
         return f"[ERROR] 读取失败：{e}"
 
 
-@registered_tool
+@registered_tool(tool_type=ToolType.SYSTEM)
 def read_lines(file_path: str, start: int = 1, end: int = 0, encoding: str = "utf-8") -> str:
     """按行读取文件内容，支持指定行号范围（从 1 开始）。
 

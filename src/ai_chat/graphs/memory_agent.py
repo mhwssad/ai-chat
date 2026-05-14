@@ -1,47 +1,45 @@
-"""内置记忆的对话智能体 — 开箱即用的多轮对话 Agent。"""
+"""内置记忆的对话智能体。"""
+
+from __future__ import annotations
 
 import asyncio
-from typing import AsyncIterator, Iterator, Optional
+from typing import Any, AsyncIterator, Iterator, Optional
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 from langchain.agents import create_agent
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
 
 from src.ai_chat.llm import llm_factory
 from src.ai_chat.memory import ConversationMemory, MemoryConfig
+from src.ai_chat.prompts import render_system_prompt
 from src.ai_chat.tools.registry import tool_registry
 
 
+PromptContext = dict[str, Any]
+
+
 class MemoryAgent:
-    """自带记忆的 ReAct Agent。
-
-    内部自动创建 ConversationMemory，无需调用方管理记忆。
-    支持恢复历史会话（传入 session_id）或创建新会话。
-
-    Usage::
-
-        agent = MemoryAgent(model_name="qwen-turbo")
-        agent.chat()  # 进入交互式多轮对话
-
-        # 或者手动调用
-        response = agent.invoke("你好")
-        response = agent.invoke("我刚才说了什么")  # 能回忆上文
-    """
+    """自带记忆的 ReAct Agent。"""
 
     def __init__(
         self,
         model_name: Optional[str] = None,
-        system_prompt: Optional[str] = None,
+        system_prompt_key: str = "agent.react.system",
+        system_prompt_context: Optional[PromptContext] = None,
         tools: Optional[list] = None,
         session_id: Optional[str] = None,
         memory_config: Optional[MemoryConfig] = None,
     ) -> None:
         self._model_name = model_name or self._get_default_model()
-        self._system_prompt = system_prompt or "你是一个有帮助的 AI 助手。请用中文回答用户的问题。你可以使用工具来完成任务。"
+        self._system_prompt_key = system_prompt_key
+        self._system_prompt_context = dict(system_prompt_context or {})
         self._tools = tools or tool_registry.get_all()
 
         provider = llm_factory.get_chat_provider(self._model_name)
         self._llm = provider.get_client(self._model_name)
-
+        self._system_prompt = render_system_prompt(
+            self._system_prompt_key,
+            **self._system_prompt_context,
+        )
         self._agent = create_agent(
             model=self._llm,
             tools=self._tools,
@@ -70,7 +68,6 @@ class MemoryAgent:
         )
 
     async def ainvoke(self, message: str) -> str:
-        """异步调用，自动加载历史并保存交互。"""
         messages = self._build_messages(message)
         result = await self._agent.ainvoke({"messages": messages})  # type: ignore[arg-type]
         ai_content = result["messages"][-1].content
@@ -78,7 +75,6 @@ class MemoryAgent:
         return ai_content
 
     async def astream(self, message: str) -> AsyncIterator[str]:
-        """异步流式调用，逐 token 返回。"""
         messages = self._build_messages(message)
         collected: list[str] = []
         async for event in self._agent.astream({"messages": messages}, stream_mode="values"):  # type: ignore[arg-type]
@@ -93,7 +89,6 @@ class MemoryAgent:
             self._save(message, "".join(collected))
 
     def invoke(self, message: str) -> str:
-        """同步调用，自动加载历史并保存交互。"""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -103,13 +98,12 @@ class MemoryAgent:
 
         if loop:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 return pool.submit(asyncio.run, self.ainvoke(message)).result()
-        else:
-            return asyncio.run(self.ainvoke(message))
+        return asyncio.run(self.ainvoke(message))
 
     def stream(self, message: str) -> Iterator[str]:
-        """同步流式调用，逐 token 返回。"""
         try:
             asyncio.get_running_loop()
         except RuntimeError:
@@ -125,6 +119,7 @@ class MemoryAgent:
 
         if loop:
             import concurrent.futures
+
             with concurrent.futures.ThreadPoolExecutor() as pool:
                 for chunk in pool.submit(asyncio.run, _collect()).result():
                     yield chunk
@@ -133,7 +128,6 @@ class MemoryAgent:
                 yield chunk
 
     def chat(self) -> None:
-        """进入交互式多轮对话循环。"""
         print(f"会话 ID: {self.session_id}")
         print("输入 'quit' 或 'exit' 退出\n")
 
@@ -148,18 +142,16 @@ class MemoryAgent:
             print(f"AI: {response}\n")
 
     def clear(self) -> None:
-        """清除当前会话及所有记忆数据。"""
         self._memory.clear()
 
     def get_summary(self) -> Optional[str]:
-        """获取当前会话的长期摘要。"""
         return self._memory.get_summary()
 
     def get_message_count(self) -> int:
-        """获取当前会话的消息总数。"""
         return self._memory.get_message_count()
 
     @staticmethod
     def _get_default_model() -> str:
         from src.ai_chat.config import settings
+
         return settings.model_name

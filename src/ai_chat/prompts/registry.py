@@ -1,8 +1,9 @@
-"""提示词注册表 — 支持装饰器注册和 Jinja2 文件自动扫描。"""
+"""提示词注册表 — 支持装饰器注册、Jinja2 文件扫描与统一渲染。"""
 
 from pathlib import Path
 from typing import Callable
 
+from langchain_core.messages import BaseMessage, SystemMessage
 from langchain_core.prompts import ChatPromptTemplate
 
 
@@ -66,6 +67,35 @@ def register_prompt(name: str):
         prompt_registry.register(name, template)
         return template
     return decorator
+
+
+def has_prompt(prompt_key: str) -> bool:
+    """判断提示词是否已注册。"""
+    return prompt_key in prompt_registry
+
+
+def render_messages(prompt_key: str, **context) -> list[BaseMessage]:
+    """按名称渲染提示词消息列表。"""
+    template = prompt_registry.get(prompt_key)
+    missing = [name for name in template.input_variables if name not in context]
+    if missing:
+        raise KeyError(f"提示词 '{prompt_key}' 缺少必填变量：{missing}")
+    return template.format_messages(**context)
+
+
+def render_system_prompt(prompt_key: str, **context) -> str:
+    """将单条 system 提示词渲染为纯文本。"""
+    messages = render_messages(prompt_key, **context)
+    if len(messages) != 1:
+        raise ValueError(
+            f"提示词 '{prompt_key}' 必须渲染为单条 system 消息，实际得到 {len(messages)} 条消息。"
+        )
+    message = messages[0]
+    if not isinstance(message, SystemMessage):
+        raise ValueError(
+            f"提示词 '{prompt_key}' 必须渲染为 SystemMessage，实际得到 {type(message).__name__}。"
+        )
+    return message.content if isinstance(message.content, str) else str(message.content)
 
 
 # ======================================================================

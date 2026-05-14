@@ -71,8 +71,7 @@ def _invoke_skill(agent, skill: SkillConfig, user_text: str):
 def _get_skill_tools(skill: SkillConfig):
     if not skill.tools:
         return None
-    all_tools = tool_registry.get_all()
-    return [t for t in all_tools if t.name in skill.tools]
+    return tool_registry.resolve_tools(skill.tools)
 
 
 _AGENT_MENU = {
