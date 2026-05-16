@@ -1,6 +1,5 @@
-"""提示词注册表 — 支持装饰器注册、Jinja2 文件扫描与统一渲染。"""
+"""提示词注册表 — 内存注册 + 装饰器注册 + 统一渲染。"""
 
-from pathlib import Path
 from typing import Callable
 
 from langchain_core.messages import BaseMessage, SystemMessage
@@ -16,6 +15,11 @@ class PromptRegistry:
     def register(self, name: str, template: ChatPromptTemplate) -> None:
         """注册提示词模板。"""
         self._registry[name] = template
+
+    def unregister(self, name: str) -> None:
+        """移除已注册的提示词模板。"""
+        if name in self._registry:
+            del self._registry[name]
 
     def get(self, name: str) -> ChatPromptTemplate:
         """按名称获取提示词模板。"""
@@ -96,22 +100,3 @@ def render_system_prompt(prompt_key: str, **context) -> str:
             f"提示词 '{prompt_key}' 必须渲染为 SystemMessage，实际得到 {type(message).__name__}。"
         )
     return message.content if isinstance(message.content, str) else str(message.content)
-
-
-# ======================================================================
-# 文件扫描 — 自动注册 templates/ 目录下的 .jinja2 文件
-# ======================================================================
-
-def scan_templates(package_dir: Path) -> None:
-    """扫描 templates/ 目录下 .jinja2 文件，自动注册为 ChatPromptTemplate。
-
-    文件名（不含扩展名）即为注册名称。
-    """
-    templates_dir = package_dir / "templates"
-    if not templates_dir.exists():
-        return
-    for path in sorted(templates_dir.glob("*.jinja2")):
-        name = path.stem
-        content = path.read_text(encoding="utf-8")
-        template = ChatPromptTemplate.from_template(content, template_format="jinja2")
-        prompt_registry.register(name, template)
