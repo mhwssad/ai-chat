@@ -82,7 +82,7 @@ class UnifiedAgent:
             tools=self._tools,
             system_prompt=self._react_system_prompt,
         )
-        self._memory = ConversationMemory(session_id=session_id, config=memory_config)
+        self._memory = ConversationMemory(session_id=session_id, config=memory_config, model_name=self._model_name)
         self._graph = self._build_graph()
 
     @property

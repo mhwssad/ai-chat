@@ -49,6 +49,7 @@ class MemoryAgent:
         self._memory = ConversationMemory(
             session_id=session_id,
             config=memory_config,
+            model_name=self._model_name,
         )
 
     @property
