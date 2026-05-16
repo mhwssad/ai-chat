@@ -1,3 +1,7 @@
+"""LLM 模块入口 — 导出工厂、基类、模型和自动发现的供应商。"""
+
+from .menu import menu_llm
+
 from .base import ModelProvider
 from .models import (
     ChatRequest,
@@ -22,6 +26,16 @@ from .providers.chat.base import ChatProvider
 from .providers.embedding.base import EmbeddingProvider
 from .providers.image.base import ImageProvider, ImageRequest, ImageResponse
 from .providers.video.base import VideoProvider, VideoRequest, VideoResponse
+
+# 模型元数据与 token 工具
+from .model_metadata import MODEL_CONTEXT_SIZES, get_model_context_size
+from .token_utils import (
+    count_text_tokens,
+    estimate_message_tokens,
+    estimate_messages_tokens,
+    extract_prompt_tokens,
+    extract_total_tokens,
+)
 
 
 __all__ = [
@@ -53,4 +67,15 @@ __all__ = [
     # 配置
     "ProviderConfig",
     "mask_key",
+    # 模型元数据
+    "MODEL_CONTEXT_SIZES",
+    "get_model_context_size",
+    # token 工具
+    "count_text_tokens",
+    "estimate_message_tokens",
+    "estimate_messages_tokens",
+    "extract_prompt_tokens",
+    "extract_total_tokens",
+    # 菜单
+    "menu_llm",
 ]
