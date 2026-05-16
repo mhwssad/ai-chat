@@ -1,14 +1,17 @@
-"""RAG 链 — 检索增强生成。"""
+"""RAG 调用链 — 检索增强生成。"""
 
-from typing import Iterator, Optional
+from __future__ import annotations
 
-from langchain_core.messages import HumanMessage
+from typing import Any, Iterator, Optional, TYPE_CHECKING
+
+from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
 from src.ai_chat.llm import llm_factory
-from src.ai_chat.llm.models import ChatRequest
 from src.ai_chat.prompts import prompt_registry
-from .models import VectorStoreProvider
+
+if TYPE_CHECKING:
+    from src.ai_chat.rag.models import VectorStoreProvider
 
 
 class RAGChain:
@@ -27,7 +30,6 @@ class RAGChain:
 
         if prompt_name in prompt_registry:
             base_template = prompt_registry.get(prompt_name)
-            # rag.jinja2 是单消息模板，包装成多消息格式以支持历史记录
             system_text = base_template.template
             self._prompt = ChatPromptTemplate.from_messages([
                 ("system", system_text),
@@ -45,7 +47,7 @@ class RAGChain:
         docs = self._store.similarity_search(question, k=self._k)
         return "\n\n".join(doc["content"] for doc in docs)
 
-    def query(self, question: str, history: Optional[list] = None) -> str:
+    def invoke(self, question: str, history: Optional[list[BaseMessage]] = None) -> str:
         """同步 RAG 查询。"""
         context = self._retrieve_context(question)
         model_name = self._model_name or self._get_default_model()
@@ -58,7 +60,7 @@ class RAGChain:
         })
         return result.content
 
-    def stream(self, question: str, history: Optional[list] = None) -> Iterator[str]:
+    def stream(self, question: str, history: Optional[list[BaseMessage]] = None) -> Iterator[str]:
         """流式 RAG 查询。"""
         context = self._retrieve_context(question)
         model_name = self._model_name or self._get_default_model()

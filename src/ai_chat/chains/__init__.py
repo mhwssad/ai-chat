@@ -7,6 +7,8 @@ from .chat_chain import (
     ExtractionChain,
     RefineChain,
 )
+from .rag_chain import RAGChain
+from .summary_chain import ConversationSummaryChain
 from .factory import chain_factory
 from .menu import menu_chains
 
@@ -16,6 +18,7 @@ chain_factory.register("summarize", SummarizeChain)
 chain_factory.register("translate", TranslateChain)
 chain_factory.register("extraction", ExtractionChain)
 chain_factory.register("refine", RefineChain)
+chain_factory.register("rag", RAGChain)
 
 __all__ = [
     "ChatChain",
@@ -23,6 +26,8 @@ __all__ = [
     "TranslateChain",
     "ExtractionChain",
     "RefineChain",
+    "RAGChain",
+    "ConversationSummaryChain",
     "chain_factory",
     "menu_chains",
 ]

@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, SystemMessage
 
 from src.ai_chat.memory.factory import memory_factory
 from src.ai_chat.memory.models import (
@@ -131,33 +131,11 @@ class ConversationMemory:
             self._store.save_summary(self.session_id, combined)
 
     def _generate_summary(self, messages: list[BaseMessage]) -> Optional[str]:
-        """调用 LLM 对消息列表生成摘要。"""
-        from src.ai_chat.llm import llm_factory
+        """通过 ConversationSummaryChain 生成对话摘要。"""
+        from src.ai_chat.chains.summary_chain import ConversationSummaryChain
 
-        model_name = self._config.summary_model
-        if model_name is None:
-            from src.ai_chat.config import settings
-
-            model_name = settings.model_name
-
-        try:
-            provider = llm_factory.get_chat_provider(model_name)
-            client = provider.get_client(model_name)
-
-            conversation_text = "\n".join(
-                f"{msg.type}: {msg.content}" for msg in messages
-            )
-            prompt_messages = [
-                SystemMessage(
-                    content=(
-                        "你是一个对话摘要助手。请简洁地总结以下对话，"
-                        "保留关键事实、决定和上下文信息。"
-                        f"摘要控制在 {self._config.summary_token_limit} token 以内。"
-                    )
-                ),
-                HumanMessage(content=conversation_text),
-            ]
-            result = client.invoke(prompt_messages)
-            return result.content if isinstance(result.content, str) else str(result.content)
-        except Exception:
-            return None
+        chain = ConversationSummaryChain(
+            model_name=self._config.summary_model,
+            token_limit=self._config.summary_token_limit,
+        )
+        return chain.invoke(messages)
