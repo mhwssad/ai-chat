@@ -129,6 +129,19 @@ src/ai_chat/
 
 后续页面层建议使用 FastAPI + Vue 独立承载，核心对话、调用链、工具、记忆和 MCP 能力继续复用 `src/ai_chat/` 下的业务模块。
 
+当前已提供一版基于 FastAPI + Jinja2 的最小 Web 骨架，可作为后续页面层的起点。
+
+### 启动 Web 骨架
+
+```bash
+uv run uvicorn src.ai_chat.web.app:create_app --factory --reload
+```
+
+启动后可访问：
+
+- `/chat`：最小聊天页面（MemoryAgent / UnifiedAgent）
+- `/chains` `/tools` `/memory` `/mcp` `/skills`：占位页面
+
 ## 设计模式
 
 - **策略模式** — 所有 Provider 均基于 ABC 接口，可自由替换实现
