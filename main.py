@@ -1,11 +1,18 @@
 """AI Chat 统一 CLI 入口 — 各模块管理入口的编排层。"""
 
+import warnings
+
+warnings.filterwarnings("ignore", category=PendingDeprecationWarning, module="langgraph")
+
 from src.ai_chat.graphs import menu_chat
 from src.ai_chat.chains import menu_chains
 from src.ai_chat.tools import menu_tools
 from src.ai_chat.memory import menu_memory
 from src.ai_chat.mcp import menu_mcp
 from src.ai_chat.skills import menu_skills
+from src.ai_chat.llm import menu_llm
+from src.ai_chat.prompts import menu_prompts
+from src.ai_chat.utils.error_handler import cli_run
 
 
 def _choose(prompt: str, options: list[str]) -> int:
@@ -17,12 +24,15 @@ def _choose(prompt: str, options: list[str]) -> int:
             return int(raw)
 
 
+@cli_run
 def main():
     while True:
         print("\n=== AI Chat ===")
         idx = _choose("请选择: ", [
             "对话",
             "调用链",
+            "LLM 管理",
+            "提示词管理",
             "工具管理",
             "记忆管理",
             "MCP 管理",
@@ -35,12 +45,16 @@ def main():
         elif idx == 2:
             menu_chains()
         elif idx == 3:
-            menu_tools()
+            menu_llm()
         elif idx == 4:
-            menu_memory()
+            menu_prompts()
         elif idx == 5:
-            menu_mcp()
+            menu_tools()
         elif idx == 6:
+            menu_memory()
+        elif idx == 7:
+            menu_mcp()
+        elif idx == 8:
             menu_skills()
         else:
             print("再见！")

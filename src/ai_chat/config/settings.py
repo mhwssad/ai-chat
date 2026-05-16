@@ -48,6 +48,15 @@ class Settings(BaseSettingsConfig):
     memory_summary_token_limit: int = 1000
     memory_enable_summary: bool = True
 
+    # ── Token 感知上下文管理 ──────────────────────────────
+    # JSON 字符串，映射 model_name -> context_window_tokens
+    # 示例环境变量: MODEL_CONTEXT_OVERRIDES='{"gpt-4o": 64000, "qwen2.5": 32000}'
+    model_context_overrides: str = ""
+    # 压缩触发阈值比例 (0.0~1.0)
+    model_context_threshold: float = 0.8
+    # 未注册模型的默认上下文大小
+    model_default_context_size: int = 8192
+
     # ── 工具方法 ────────────────────────────────────────
 
     def get_key(self, key: SecretStr) -> Optional[SecretStr]:
