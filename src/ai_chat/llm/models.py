@@ -1,13 +1,11 @@
-"""策略接口、数据类与异常定义（聊天模型 + 嵌入模型）。"""
+"""数据类、异常与工具函数定义。"""
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Iterator, Optional, Union
+from typing import Optional, Union
 
 from pydantic import SecretStr
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage
 
 
 # ======================================================================
@@ -55,7 +53,7 @@ def mask_key(key: Union[SecretStr, str, None]) -> str:
 class ChatRequest:
     """聊天请求。"""
 
-    messages: list[BaseMessage]
+    messages: list = field(default_factory=list)
     temperature: float = 0.7
     max_tokens: Optional[int] = None
     extra: dict = field(default_factory=dict)
@@ -80,15 +78,12 @@ def extract_usage(result: AIMessage) -> Optional[dict]:
     """
     meta = result.response_metadata or {}
 
-    # OpenAI / 通用格式: {"prompt_tokens", "completion_tokens", "total_tokens"}
     if "token_usage" in meta:
         return meta["token_usage"]
 
-    # Claude 格式: {"input_tokens", "output_tokens"}
     if "usage" in meta:
         return meta["usage"]
 
-    # langchain-core usage_metadata: UsageMetadata(input_tokens=..., output_tokens=..., total_tokens=...)
     if hasattr(result, "usage_metadata") and result.usage_metadata:
         um = result.usage_metadata
         return {
@@ -98,68 +93,3 @@ def extract_usage(result: AIMessage) -> Optional[dict]:
         }
 
     return None
-
-
-# ======================================================================
-# 策略接口
-# ======================================================================
-
-class ChatProvider(ABC):
-    """聊天模型提供商策略。
-
-    每个具体实现对应一个底层 API 提供商（OpenAI、Gemini、Claude …），
-    内部维护该提供商支持的模型名称列表。
-    """
-
-    @abstractmethod
-    def supports_model(self, model_name: str) -> bool:
-        """判断该策略是否支持给定的模型名称。"""
-
-    @abstractmethod
-    def get_supported_models(self) -> list[str]:
-        """返回该策略支持的所有模型名称列表。"""
-
-    @abstractmethod
-    def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
-        """使用指定的模型名称发起聊天请求。"""
-
-    @abstractmethod
-    def get_client(self, model_name: str) -> BaseChatModel:
-        """获取底层 LangChain 客户实例（供链/Agent 使用）。"""
-
-    @abstractmethod
-    def get_stream_client(self, model_name: str, *, temperature: float = 0.7, max_tokens: Optional[int] = None) -> BaseChatModel:
-        """获取带流式配置的 LangChain 客户实例。"""
-
-    @abstractmethod
-    def stream(self, request: ChatRequest, model_name: str) -> Iterator[str]:
-        """流式聊天，逐 token 返回文本片段。"""
-
-
-# ======================================================================
-# 嵌入模型 — 策略接口
-# ======================================================================
-
-class EmbeddingProvider(ABC):
-    """嵌入模型提供商策略。
-
-    与 ``ChatProvider`` 职责分离，专门处理文本向量化。
-    每个具体实现对应一个底层嵌入 API（OpenAI Embeddings、本地模型 …）。
-    """
-
-    @abstractmethod
-    def supports_model(self, model_name: str) -> bool:
-        """判断该策略是否支持给定的嵌入模型名称。"""
-
-    @abstractmethod
-    def get_supported_models(self) -> list[str]:
-        """返回该策略支持的所有嵌入模型名称列表。"""
-
-    @abstractmethod
-    def embed(self, text: str, model_name: str) -> list[float]:
-        """使用指定的嵌入模型对单段文本进行向量化。"""
-
-    @abstractmethod
-    def embed_batch(self, texts: list[str], model_name: str) -> list[list[float]]:
-        """批量嵌入多段文本。"""
-

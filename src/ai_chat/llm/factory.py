@@ -1,15 +1,20 @@
 """抽象工厂 — 整合配置工厂、策略工厂与模型路由。"""
 
-from typing import Callable, Generic, Optional, TypeVar
+from __future__ import annotations
 
+from typing import TYPE_CHECKING, Callable, Generic, Optional, TypeVar
+
+from src.ai_chat.llm.base import ModelProvider
 from src.ai_chat.llm.models import (
-    ChatProvider,
     ChatRequest,
     ChatResponse,
-    EmbeddingProvider,
     ModelNotSupportedException,
     ProviderConfig,
 )
+
+if TYPE_CHECKING:
+    from src.ai_chat.llm.providers.chat.base import ChatProvider
+    from src.ai_chat.llm.providers.embedding.base import EmbeddingProvider
 
 
 # ======================================================================
@@ -66,54 +71,83 @@ class ProviderFactory(Generic[T]):
 
 
 # ======================================================================
-# 抽象工厂 — 整合配置 + 策略 + 模型路由
+# 抽象工厂 — 泛型注册 + 模型路由
 # ======================================================================
 
 class LLMFactory:
     """抽象工厂，整合配置工厂、策略工厂与按模型名称路由。
 
+    支持任意 provider_type（chat、embedding、image、video 等）的泛型注册。
+
     用法：
-        llm_factory.register_chat("gemini", GeminiProvider, lambda: ProviderConfig(...))
-        llm_factory.create_chat_provider("gemini")              # 按供应商名
-        llm_factory.get_chat_provider("gemini-2.0-flash")       # 按模型名路由
-        llm_factory.chat(request, "gemini-2.0-flash")           # 路由 + 聊天
+        llm_factory.register("chat", "gemini", GeminiProvider, lambda: ProviderConfig(...))
+        llm_factory.get_provider("chat", "gemini-2.0-flash")
+        # 向后兼容：
+        llm_factory.get_chat_provider("gemini-2.0-flash")
     """
 
     def __init__(self) -> None:
         self.config_factory = ProviderConfigFactory()
-        self.chat_factory = ProviderFactory[ChatProvider]()
-        self.embedding_factory = ProviderFactory[EmbeddingProvider]()
-        self._chat_routing: dict[str, str] = {}
-        self._embedding_routing: dict[str, str] = {}
+        # provider_type -> ProviderFactory
+        self._provider_factories: dict[str, ProviderFactory] = {}
+        # provider_type -> {model_name: provider_name}
+        self._routing: dict[str, dict[str, str]] = {}
 
-    # ── 注册 ────────────────────────────────────────────
+    # ── 泛型注册 ─────────────────────────────────────────
+
+    def register(
+        self,
+        provider_type: str,
+        name: str,
+        provider_cls: type[ModelProvider],
+        config_fn: Callable[[], ProviderConfig],
+        requires_key: bool = True,
+    ) -> None:
+        """泛型注册：按 provider_type 注册供应商的配置、策略类与模型路由。
+
+        requires_key=True 时，提前调用 config_fn 检查 api_key，
+        若为 None 则跳过注册（无可用密钥的供应商不会出现在路由表中）。
+        """
+        if requires_key:
+            config = config_fn()
+            if config.api_key is None:
+                return
+        if provider_type not in self._provider_factories:
+            self._provider_factories[provider_type] = ProviderFactory()
+            self._routing[provider_type] = {}
+        self.config_factory.register(name, config_fn)
+        self._provider_factories[provider_type].register(name, provider_cls)
+        for model_name in getattr(provider_cls, "SUPPORTED_MODELS", []):
+            self._routing[provider_type][model_name] = name
+
+    def _get_provider(self, provider_type: str, model_name: str) -> ModelProvider:
+        """按 provider_type 和 model_name 路由到对应的 Provider 实例。"""
+        routing = self._routing.get(provider_type, {})
+        provider_name = routing.get(model_name)
+        if provider_name is None:
+            raise ModelNotSupportedException(model_name, list(routing))
+        config = self.config_factory.create(provider_name)
+        return self._provider_factories[provider_type].create(provider_name, config)
+
+    def get_provider(self, provider_type: str, model_name: str) -> ModelProvider:
+        """公开的泛型 provider 查询。"""
+        return self._get_provider(provider_type, model_name)
+
+    def get_supported_models(self, provider_type: str) -> list[str]:
+        """返回指定类型下所有已注册模型名称列表。"""
+        return list(self._routing.get(provider_type, {}))
+
+    # ── 向后兼容：chat ───────────────────────────────────
 
     def register_chat(
         self,
         name: str,
         provider_cls: type[ChatProvider],
         config_fn: Callable[[], ProviderConfig],
+        requires_key: bool = True,
     ) -> None:
-        """一次性注册聊天供应商的配置、策略类与模型路由。"""
-        self.config_factory.register(name, config_fn)
-        self.chat_factory.register(name, provider_cls)
-        # 从类属性 SUPPORTED_MODELS 自动建立模型名 → 供应商名路由
-        for model_name in getattr(provider_cls, "SUPPORTED_MODELS", []):
-            self._chat_routing[model_name] = name
-
-    def register_embedding(
-        self,
-        name: str,
-        provider_cls: type[EmbeddingProvider],
-        config_fn: Callable[[], ProviderConfig],
-    ) -> None:
-        """一次性注册嵌入供应商的配置、策略类与模型路由。"""
-        self.config_factory.register(name, config_fn)
-        self.embedding_factory.register(name, provider_cls)
-        for model_name in getattr(provider_cls, "SUPPORTED_MODELS", []):
-            self._embedding_routing[model_name] = name
-
-    # ── 按供应商名称创建 ────────────────────────────────
+        """注册聊天供应商（向后兼容）。"""
+        self.register("chat", name, provider_cls, config_fn, requires_key=requires_key)
 
     def create_chat_provider(
         self, name: str, config: Optional[ProviderConfig] = None
@@ -121,38 +155,16 @@ class LLMFactory:
         """按供应商名称创建聊天 Provider。"""
         if config is None:
             config = self.config_factory.create(name)
-        return self.chat_factory.create(name, config)
-
-    def create_embedding_provider(
-        self, name: str, config: Optional[ProviderConfig] = None
-    ) -> EmbeddingProvider:
-        """按供应商名称创建嵌入 Provider。"""
-        if config is None:
-            config = self.config_factory.create(name)
-        return self.embedding_factory.create(name, config)
-
-    # ── 按模型名称路由 ─────────────────────────────────
+        return self._provider_factories["chat"].create(name, config)
 
     def get_chat_provider(self, model_name: str) -> ChatProvider:
         """根据模型名称路由到对应的聊天 Provider。"""
-        provider_name = self._chat_routing.get(model_name)
-        if provider_name is None:
-            raise ModelNotSupportedException(model_name, list(self._chat_routing))
-        return self.create_chat_provider(provider_name)
+        return self._get_provider("chat", model_name)
 
     def get_stream_client(self, model_name: str, *, temperature: float = 0.7, max_tokens: Optional[int] = None):
         """根据模型名称路由，获取带流式配置的 LangChain 客户端。"""
         provider = self.get_chat_provider(model_name)
         return provider.get_stream_client(model_name, temperature=temperature, max_tokens=max_tokens)
-
-    def get_embedding_provider(self, model_name: str) -> EmbeddingProvider:
-        """根据模型名称路由到对应的嵌入 Provider。"""
-        provider_name = self._embedding_routing.get(model_name)
-        if provider_name is None:
-            raise ModelNotSupportedException(model_name, list(self._embedding_routing))
-        return self.create_embedding_provider(provider_name)
-
-    # ── 便捷方法 ────────────────────────────────────────
 
     def chat(self, request: ChatRequest, model_name: str) -> ChatResponse:
         """根据模型名称自动路由，发起聊天请求。"""
@@ -164,6 +176,34 @@ class LLMFactory:
         provider = self.get_chat_provider(model_name)
         return provider.stream(request, model_name)
 
+    def get_all_supported_chat_models(self) -> list[str]:
+        """返回所有已注册聊天策略支持的模型名称列表。"""
+        return list(self._routing.get("chat", {}))
+
+    # ── 向后兼容：embedding ──────────────────────────────
+
+    def register_embedding(
+        self,
+        name: str,
+        provider_cls: type[EmbeddingProvider],
+        config_fn: Callable[[], ProviderConfig],
+        requires_key: bool = True,
+    ) -> None:
+        """注册嵌入供应商（向后兼容）。"""
+        self.register("embedding", name, provider_cls, config_fn, requires_key=requires_key)
+
+    def create_embedding_provider(
+        self, name: str, config: Optional[ProviderConfig] = None
+    ) -> EmbeddingProvider:
+        """按供应商名称创建嵌入 Provider。"""
+        if config is None:
+            config = self.config_factory.create(name)
+        return self._provider_factories["embedding"].create(name, config)
+
+    def get_embedding_provider(self, model_name: str) -> EmbeddingProvider:
+        """根据模型名称路由到对应的嵌入 Provider。"""
+        return self._get_provider("embedding", model_name)
+
     def embed(self, text: str, model_name: str) -> list[float]:
         """根据模型名称自动路由，获取文本嵌入向量。"""
         provider = self.get_embedding_provider(model_name)
@@ -174,20 +214,27 @@ class LLMFactory:
         provider = self.get_embedding_provider(model_name)
         return provider.embed_batch(texts, model_name)
 
-    def get_all_supported_chat_models(self) -> list[str]:
-        """返回所有已注册聊天策略支持的模型名称列表。"""
-        return list(self._chat_routing)
-
     def get_all_supported_embedding_models(self) -> list[str]:
         """返回所有已注册嵌入策略支持的模型名称列表。"""
-        return list(self._embedding_routing)
+        return list(self._routing.get("embedding", {}))
 
 
 # ======================================================================
-# 装饰器 — 供应商自动注册（支持开闭原则）
+# 装饰器 — 供应商自动注册
 # ======================================================================
 
-def register_chat(name: str, config_fn: Callable[[], ProviderConfig]):
+def register(provider_type: str, name: str, config_fn: Callable[[], ProviderConfig], *, requires_key: bool = True):
+    """泛型类装饰器：将供应商自动注册到 llm_factory。
+
+    requires_key=False 时跳过密钥检查，始终注册（如 Ollama、本地模型）。
+    """
+    def decorator(cls):
+        llm_factory.register(provider_type, name, cls, config_fn, requires_key=requires_key)
+        return cls
+    return decorator
+
+
+def register_chat(name: str, config_fn: Callable[[], ProviderConfig], *, requires_key: bool = True):
     """类装饰器：将聊天供应商自动注册到 llm_factory。
 
     用法::
@@ -198,18 +245,12 @@ def register_chat(name: str, config_fn: Callable[[], ProviderConfig]):
         class GeminiProvider(ChatProvider):
             ...
     """
-    def decorator(cls: type[ChatProvider]) -> type[ChatProvider]:
-        llm_factory.register_chat(name, cls, config_fn)
-        return cls
-    return decorator
+    return register("chat", name, config_fn, requires_key=requires_key)
 
 
-def register_embedding(name: str, config_fn: Callable[[], ProviderConfig]):
+def register_embedding(name: str, config_fn: Callable[[], ProviderConfig], *, requires_key: bool = True):
     """类装饰器：将嵌入供应商自动注册到 llm_factory。"""
-    def decorator(cls: type[EmbeddingProvider]) -> type[EmbeddingProvider]:
-        llm_factory.register_embedding(name, cls, config_fn)
-        return cls
-    return decorator
+    return register("embedding", name, config_fn, requires_key=requires_key)
 
 
 # ======================================================================
