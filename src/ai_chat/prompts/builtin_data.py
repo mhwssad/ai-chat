@@ -69,14 +69,14 @@ BUILTIN_PROMPTS: list[dict] = [
     {
         "name": "agent.react.system",
         "source_type": "inline",
-        "content": "你是一个有帮助的 AI 助手。请用中文回答用户的问题。你可以使用工具来完成任务。",
+        "content": "== system ==\n你是一个有帮助的 AI 助手。请用中文回答用户的问题。你可以使用工具来完成任务。",
         "description": "ReAct Agent 系统提示词",
         "tags": "agent,react",
     },
     {
         "name": "graph.chat.system",
         "source_type": "inline",
-        "content": "你是一个有帮助的 AI 助手。请用中文回答用户的问题。",
+        "content": "== system ==\n你是一个有帮助的 AI 助手。请用中文回答用户的问题。",
         "description": "Graph Chat 系统提示词",
         "tags": "graph,chat",
     },
