@@ -25,9 +25,12 @@ class ToolRecord:
 
     tool: BaseTool
     tool_type: ToolType
-    source_module: Optional[str]
+    source_module: Optional[str] = None
     loaded: bool = True
     lazy_loaded: bool = False
+    version: str = "1.0"
+    author: Optional[str] = None
+    description: Optional[str] = None
 
 
 class ToolRegistry:
@@ -38,6 +41,7 @@ class ToolRegistry:
 
     _tools: dict[str, ToolRecord]
     _init_lock: threading.Lock
+    _cache_mtime: float
 
     def __new__(cls) -> Self:
         if cls._instance is None:
@@ -50,13 +54,14 @@ class ToolRegistry:
                     instance._module_candidates = None
                     instance._current_loading_module = None
                     instance._module_tool_names = {}
+                    instance._cache_mtime = 0.0
                     cls._instance = instance
         return cls._instance
 
     @property
     def _system_modules(self) -> tuple[str, ...]:
         return (
-            "src.ai_chat.tools.common",
+            "src.ai_chat.tools.file_io",
             "src.ai_chat.tools.paths",
             "src.ai_chat.tools.search",
             "src.ai_chat.tools.command",
@@ -73,6 +78,8 @@ class ToolRegistry:
         tool_type: ToolType = ToolType.CUSTOM,
         source_module: Optional[str] = None,
         lazy_loaded: Optional[bool] = None,
+        version: str = "1.0",
+        author: Optional[str] = None,
     ) -> bool:
         """注册一个工具。同名工具已存在时静默跳过。"""
         name = tool_obj.name
@@ -91,6 +98,9 @@ class ToolRegistry:
                 source_module=origin_module,
                 loaded=True,
                 lazy_loaded=is_lazy,
+                version=version,
+                author=author,
+                description=tool_obj.description,
             )
             return True
 
@@ -194,14 +204,14 @@ class ToolRegistry:
             }
             discovered_names = set(known_names or set()) | new_names
             self._module_tool_names[module_name] = discovered_names
+            self._searched_modules.add(module_name)
 
             if name in self._tools:
-                self._searched_modules.add(module_name)
                 return True
 
+            # 清理注册表内部状态，但保留 sys.modules 避免悬空引用
             for tool_name in new_names:
                 self._tools.pop(tool_name, None)
-            sys.modules.pop(module_name, None)
         return False
 
     def scan(self, package_path: str) -> int:
@@ -218,10 +228,39 @@ class ToolRegistry:
             count += len(self._tools) - before
         return count
 
+    def refresh_cache(self) -> None:
+        """清除模块发现缓存，强制下次搜索时重新扫描。"""
+        with self._init_lock:
+            self._module_candidates = None
+            self._module_tool_names.clear()
+            self._cache_mtime = 0.0
+
     def _iter_searchable_modules(self) -> list[str]:
+        # 自动检测目录变化：mtime 改变时清除缓存
+        package_path = self._get_tools_package_path()
+        if self._module_candidates is not None and package_path is not None:
+            try:
+                current_mtime = Path(package_path).stat().st_mtime
+            except OSError:
+                current_mtime = 0.0
+            if current_mtime != self._cache_mtime:
+                self._module_candidates = None
+
         if self._module_candidates is None:
             self._module_candidates = self._discover_local_modules()
+            if package_path is not None:
+                try:
+                    self._cache_mtime = Path(package_path).stat().st_mtime
+                except OSError:
+                    self._cache_mtime = 0.0
         return self._module_candidates
+
+    def _get_tools_package_path(self) -> str | None:
+        """获取 tools 包的文件系统路径。"""
+        package = sys.modules.get("src.ai_chat.tools")
+        if package is not None and hasattr(package, "__path__"):
+            return package.__path__[0]
+        return None
 
     def _discover_local_modules(self) -> list[str]:
         package_name = "src.ai_chat.tools"
@@ -233,6 +272,7 @@ class ToolRegistry:
         ignored = {
             f"{package_name}.registry",
             f"{package_name}.menu",
+            f"{package_name}._helpers",
         }
         modules = []
         for module_name in _iter_submodules(package_paths[0], package_name):
@@ -265,6 +305,8 @@ def registered_tool(
     *,
     registry: ToolRegistry | None = None,
     tool_type: ToolType = ToolType.CUSTOM,
+    version: str = "1.0",
+    author: str | None = None,
 ):
     """装饰器：等价于 ``@tool`` + 自动注册到全局工厂。
 
@@ -279,7 +321,13 @@ def registered_tool(
 
     def decorator(fn):
         tool_obj = tool(fn)
-        reg.register(tool_obj, tool_type=tool_type, source_module=fn.__module__)
+        reg.register(
+            tool_obj,
+            tool_type=tool_type,
+            source_module=fn.__module__,
+            version=version,
+            author=author,
+        )
         return tool_obj
 
     if func is not None:
