@@ -7,6 +7,8 @@ from typing import Optional
 from langchain_core.messages import BaseMessage, SystemMessage
 
 from src.ai_chat.config.logging_setup import get_logger
+from src.ai_chat.config.settings import settings
+from src.ai_chat.llm.model_metadata import get_model_context_size
 from src.ai_chat.llm.token_utils import (
     count_text_tokens,
     estimate_message_tokens,
@@ -86,6 +88,87 @@ def memory_config_from_settings() -> MemoryConfig:
     )
 
 
+def _resolve_backend(backend: str) -> str:
+    """解析存储后端名称，未注册时回退到默认值。
+
+    Args:
+        backend: 期望的后端名称。
+
+    Returns:
+        可用的后端名称。
+    """
+    if backend and backend in memory_factory._registry:
+        return backend
+    default = memory_config_from_settings().backend
+    if backend:
+        logger.warning("存储后端 '%s' 未注册，回退到默认 '%s'", backend, default)
+    return default
+
+
+def _estimate_tokens(
+    store: MemoryProvider, session_id: str, config: MemoryConfig
+) -> int:
+    """估算会话上下文 token 数（共享逻辑）。
+
+    优先级:
+    1. LLM 最近一次返回的 prompt_tokens（最精确）
+    2. 从消息 metadata["token_count"] 累加，缺失消息用 tiktoken 估算
+    """
+    session = store.get_session(session_id)
+    last_prompt = (session.metadata or {}).get("last_prompt_tokens")
+    if last_prompt:
+        logger.debug("使用 LLM 报告的 prompt_tokens: %d", last_prompt)
+        return last_prompt
+
+    total = 0
+    if config.enable_summary:
+        summary = store.load_summary(session_id)
+        if summary:
+            total += count_text_tokens(summary) + 4
+
+    records = store.get_messages(session_id, limit=config.max_short_term_messages)
+    for rec in records:
+        tc = (rec.metadata or {}).get("token_count")
+        if tc:
+            total += tc
+        else:
+            total += estimate_message_tokens(record_to_message(rec))
+
+    logger.debug("估算上下文 token 数: %d (摘要 + %d 条消息)", total, len(records))
+    return total
+
+
+def _build_context_info(
+    store: MemoryProvider,
+    session_id: str,
+    config: MemoryConfig,
+    model_name: str | None,
+) -> ContextInfo:
+    """构建上下文状态快照（共享逻辑）。"""
+    context_window = get_model_context_size(model_name) if model_name else 0
+    threshold_ratio = settings.model_context_threshold
+    threshold_tokens = int(context_window * threshold_ratio)
+    context_tokens = _estimate_tokens(store, session_id, config)
+    usage_percent = (context_tokens / context_window * 100) if context_window > 0 else 0.0
+
+    total_messages = store.count_messages(session_id)
+    recent_messages = min(config.max_short_term_messages, total_messages)
+    summary = store.load_summary(session_id)
+
+    return ContextInfo(
+        model_name=model_name,
+        context_window=context_window,
+        context_tokens=context_tokens,
+        threshold_tokens=threshold_tokens,
+        usage_percent=round(usage_percent, 1),
+        total_messages=total_messages,
+        recent_messages=recent_messages,
+        has_summary=summary is not None,
+        summary_length=len(summary) if summary else 0,
+    )
+
+
+
 class ConversationMemory:
     """单会话的上下文记忆管理器。
 
@@ -95,9 +178,13 @@ class ConversationMemory:
     - 每条消息的 token 数通过 tiktoken 精确计数并存入 metadata
     - LLM 返回的 prompt_tokens 会被记录为最精确的上下文大小指标
 
+    通过 backend 参数指定存储后端名称，内部通过 memory_factory 创建对应 provider。
+    backend 为空或未注册时使用 settings.memory_backend 默认值。
+
     Usage::
 
         memory = ConversationMemory(model_name="gpt-4o")
+        memory = ConversationMemory(backend="in_memory")
         history = memory.load_history()
         memory.save_interaction(human_msg, ai_msg, token_usage=response.usage)
     """
@@ -106,14 +193,14 @@ class ConversationMemory:
         self,
         session_id: Optional[str] = None,
         config: Optional[MemoryConfig] = None,
-        provider: Optional[MemoryProvider] = None,
+        *,
+        backend: str = "",
         model_name: Optional[str] = None,
     ) -> None:
         self._model_name = model_name
         self._config = config or memory_config_from_settings()
-        self._store = provider or memory_factory.create(
-            self._config.backend, self._config
-        )
+        backend_name = _resolve_backend(backend or self._config.backend)
+        self._store: MemoryProvider = memory_factory.create(backend_name, self._config)
         if session_id:
             try:
                 self._session = self._store.get_session(session_id)
@@ -237,30 +324,7 @@ class ConversationMemory:
         包含 token 使用量、模型窗口大小、压缩阈值、消息统计等信息，
         供上层调用方（Web UI、Agent 等）展示上下文状态。
         """
-        from src.ai_chat.llm.model_metadata import get_model_context_size
-        from src.ai_chat.config import settings
-
-        context_window = get_model_context_size(self._model_name) if self._model_name else 0
-        threshold_ratio = settings.model_context_threshold
-        threshold_tokens = int(context_window * threshold_ratio)
-        context_tokens = self._estimate_context_tokens()
-        usage_percent = (context_tokens / context_window * 100) if context_window > 0 else 0.0
-
-        total_messages = self._store.count_messages(self.session_id)
-        recent_messages = min(self._config.max_short_term_messages, total_messages)
-        summary = self._store.load_summary(self.session_id)
-
-        return ContextInfo(
-            model_name=self._model_name,
-            context_window=context_window,
-            context_tokens=context_tokens,
-            threshold_tokens=threshold_tokens,
-            usage_percent=round(usage_percent, 1),
-            total_messages=total_messages,
-            recent_messages=recent_messages,
-            has_summary=summary is not None,
-            summary_length=len(summary) if summary else 0,
-        )
+        return _build_context_info(self._store, self.session_id, self._config, self._model_name)
 
     def force_compress(self) -> Optional[str]:
         """手动触发上下文压缩（忽略阈值检查）。
@@ -361,38 +425,8 @@ class ConversationMemory:
         return deleted
 
     def _estimate_context_tokens(self) -> int:
-        """估算当前上下文的总 token 数（摘要 + 最近消息）。
-
-        优先级:
-        1. LLM 最近一次返回的 prompt_tokens（最精确）
-        2. 从消息 metadata["token_count"] 累加，缺失消息用 tiktoken 估算
-        """
-        # 1. 优先使用 LLM 返回的 prompt_tokens
-        session = self._store.get_session(self.session_id)
-        last_prompt = (session.metadata or {}).get("last_prompt_tokens")
-        if last_prompt:
-            logger.debug("使用 LLM 报告的 prompt_tokens: %d", last_prompt)
-            return last_prompt
-
-        # 2. 回退：累加各消息 token 数
-        total = 0
-        if self._config.enable_summary:
-            summary = self._store.load_summary(self.session_id)
-            if summary:
-                total += count_text_tokens(summary) + 4  # 摘要内容 + SystemMessage 包装开销
-
-        records = self._store.get_messages(
-            self.session_id, limit=self._config.max_short_term_messages
-        )
-        for rec in records:
-            tc = (rec.metadata or {}).get("token_count")
-            if tc:
-                total += tc
-            else:
-                total += estimate_message_tokens(record_to_message(rec))
-
-        logger.debug("估算上下文 token 数: %d (摘要 + %d 条消息)", total, len(records))
-        return total
+        """估算当前上下文的总 token 数。"""
+        return _estimate_tokens(self._store, self.session_id, self._config)
 
     def _maybe_summarize(self) -> None:
         """当上下文 token 数超过模型阈值的 80% 时触发压缩。
@@ -402,8 +436,6 @@ class ConversationMemory:
         if self._model_name:
             # token 感知路径
             context_tokens = self._estimate_context_tokens()
-            from src.ai_chat.llm.model_metadata import get_model_context_size
-            from src.ai_chat.config import settings
 
             limit = get_model_context_size(self._model_name)
             threshold = int(limit * settings.model_context_threshold)
@@ -491,35 +523,35 @@ class SessionManager:
     与 ConversationMemory（单会话）互补，SessionManager 负责跨会话的高层操作，
     无需为每个会话创建独立的 ConversationMemory 实例。
 
+    通过 backend 参数指定存储后端名称，内部通过 memory_factory 创建对应 provider。
+    backend 为空或未注册时使用 settings.memory_backend 默认值。
+
     Usage::
 
         mgr = SessionManager()
+        mgr = SessionManager(backend="in_memory")
         sessions = mgr.list_sessions(limit=10)
-        detail = mgr.get_session_detail(session_id)
-        mgr.rename_session(session_id, "新标题")
-        mgr.delete_sessions([sid1, sid2])
     """
 
     def __init__(
         self,
         config: Optional[MemoryConfig] = None,
-        provider: Optional[MemoryProvider] = None,
+        *,
+        backend: str = "",
     ) -> None:
         self._config = config or memory_config_from_settings()
-        self._store = provider or memory_factory.create(
-            self._config.backend, self._config
-        )
-        logger.debug("SessionManager 初始化: backend=%s", self._config.backend)
+        backend_name = _resolve_backend(backend or self._config.backend)
+        self._store: MemoryProvider = memory_factory.create(backend_name, self._config)
+        logger.debug("SessionManager 初始化: backend=%s", backend_name)
 
     def list_sessions(self, limit: int = 50, offset: int = 0) -> list[SessionDetail]:
         """列出会话，附带消息统计和摘要状态。
 
         按 updated_at 降序排列，支持分页。
+        使用批量查询避免 N+1 问题。
         """
         sessions = self._store.list_sessions(limit=limit, offset=offset)
-        details: list[SessionDetail] = []
-        for s in sessions:
-            details.append(self._build_detail(s))
+        details = self._build_details_batch(sessions)
         logger.debug("列出会话: %d 条 (offset=%d)", len(details), offset)
         return details
 
@@ -532,7 +564,7 @@ class SessionManager:
     ) -> list[SessionDetail]:
         """按标题关键词模糊搜索会话。"""
         sessions = self._store.search_sessions(keyword, limit=limit, offset=offset)
-        details = [self._build_detail(s) for s in sessions]
+        details = self._build_details_batch(sessions)
         logger.debug("搜索 '%s': %d 条结果", keyword, len(details))
         return details
 
@@ -543,7 +575,7 @@ class SessionManager:
             SessionNotFoundException: 会话不存在时
         """
         session = self._store.get_session(session_id)
-        detail = self._build_detail(session)
+        detail = self._build_details_batch([session])[0]
         logger.debug("获取会话详情: %s", session_id[:8])
         return detail
 
@@ -573,81 +605,32 @@ class SessionManager:
         self, session_id: str, model_name: Optional[str] = None
     ) -> ContextInfo:
         """获取会话的上下文状态快照，无需创建 ConversationMemory。"""
-        from src.ai_chat.llm.model_metadata import get_model_context_size
-        from src.ai_chat.config import settings
-
-        session = self._store.get_session(session_id)
-        context_window = get_model_context_size(model_name) if model_name else 0
-        threshold_ratio = settings.model_context_threshold
-        threshold_tokens = int(context_window * threshold_ratio)
-
-        # 估算上下文 token 数
-        context_tokens = self._estimate_tokens_for(session_id, model_name)
-        usage_percent = (context_tokens / context_window * 100) if context_window > 0 else 0.0
-
-        total_messages = self._store.count_messages(session_id)
-        recent_messages = min(self._config.max_short_term_messages, total_messages)
-        summary = self._store.load_summary(session_id)
-
-        return ContextInfo(
-            model_name=model_name,
-            context_window=context_window,
-            context_tokens=context_tokens,
-            threshold_tokens=threshold_tokens,
-            usage_percent=round(usage_percent, 1),
-            total_messages=total_messages,
-            recent_messages=recent_messages,
-            has_summary=summary is not None,
-            summary_length=len(summary) if summary else 0,
-        )
+        return _build_context_info(self._store, session_id, self._config, model_name)
 
     def reset_session(self, session_id: str) -> None:
         """清空会话的所有消息和摘要，但保留会话本身。"""
         self._store.reset_context(session_id)
         logger.info("重置会话: %s，消息和摘要已清空", session_id[:8])
 
-    def _build_detail(self, session: Session) -> SessionDetail:
-        """从 Session 构建 SessionDetail，补充消息统计和摘要状态。"""
-        metadata = session.metadata or {}
-        message_count = self._store.count_messages(session.session_id)
-        has_summary = self._store.load_summary(session.session_id) is not None
-        return SessionDetail(
-            session_id=session.session_id,
-            title=session.title,
-            created_at=session.created_at,
-            updated_at=session.updated_at,
-            message_count=message_count,
-            has_summary=has_summary,
-            model_name=metadata.get("model_name"),
-            last_prompt_tokens=metadata.get("last_prompt_tokens"),
-        )
+    def _build_details_batch(self, sessions: list[Session]) -> list[SessionDetail]:
+        """批量构建 SessionDetail，使用批量查询避免 N+1 问题。"""
+        if not sessions:
+            return []
+        ids = [s.session_id for s in sessions]
+        counts = self._store.batch_count_messages(ids)
+        summaries = self._store.batch_has_summaries(ids)
+        details: list[SessionDetail] = []
+        for s in sessions:
+            metadata = s.metadata or {}
+            details.append(SessionDetail(
+                session_id=s.session_id,
+                title=s.title,
+                created_at=s.created_at,
+                updated_at=s.updated_at,
+                message_count=counts.get(s.session_id, 0),
+                has_summary=summaries.get(s.session_id, False),
+                model_name=metadata.get("model_name"),
+                last_prompt_tokens=metadata.get("last_prompt_tokens"),
+            ))
+        return details
 
-    def _estimate_tokens_for(
-        self, session_id: str, model_name: Optional[str]
-    ) -> int:
-        """估算指定会话的上下文 token 数。"""
-        from src.ai_chat.llm.model_metadata import get_model_context_size
-
-        # 优先使用 LLM 返回的 prompt_tokens
-        session = self._store.get_session(session_id)
-        last_prompt = (session.metadata or {}).get("last_prompt_tokens")
-        if last_prompt:
-            return last_prompt
-
-        # 回退：累加各消息 token 数
-        total = 0
-        if self._config.enable_summary:
-            summary = self._store.load_summary(session_id)
-            if summary:
-                total += count_text_tokens(summary) + 4
-
-        records = self._store.get_messages(
-            session_id, limit=self._config.max_short_term_messages
-        )
-        for rec in records:
-            tc = (rec.metadata or {}).get("token_count")
-            if tc:
-                total += tc
-            else:
-                total += estimate_message_tokens(record_to_message(rec))
-        return total

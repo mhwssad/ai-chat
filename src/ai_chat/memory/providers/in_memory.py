@@ -145,3 +145,11 @@ class InMemoryStore(MemoryProvider):
         """更新会话标题。"""
         if session_id in self._sessions:
             self._sessions[session_id].title = title
+
+    def batch_count_messages(self, session_ids: list[str]) -> dict[str, int]:
+        """批量统计多个会话的消息数量。"""
+        return {sid: len(self._messages.get(sid, [])) for sid in session_ids}
+
+    def batch_has_summaries(self, session_ids: list[str]) -> dict[str, bool]:
+        """批量检查多个会话是否有摘要。"""
+        return {sid: sid in self._summaries for sid in session_ids}

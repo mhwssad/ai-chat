@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from sqlmodel import Session as SqlSession, create_engine, select, col
+from sqlalchemy import delete as sa_delete
 
 from src.ai_chat.config.base_config import project_root
 from src.ai_chat.config.logging_setup import get_logger
@@ -48,9 +49,16 @@ class SQLiteStore(MemoryProvider):
         logger.info("SQLiteStore 初始化完成，数据库路径: %s", db_path)
 
     def _init_db(self) -> None:
-        """创建所有表（若不存在）。"""
+        """创建所有表（若不存在）、索引并启用 WAL 模式。"""
         from sqlmodel import SQLModel as _Base
+        from sqlalchemy import text
         _Base.metadata.create_all(self._engine)
+        # 确保索引存在（对已有数据库执行迁移）
+        with self._engine.connect() as conn:
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_session_id ON messages (session_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sessions_updated_at ON sessions (updated_at)"))
+            conn.execute(text("PRAGMA journal_mode=WAL"))
+            conn.commit()
         logger.debug("数据库表初始化完成")
 
     # ── Session ────────────────────────────────────────
@@ -127,18 +135,18 @@ class SQLiteStore(MemoryProvider):
             return 0
         delete_count = total - keep_count
         with SqlSession(self._engine) as session:
-            # 查找需要保留的起始 id
-            rows = session.exec(
+            # 找到保留边界 id（第 keep_count 条消息的 id）
+            cutoff = session.exec(
                 select(MessageTable.id)
                 .where(MessageTable.session_id == session_id)
                 .order_by(col(MessageTable.id).asc())
-                .offset(keep_count)
-            ).all()
-            if rows:
-                for row_id in rows:
-                    msg = session.get(MessageTable, row_id)
-                    if msg:
-                        session.delete(msg)
+                .offset(keep_count - 1).limit(1)
+            ).first()
+            if cutoff is not None:
+                session.exec(
+                    sa_delete(MessageTable)
+                    .where(MessageTable.session_id == session_id, MessageTable.id < cutoff)
+                )
                 session.commit()
         logger.info("裁剪消息: session=%s, 删除 %d 条，保留 %d 条", session_id[:8], delete_count, keep_count)
         return delete_count
@@ -146,23 +154,15 @@ class SQLiteStore(MemoryProvider):
     def reset_context(self, session_id: str) -> None:
         """清除会话的所有消息和摘要，但保留会话本身。"""
         with SqlSession(self._engine) as session:
-            # 删除所有消息
-            msgs = session.exec(
-                select(MessageTable).where(MessageTable.session_id == session_id)
-            ).all()
-            for msg in msgs:
-                session.delete(msg)
-            # 删除摘要
-            summary = session.get(SummaryTable, session_id)
-            if summary:
-                session.delete(summary)
+            session.exec(sa_delete(MessageTable).where(MessageTable.session_id == session_id))
+            session.exec(sa_delete(SummaryTable).where(SummaryTable.session_id == session_id))
             # 清空 metadata 中的 token 追踪
             sess_row = session.get(SessionTable, session_id)
             if sess_row:
                 sess_row.metadata_ = {}
                 session.add(sess_row)
             session.commit()
-        logger.info("重置上下文: session=%s, 清除 %d 条消息和摘要", session_id[:8], len(msgs))
+        logger.info("重置上下文: session=%s, 消息和摘要已清空", session_id[:8])
 
     def count_sessions(self) -> int:
         """返回会话总数。"""
@@ -191,6 +191,35 @@ class SQLiteStore(MemoryProvider):
                 session.add(row)
                 session.commit()
                 logger.info("重命名会话: %s -> '%s'", session_id[:8], title)
+
+    # ── 批量查询 ──────────────────────────────────────────
+
+    def batch_count_messages(self, session_ids: list[str]) -> dict[str, int]:
+        """批量统计多个会话的消息数量。"""
+        if not session_ids:
+            return {}
+        from sqlalchemy import func
+        with SqlSession(self._engine) as session:
+            rows = session.exec(
+                select(MessageTable.session_id, func.count())
+                .where(MessageTable.session_id.in_(session_ids))
+                .group_by(MessageTable.session_id)
+            ).all()
+        result = {sid: 0 for sid in session_ids}
+        result.update(dict(rows))
+        return result
+
+    def batch_has_summaries(self, session_ids: list[str]) -> dict[str, bool]:
+        """批量检查多个会话是否有摘要。"""
+        if not session_ids:
+            return {}
+        with SqlSession(self._engine) as session:
+            rows = session.exec(
+                select(SummaryTable.session_id)
+                .where(SummaryTable.session_id.in_(session_ids))
+            ).all()
+        existing = set(rows)
+        return {sid: sid in existing for sid in session_ids}
 
     # ── Message ────────────────────────────────────────
 

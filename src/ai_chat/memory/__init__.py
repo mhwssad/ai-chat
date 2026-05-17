@@ -28,7 +28,7 @@ from src.ai_chat.memory.models import (
 from src.ai_chat.memory.menu import menu_memory
 
 # 触发自动发现，导入 providers 目录下所有模块以执行 @register_memory 装饰器
-from src.ai_chat.memory import providers as _providers
+from src.ai_chat.memory import providers as _providers  # noqa: F401
 
 __all__ = [
     "memory_factory",

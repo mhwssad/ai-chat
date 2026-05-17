@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, Index
 from langchain_core.messages import (
     AIMessage,
     BaseMessage,
@@ -62,6 +62,9 @@ class SessionTable(SQLModel, table=True):
     """
 
     __tablename__ = "sessions"
+    __table_args__ = (
+        Index("ix_sessions_updated_at", "updated_at"),
+    )
 
     session_id: str = Field(primary_key=True)
     title: str = Field(default="")
@@ -83,6 +86,9 @@ class MessageTable(SQLModel, table=True):
     """
 
     __tablename__ = "messages"
+    __table_args__ = (
+        Index("ix_messages_session_id", "session_id"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: str = Field(foreign_key="sessions.session_id")
@@ -246,6 +252,22 @@ class MemoryProvider(ABC):
     @abstractmethod
     def update_session_title(self, session_id: str, title: str) -> None:
         """更新会话标题。"""
+
+    @abstractmethod
+    def batch_count_messages(self, session_ids: list[str]) -> dict[str, int]:
+        """批量统计多个会话的消息数量。
+
+        Returns:
+            {session_id: count} 字典，未找到的会话计数为 0。
+        """
+
+    @abstractmethod
+    def batch_has_summaries(self, session_ids: list[str]) -> dict[str, bool]:
+        """批量检查多个会话是否有摘要。
+
+        Returns:
+            {session_id: has_summary} 字典。
+        """
 
 
 # ======================================================================
