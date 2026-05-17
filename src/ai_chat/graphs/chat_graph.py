@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Annotated, Iterator, Optional
+from typing import Any, Annotated, AsyncIterator, Optional
 
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from typing_extensions import TypedDict
 
-from src.ai_chat.llm import llm_factory
+from src.ai_chat.graphs.base import (
+    GraphConfig,
+    _BaseAgent,
+    extract_last_human_message,
+    merge_context,
+)
 from src.ai_chat.prompts import render_messages, render_system_prompt
 from src.ai_chat.rag import rag_factory
-
-if TYPE_CHECKING:
-    from src.ai_chat.memory.manager import ConversationMemory
-
 
 PromptContext = dict[str, Any]
 
@@ -26,22 +27,7 @@ class ChatGraphState(TypedDict):
     context: str
 
 
-def _merge_context(
-    base: Optional[PromptContext],
-    override: Optional[PromptContext],
-    final: Optional[PromptContext] = None,
-) -> PromptContext:
-    context: PromptContext = {}
-    if base:
-        context.update(base)
-    if override:
-        context.update(override)
-    if final:
-        context.update(final)
-    return context
-
-
-class ChatGraph:
+class ChatGraph(_BaseAgent):
     """多步骤对话图 — 意图分类 → 条件路由 → 分支处理。"""
 
     def __init__(
@@ -55,9 +41,10 @@ class ChatGraph:
         rag_prompt_context: Optional[PromptContext] = None,
         rag_store_name: str = "faiss",
         rag_k: int = 4,
-        memory: Optional["ConversationMemory"] = None,
+        memory: Optional[Any] = None,
+        config: Optional[GraphConfig] = None,
     ) -> None:
-        self._model_name = model_name or self._get_default_model()
+        super().__init__(model_name=model_name, config=config, memory=memory)
         self._classify_prompt_key = classify_prompt_key
         self._classify_prompt_context = dict(classify_prompt_context or {})
         self._chat_prompt_key = chat_prompt_key
@@ -66,13 +53,11 @@ class ChatGraph:
         self._rag_prompt_context = dict(rag_prompt_context or {})
         self._rag_store = rag_factory.create_store(rag_store_name)
         self._rag_k = rag_k
-        self._memory = memory
 
-        provider = llm_factory.get_chat_provider(self._model_name)
-        self._llm = provider.get_client(self._model_name)
+        self._llm = self._get_llm()
         self._graph = self._build_graph()
 
-    def _build_graph(self) -> StateGraph:
+    def _build_graph(self):
         workflow = StateGraph(ChatGraphState)
         workflow.add_node("classify", self._make_classify_node())
         workflow.add_node("chat", self._make_chat_node())
@@ -89,10 +74,10 @@ class ChatGraph:
         prompt_context = self._classify_prompt_context
 
         def classify(state: ChatGraphState) -> dict:
-            question = _extract_last_human_message(state["messages"])
+            question = extract_last_human_message(state["messages"])
             messages = render_messages(
                 prompt_key,
-                **_merge_context(prompt_context, None, {"question": question}),
+                **merge_context(prompt_context, None, {"question": question}),
             )
             result = llm.invoke(messages)
             intent = result.content.strip().lower() if isinstance(result.content, str) else "chat"
@@ -121,12 +106,12 @@ class ChatGraph:
         prompt_context = self._rag_prompt_context
 
         def rag(state: ChatGraphState) -> dict:
-            question = _extract_last_human_message(state["messages"])
+            question = extract_last_human_message(state["messages"])
             docs = store.similarity_search(question, k=rag_k)
             context_text = "\n\n".join(d["content"] for d in docs)
             messages = render_messages(
                 prompt_key,
-                **_merge_context(
+                **merge_context(
                     prompt_context,
                     None,
                     {"context": context_text, "question": question},
@@ -137,29 +122,20 @@ class ChatGraph:
 
         return rag
 
-    def invoke(self, message: str, history: Optional[list[BaseMessage]] = None) -> str:
-        if self._memory is not None:
-            history = self._memory.load_history()
-
-        messages = list(history) if history else []
-        messages.append(HumanMessage(content=message))
-        result = self._graph.invoke({"messages": messages, "intent": "", "context": ""})  # type: ignore[arg-type]
+    async def ainvoke(self, message: str, history: Optional[list[BaseMessage]] = None, **kwargs) -> str:
+        messages = self._build_messages(message, history)
+        result = await self._graph.ainvoke(
+            {"messages": messages, "intent": "", "context": ""}
+        )
         ai_content = result["messages"][-1].content
-
-        if self._memory is not None:
-            self._memory.save_interaction(HumanMessage(content=message), AIMessage(content=ai_content))
+        self._save(message, ai_content)
         return ai_content
 
-    def stream(self, message: str, history: Optional[list[BaseMessage]] = None) -> Iterator[str]:
-        if self._memory is not None:
-            history = self._memory.load_history()
-
-        messages = list(history) if history else []
-        messages.append(HumanMessage(content=message))
-
+    async def astream(self, message: str, history: Optional[list[BaseMessage]] = None, **kwargs) -> AsyncIterator[str]:
+        messages = self._build_messages(message, history)
         seen_ids: set[str] = set()
         collected: list[str] = []
-        for event in self._graph.stream(
+        async for event in self._graph.astream(
             {"messages": messages, "intent": "", "context": ""},
             stream_mode="values",
         ):
@@ -176,24 +152,8 @@ class ChatGraph:
                 collected.append(last.content)
                 yield last.content
 
-        if self._memory is not None and collected:
-            self._memory.save_interaction(
-                HumanMessage(content=message),
-                AIMessage(content="".join(collected)),
-            )
-
-    @staticmethod
-    def _get_default_model() -> str:
-        from src.ai_chat.config import settings
-
-        return settings.model_name
-
-
-def _extract_last_human_message(messages: list[BaseMessage]) -> str:
-    for msg in reversed(messages):
-        if isinstance(msg, HumanMessage):
-            return msg.content if isinstance(msg.content, str) else str(msg.content)
-    return ""
+        if collected:
+            self._save(message, "".join(collected))
 
 
 def _route_by_intent(state: ChatGraphState) -> str:

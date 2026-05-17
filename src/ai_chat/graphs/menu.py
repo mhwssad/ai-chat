@@ -1,5 +1,6 @@
 """Graphs 模块管理入口 — Agent 选择、对话循环、技能支持。"""
 
+from src.ai_chat.config import settings
 from src.ai_chat.graphs.factory import agent_factory
 from src.ai_chat.mcp import mcp_settings, mcp_client_manager
 from src.ai_chat.skills import skill_registry
@@ -17,8 +18,9 @@ def _choose(prompt: str, options: list[str]) -> int:
 
 
 def _choose_model() -> str:
-    model = input("  模型名称（回车默认 qwen-turbo）: ").strip()
-    return model or "qwen-turbo"
+    default = settings.model_name
+    model = input(f"  模型名称（回车默认 {default}）: ").strip()
+    return model or default
 
 
 def _ensure_mcp_tools():
@@ -139,7 +141,7 @@ def _chat_loop(agent, agent_name: str):
                     active_skill = None
                 else:
                     print(f"  已激活技能: /{matched.name} — {matched.description}")
-                    print(f"  输入内容后按回车执行，或 /clear 取消。\n")
+                    print("  输入内容后按回车执行，或 /clear 取消。\n")
                 continue
 
             # 技能模式执行
