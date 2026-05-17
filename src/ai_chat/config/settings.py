@@ -5,6 +5,7 @@
 - ``refresh()``          从 .env 重新加载
 - ``save_to_env_file()`` 回写 .env
 """
+
 from typing import Optional
 
 from pydantic import SecretStr
@@ -48,6 +49,11 @@ class Settings(BaseSettingsConfig):
     memory_summary_token_limit: int = 1000
     memory_enable_summary: bool = True
 
+    # ── LLM 扩展配置 ──────────────────────────────────────
+    # JSON 格式字符串，注册额外的模型到指定供应商
+    # 示例: LLM_EXTRA_MODELS='{"openai": ["gpt-4.1"], "ollama": ["deepseek-v3"]}'
+    llm_extra_models: str = ""
+
     # ── Token 感知上下文管理 ──────────────────────────────
     # JSON 字符串，映射 model_name -> context_window_tokens
     # 示例环境变量: MODEL_CONTEXT_OVERRIDES='{"gpt-4o": 64000, "qwen2.5": 32000}'
@@ -56,6 +62,12 @@ class Settings(BaseSettingsConfig):
     model_context_threshold: float = 0.8
     # 未注册模型的默认上下文大小
     model_default_context_size: int = 8192
+
+    # ── HTTP 客户端转换 ──────────────────────────────────────
+    # 默认转换器名称，空字符串表示不自动转换
+    http_default_converter: str = "json"
+    # 自定义转换器模块（逗号分隔，启动时自动导入注册）
+    http_converter_modules: str = ""
 
     # ── 工具方法 ────────────────────────────────────────
 
