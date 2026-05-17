@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from ..factory import register_loader
-from ..models import DocumentLoader
+from ..models import DocumentLoader, LoaderNotFoundException
 
 
 @register_loader()
@@ -14,5 +14,10 @@ class TextLoader(DocumentLoader):
 
     def load(self, file_path: str) -> list[dict]:
         path = Path(file_path)
-        content = path.read_text(encoding="utf-8")
+        try:
+            content = path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            raise LoaderNotFoundException(path.suffix, []) from None
+        except UnicodeDecodeError as e:
+            raise ValueError(f"文件编码错误: {file_path}: {e}") from e
         return [{"content": content, "metadata": {"source": str(path), "suffix": path.suffix}}]

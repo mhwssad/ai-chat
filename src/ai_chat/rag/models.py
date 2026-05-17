@@ -1,7 +1,7 @@
 """RAG 模块 — 基类、数据类与异常定义。"""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 
@@ -36,7 +36,7 @@ class VectorStoreConfig:
     """向量存储配置。"""
     persist_path: Optional[str] = None       # 持久化路径
     embedding_model: str = "bge-m3"          # 默认嵌入模型
-    chunk_size: int = 500
+    chunk_size: int = 1000
     chunk_overlap: int = 50
 
 
@@ -54,6 +54,14 @@ class VectorStoreProvider(ABC):
     @abstractmethod
     def similarity_search(self, query: str, k: int = 4) -> list[dict]:
         """相似度检索，返回 [{"content": ..., "metadata": ...}]。"""
+
+    def batch_similarity_search(self, queries: list[str], k: int = 4) -> list[list[dict]]:
+        """批量相似度搜索。默认循环调用 similarity_search。"""
+        return [self.similarity_search(q, k=k) for q in queries]
+
+    def delete_texts(self, ids: list[str]) -> int:
+        """删除指定向量。默认不支持，返回 0。"""
+        return 0
 
     @abstractmethod
     def save(self, path: str) -> None:

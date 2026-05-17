@@ -1,5 +1,7 @@
 """按固定字符数分割器 — 简单按字符数切割，不关心语义边界。"""
 
+from langchain_text_splitters import CharacterTextSplitter
+
 from ..factory import register_splitter
 from ..models import TextSplitter
 
@@ -14,8 +16,6 @@ class CharacterSplitter(TextSplitter):
         self._separator = separator
 
     def split(self, documents: list[dict]) -> list[dict]:
-        from langchain_text_splitters import CharacterTextSplitter
-
         splitter = CharacterTextSplitter(
             chunk_size=self._chunk_size,
             chunk_overlap=self._chunk_overlap,

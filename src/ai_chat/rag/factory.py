@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Callable, Optional
 
+from src.ai_chat.config.logging_setup import get_logger
 from src.ai_chat.rag.models import (
     DocumentLoader,
     LoaderNotFoundException,
@@ -12,6 +13,11 @@ from src.ai_chat.rag.models import (
     VectorStoreProvider,
     StoreNotFoundException,
 )
+
+logger = get_logger(__name__)
+
+# 分批入库的 chunk 数量阈值
+_BATCH_SIZE = 500
 
 
 class RAGFactory:
@@ -91,7 +97,7 @@ class RAGFactory:
         config: Optional[VectorStoreConfig] = None,
         splitter_name: Optional[str] = None,
     ) -> VectorStoreProvider:
-        """扫描目录 → 加载文档 → 分割 → 入库。"""
+        """扫描目录 → 加载文档 → 分割 → 入库（分批写入 + 进度日志）。"""
         store = self.create_store(store_name, config)
         cfg = config or self._store_configs[store_name]()
         splitter = self.create_splitter(splitter_name, chunk_size=cfg.chunk_size, chunk_overlap=cfg.chunk_overlap)
@@ -99,23 +105,42 @@ class RAGFactory:
 
         all_chunks: list[str] = []
         all_metadata: list[dict] = []
+        total_files = 0
+        total_indexed = 0
 
-        for file_path in sorted(directory.rglob("*")):
-            if not file_path.is_file():
-                continue
+        sorted_files = sorted(f for f in directory.rglob("*") if f.is_file())
+        total_files = len(sorted_files)
+
+        for i, file_path in enumerate(sorted_files, 1):
             ext = file_path.suffix.lower()
             if ext not in self._loader_registry:
                 continue
-            loader = self.get_loader(str(file_path))
-            documents = loader.load(str(file_path))
+            try:
+                loader = self.get_loader(str(file_path))
+                documents = loader.load(str(file_path))
+            except Exception as e:
+                logger.warning("加载文件失败，跳过: %s (%s)", file_path, e)
+                continue
             chunks = splitter.split(documents)
             for chunk in chunks:
                 all_chunks.append(chunk["content"])
                 all_metadata.append(chunk["metadata"])
 
+            # 分批入库
+            if len(all_chunks) >= _BATCH_SIZE:
+                store.add_texts(all_chunks, all_metadata)
+                total_indexed += len(all_chunks)
+                all_chunks, all_metadata = [], []
+
+            if i % 10 == 0 or i == total_files:
+                logger.info("索引进度: %d/%d 文件, %d chunks", i, total_files, total_indexed + len(all_chunks))
+
+        # 最后一批
         if all_chunks:
             store.add_texts(all_chunks, all_metadata)
+            total_indexed += len(all_chunks)
 
+        logger.info("索引完成: %d 文件, %d chunks", total_files, total_indexed)
         return store
 
     def query(self, question: str, store: VectorStoreProvider, k: int = 4) -> list[dict]:

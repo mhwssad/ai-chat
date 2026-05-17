@@ -1,5 +1,7 @@
 """递归字符分割器 — 按字符数递归分割，优先在段落/句子边界切分。"""
 
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
 from ..factory import register_splitter
 from ..models import TextSplitter
 
@@ -13,8 +15,6 @@ class RecursiveCharacterSplitter(TextSplitter):
         self._chunk_overlap = chunk_overlap
 
     def split(self, documents: list[dict]) -> list[dict]:
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-
         splitter = RecursiveCharacterTextSplitter(
             chunk_size=self._chunk_size,
             chunk_overlap=self._chunk_overlap,
