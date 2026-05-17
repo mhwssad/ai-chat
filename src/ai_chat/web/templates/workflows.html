@@ -1,0 +1,129 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if flash_message %}
+<div class="notice success">{{ flash_message }}</div>
+{% endif %}
+{% if error_message %}
+<div class="notice error">{{ error_message }}</div>
+{% endif %}
+
+<div class="chains-layout">
+    <section class="panel chains-list-panel">
+        <div class="panel-head">
+            <h2>已保存工作流</h2>
+            <p>管理可组合的工作流配置。</p>
+        </div>
+
+        {% if workflows %}
+        <div class="chain-items">
+            {% for wf in workflows %}
+            <div class="chain-item">
+                <div class="chain-item-header">
+                    <strong>{{ wf.name }}</strong>
+                    <span class="chain-type-badge">{{ wf.node_count }} 节点 / {{ wf.edge_count }} 边</span>
+                </div>
+                {% if wf.description %}
+                <p class="chain-desc">{{ wf.description }}</p>
+                {% endif %}
+                <div class="chain-actions">
+                    <form action="/workflows/{{ wf.name }}/delete" method="post" style="display:inline;">
+                        <button type="submit" class="btn-sm btn-danger" onclick="return confirm('确定删除工作流 {{ wf.name }}？')">删除</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <p>还没有保存的工作流，请在右侧创建。</p>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="panel chains-main-panel">
+        <div class="chains-main-grid">
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>创建工作流</h2>
+                    <p>定义节点和边，编译为可执行工作流。</p>
+                </div>
+                <form action="/workflows/create" method="post" class="stack-form">
+                    <label>
+                        <span>工作流名称</span>
+                        <input type="text" name="name" placeholder="例如: classify-then-chat" required>
+                    </label>
+                    <label>
+                        <span>描述</span>
+                        <input type="text" name="description" placeholder="可选描述">
+                    </label>
+                    <label>
+                        <span>默认模型</span>
+                        <input type="text" name="model_name" placeholder="留空使用默认模型">
+                    </label>
+                    <label>
+                        <span>节点配置 (JSON)</span>
+                        <textarea name="nodes_json" rows="6" placeholder='[{"name":"input","type":"input"},{"name":"classify","type":"classifier","allowed_intents":["chat","rag"]},{"name":"chat","type":"chain","ref":"chat"},{"name":"output","type":"output"}]'></textarea>
+                    </label>
+                    <label>
+                        <span>边配置 (JSON)</span>
+                        <textarea name="edges_json" rows="5" placeholder='[{"type":"direct","source":"input","target":"classify"},{"type":"conditional","source":"classify","conditions":{"chat":"chat","rag":"output"}},{"type":"direct","source":"chat","target":"output"}]'></textarea>
+                    </label>
+                    <label>
+                        <span>标签</span>
+                        <input type="text" name="tags" placeholder="逗号分隔，可选">
+                    </label>
+                    <button type="submit">创建工作流</button>
+                </form>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>执行工作流</h2>
+                    <p>输入文本执行已保存的工作流。</p>
+                </div>
+                {% if workflows %}
+                <form action="/workflows/{{ invoke_workflow_name or workflows[0].name }}/invoke" method="post" class="stack-form" id="invoke-wf-form">
+                    <label>
+                        <span>选择工作流</span>
+                        <select name="wf_select" id="wf-select" onchange="updateWfInvokeAction()">
+                            {% for wf in workflows %}
+                            <option value="{{ wf.name }}" {% if wf.name == invoke_workflow_name %}selected{% endif %}>
+                                {{ wf.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span>输入文本</span>
+                        <textarea name="input_text" rows="4" placeholder="输入要处理的内容..." required></textarea>
+                    </label>
+                    <button type="submit">执行</button>
+                </form>
+
+                {% if invoke_result is not none %}
+                <div class="invoke-result">
+                    <h3>执行结果</h3>
+                    <pre>{{ invoke_result }}</pre>
+                </div>
+                {% endif %}
+                {% else %}
+                <div class="empty-state">
+                    <p>请先创建一个工作流才能执行。</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+</div>
+
+<script>
+function updateWfInvokeAction() {
+    var sel = document.getElementById('wf-select');
+    var form = document.getElementById('invoke-wf-form');
+    if (sel && form) {
+        form.action = '/workflows/' + sel.value + '/invoke';
+    }
+}
+</script>
+{% endblock %}

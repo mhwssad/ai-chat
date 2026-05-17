@@ -16,13 +16,22 @@ from src.ai_chat.web.services import (
     default_model_name,
     ensure_session_exists,
     get_agent_options,
+    get_chain_type_options,
     get_nav_items,
     list_recent_sessions,
+    list_saved_chains,
+    list_saved_workflows,
     load_session_messages,
     normalize_agent_name,
     placeholder_copy,
     send_chat_message,
     create_chat_session,
+    create_chain_from_form,
+    invoke_chain_by_name,
+    delete_chain_by_name,
+    create_workflow_from_form,
+    invoke_workflow_by_name,
+    delete_workflow_by_name,
 )
 
 
@@ -202,8 +211,258 @@ def create_app() -> FastAPI:
         )
         return RedirectResponse(url=f"/chat?{query}", status_code=303)
 
-    for page in ("chains", "tools", "memory", "mcp", "skills"):
+    for page in ("tools", "memory", "mcp", "skills"):
         _register_placeholder_route(app, page)
+
+    # ── Chains 路由 ──────────────────────────────────
+
+    @app.get("/chains", response_class=HTMLResponse, name="chains_page")
+    def chains_page(
+        request: Request,
+        flash_message: str | None = None,
+        error_message: str | None = None,
+    ) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request,
+            "chains.html",
+            {
+                "request": request,
+                "page_title": "调用链",
+                "nav_items": get_nav_items(),
+                "current_page": "chains",
+                "chain_types": get_chain_type_options(),
+                "chains": list_saved_chains(),
+                "flash_message": flash_message,
+                "error_message": error_message,
+                "invoke_result": None,
+                "invoke_chain_name": None,
+            },
+        )
+
+    @app.post("/chains/create", response_class=HTMLResponse)
+    def create_chain(
+        request: Request,
+        name: str = Form(...),
+        chain_type: str = Form(...),
+        model_name: str = Form(""),
+        description: str = Form(""),
+        tags: str = Form(""),
+    ) -> Response:
+        chain_name = name.strip()
+        if not chain_name:
+            return TEMPLATES.TemplateResponse(
+                request,
+                "chains.html",
+                {
+                    "request": request,
+                    "page_title": "调用链",
+                    "nav_items": get_nav_items(),
+                    "current_page": "chains",
+                    "chain_types": get_chain_type_options(),
+                    "chains": list_saved_chains(),
+                    "flash_message": None,
+                    "error_message": "链名称不能为空。",
+                    "invoke_result": None,
+                    "invoke_chain_name": None,
+                },
+                status_code=400,
+            )
+        try:
+            create_chain_from_form(
+                name=chain_name,
+                chain_type=chain_type,
+                model_name=model_name.strip(),
+                description=description.strip(),
+                tags=tags.strip(),
+            )
+        except Exception as exc:
+            return TEMPLATES.TemplateResponse(
+                request,
+                "chains.html",
+                {
+                    "request": request,
+                    "page_title": "调用链",
+                    "nav_items": get_nav_items(),
+                    "current_page": "chains",
+                    "chain_types": get_chain_type_options(),
+                    "chains": list_saved_chains(),
+                    "flash_message": None,
+                    "error_message": f"创建失败：{exc}",
+                    "invoke_result": None,
+                    "invoke_chain_name": None,
+                },
+                status_code=400,
+            )
+        return RedirectResponse(url="/chains?flash_message=链创建成功。", status_code=303)
+
+    @app.post("/chains/{chain_name}/invoke", response_class=HTMLResponse)
+    def invoke_chain(
+        request: Request,
+        chain_name: str,
+        input_text: str = Form(...),
+    ) -> HTMLResponse:
+        user_input = input_text.strip()
+        result_text = ""
+        error = None
+        if not user_input:
+            error = "请输入内容。"
+        else:
+            try:
+                result_text = invoke_chain_by_name(chain_name, user_input)
+            except Exception as exc:
+                error = f"执行失败：{exc}"
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "chains.html",
+            {
+                "request": request,
+                "page_title": "调用链",
+                "nav_items": get_nav_items(),
+                "current_page": "chains",
+                "chain_types": get_chain_type_options(),
+                "chains": list_saved_chains(),
+                "flash_message": None,
+                "error_message": error,
+                "invoke_result": result_text,
+                "invoke_chain_name": chain_name,
+            },
+        )
+
+    @app.post("/chains/{chain_name}/delete", response_class=HTMLResponse)
+    def delete_chain(request: Request, chain_name: str) -> Response:
+        try:
+            delete_chain_by_name(chain_name)
+        except Exception as exc:
+            return RedirectResponse(
+                url=f"/chains?error_message=删除失败：{exc}",
+                status_code=303,
+            )
+        return RedirectResponse(url="/chains?flash_message=链已删除。", status_code=303)
+
+    # ── Workflows 路由 ───────────────────────────────
+
+    @app.get("/workflows", response_class=HTMLResponse, name="workflows_page")
+    def workflows_page(
+        request: Request,
+        flash_message: str | None = None,
+        error_message: str | None = None,
+    ) -> HTMLResponse:
+        return TEMPLATES.TemplateResponse(
+            request,
+            "workflows.html",
+            {
+                "request": request,
+                "page_title": "工作流",
+                "nav_items": get_nav_items(),
+                "current_page": "workflows",
+                "workflows": list_saved_workflows(),
+                "flash_message": flash_message,
+                "error_message": error_message,
+                "invoke_result": None,
+                "invoke_workflow_name": None,
+            },
+        )
+
+    @app.post("/workflows/create", response_class=HTMLResponse)
+    def create_workflow(
+        request: Request,
+        name: str = Form(...),
+        description: str = Form(""),
+        model_name: str = Form(""),
+        nodes_json: str = Form("[]"),
+        edges_json: str = Form("[]"),
+        tags: str = Form(""),
+    ) -> Response:
+        wf_name = name.strip()
+        if not wf_name:
+            return TEMPLATES.TemplateResponse(
+                request,
+                "workflows.html",
+                {
+                    "request": request,
+                    "page_title": "工作流",
+                    "nav_items": get_nav_items(),
+                    "current_page": "workflows",
+                    "workflows": list_saved_workflows(),
+                    "flash_message": None,
+                    "error_message": "工作流名称不能为空。",
+                    "invoke_result": None,
+                    "invoke_workflow_name": None,
+                },
+                status_code=400,
+            )
+        try:
+            create_workflow_from_form(
+                name=wf_name,
+                description=description.strip(),
+                model_name=model_name.strip(),
+                nodes_json=nodes_json,
+                edges_json=edges_json,
+                tags=tags.strip(),
+            )
+        except Exception as exc:
+            return TEMPLATES.TemplateResponse(
+                request,
+                "workflows.html",
+                {
+                    "request": request,
+                    "page_title": "工作流",
+                    "nav_items": get_nav_items(),
+                    "current_page": "workflows",
+                    "workflows": list_saved_workflows(),
+                    "flash_message": None,
+                    "error_message": f"创建失败：{exc}",
+                    "invoke_result": None,
+                    "invoke_workflow_name": None,
+                },
+                status_code=400,
+            )
+        return RedirectResponse(url="/workflows?flash_message=工作流创建成功。", status_code=303)
+
+    @app.post("/workflows/{wf_name}/invoke", response_class=HTMLResponse)
+    def invoke_workflow(
+        request: Request,
+        wf_name: str,
+        input_text: str = Form(...),
+    ) -> HTMLResponse:
+        user_input = input_text.strip()
+        result_text = ""
+        error = None
+        if not user_input:
+            error = "请输入内容。"
+        else:
+            try:
+                result_text = invoke_workflow_by_name(wf_name, user_input)
+            except Exception as exc:
+                error = f"执行失败：{exc}"
+
+        return TEMPLATES.TemplateResponse(
+            request,
+            "workflows.html",
+            {
+                "request": request,
+                "page_title": "工作流",
+                "nav_items": get_nav_items(),
+                "current_page": "workflows",
+                "workflows": list_saved_workflows(),
+                "flash_message": None,
+                "error_message": error,
+                "invoke_result": result_text,
+                "invoke_workflow_name": wf_name,
+            },
+        )
+
+    @app.post("/workflows/{wf_name}/delete", response_class=HTMLResponse)
+    def delete_workflow(request: Request, wf_name: str) -> Response:
+        try:
+            delete_workflow_by_name(wf_name)
+        except Exception as exc:
+            return RedirectResponse(
+                url=f"/workflows?error_message=删除失败：{exc}",
+                status_code=303,
+            )
+        return RedirectResponse(url="/workflows?flash_message=工作流已删除。", status_code=303)
 
     return app
 
