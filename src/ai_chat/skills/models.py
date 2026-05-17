@@ -16,8 +16,13 @@ class SkillConfig:
     model: Optional[str] = None
     args_template: Optional[str] = None
     enabled: bool = True
+    priority: int = 0
     skill_dir: Optional[Path] = None
+
+    def __post_init__(self) -> None:
+        # 缓存 trigger，避免每次属性访问都拼接字符串
+        self._trigger = f"/{self.name}"
 
     @property
     def trigger(self) -> str:
-        return f"/{self.name}"
+        return self._trigger
