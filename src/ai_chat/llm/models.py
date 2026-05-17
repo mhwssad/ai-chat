@@ -7,6 +7,7 @@ from pydantic import SecretStr
 
 from langchain_core.messages import AIMessage
 
+from src.ai_chat.config.base_exception import BaseExceptions
 from src.ai_chat.config.logging_setup import get_logger
 
 logger = get_logger(__name__)
@@ -15,6 +16,7 @@ logger = get_logger(__name__)
 # ======================================================================
 # 异常
 # ======================================================================
+
 
 class ModelNotSupportedException(Exception):
     """请求的模型名称未被任何已注册的提供商策略支持。"""
@@ -26,9 +28,22 @@ class ModelNotSupportedException(Exception):
         super().__init__(detail)
 
 
+class LLMException(BaseExceptions):
+    """LLM 调用基础异常。"""
+
+
+class LLMRetryExhaustedError(LLMException):
+    """LLM 重试次数耗尽。"""
+
+
+class LLMCircuitOpenError(LLMException):
+    """熔断器已开启，拒绝请求。"""
+
+
 # ======================================================================
 # 提供商实例配置
 # ======================================================================
+
 
 @dataclass
 class ProviderConfig:
@@ -62,6 +77,7 @@ def mask_key(key: Union[SecretStr, str, None]) -> str:
 # 请求 / 响应
 # ======================================================================
 
+
 @dataclass
 class ChatRequest:
     """聊天请求。
@@ -77,6 +93,7 @@ class ChatRequest:
     temperature: float = 0.7
     max_tokens: Optional[int] = None
     extra: dict = field(default_factory=dict)
+    skip_cache: bool = False
 
 
 @dataclass
@@ -130,5 +147,8 @@ def extract_usage(result: AIMessage) -> Optional[dict]:
             "total_tokens": getattr(um, "total_tokens", None),
         }
 
-    logger.warning("无法从 AIMessage 中提取 token 使用量，response_metadata keys: %s", list(meta.keys()))
+    logger.warning(
+        "无法从 AIMessage 中提取 token 使用量，response_metadata keys: %s",
+        list(meta.keys()),
+    )
     return None

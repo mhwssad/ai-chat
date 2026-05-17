@@ -13,9 +13,13 @@ from src.ai_chat.llm.providers.embedding.base import EmbeddingProvider
 logger = get_logger(__name__)
 
 
-@register_embedding("ollama_emb", lambda: ProviderConfig(
-    base_url=settings.ollama_base_url,
-), requires_key=False)
+@register_embedding(
+    "ollama_emb",
+    lambda: ProviderConfig(
+        base_url=settings.ollama_base_url,
+    ),
+    requires_key=False,
+)
 class OllamaEmbeddingProvider(EmbeddingProvider):
     """Ollama 本地嵌入提供商策略。
 
@@ -37,7 +41,9 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 
     def __init__(self, config: Optional[ProviderConfig] = None) -> None:
         self._config = config or ProviderConfig()
-        logger.debug("OllamaEmbeddingProvider 初始化完成，base_url=%s", self._config.base_url)
+        logger.debug(
+            "OllamaEmbeddingProvider 初始化完成，base_url=%s", self._config.base_url
+        )
 
     def _build_client(self, model_name: str) -> OllamaEmbeddings:
         """构建 Ollama Embeddings 客户端实例。
@@ -52,6 +58,7 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
         return OllamaEmbeddings(
             model=model_name,
             base_url=self._config.base_url,
+            timeout=self._config.timeout,
         )
 
     def embed(self, text: str, model_name: str) -> list[float]:
@@ -64,8 +71,12 @@ class OllamaEmbeddingProvider(EmbeddingProvider):
 
     def embed_batch(self, texts: list[str], model_name: str) -> list[list[float]]:
         """批量嵌入多段文本。"""
-        logger.info("Ollama 批量嵌入请求: model=%s, 文本数量=%d", model_name, len(texts))
+        logger.info(
+            "Ollama 批量嵌入请求: model=%s, 文本数量=%d", model_name, len(texts)
+        )
         client = self._build_client(model_name)
         results = client.embed_documents(texts)
-        logger.debug("Ollama 批量嵌入完成: model=%s, 结果数量=%d", model_name, len(results))
+        logger.debug(
+            "Ollama 批量嵌入完成: model=%s, 结果数量=%d", model_name, len(results)
+        )
         return results

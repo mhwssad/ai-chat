@@ -75,5 +75,7 @@ class LocalEmbeddingProvider(EmbeddingProvider):
         logger.info("本地批量嵌入请求: model=%s, 文本数量=%d", model_name, len(texts))
         client = self._build_client(model_name)
         results = client.embed_documents(texts)
-        logger.debug("本地批量嵌入完成: model=%s, 结果数量=%d", model_name, len(results))
+        logger.debug(
+            "本地批量嵌入完成: model=%s, 结果数量=%d", model_name, len(results)
+        )
         return results

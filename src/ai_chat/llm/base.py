@@ -28,7 +28,9 @@ class ModelProvider(ABC):
     def supports_model(self, model_name: str) -> bool:
         """判断该策略是否支持给定的模型名称。"""
         supported = model_name in self.SUPPORTED_MODELS
-        logger.debug("[%s] 模型 '%s' 支持检查: %s", self.provider_type, model_name, supported)
+        logger.debug(
+            "[%s] 模型 '%s' 支持检查: %s", self.provider_type, model_name, supported
+        )
         return supported
 
     def get_supported_models(self) -> list[str]:

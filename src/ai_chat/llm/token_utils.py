@@ -25,6 +25,7 @@ def _get_encoder():
         return _encoder
     try:
         import tiktoken
+
         _encoder = tiktoken.get_encoding("cl100k_base")
         logger.debug("tiktoken cl100k_base 编码器加载成功")
     except ImportError:

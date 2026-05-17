@@ -56,14 +56,17 @@ def menu_llm():
 
     while True:
         print("\n── LLM 管理 ──")
-        idx = _choose("操作: ", [
-            "列出支持的模型",
-            "测试对话",
-            "测试嵌入",
-            "Token 计数",
-            "查看模型上下文信息",
-            "返回上级",
-        ])
+        idx = _choose(
+            "操作: ",
+            [
+                "列出支持的模型",
+                "测试对话",
+                "测试嵌入",
+                "Token 计数",
+                "查看模型上下文信息",
+                "返回上级",
+            ],
+        )
         if idx == 6:
             logger.debug("退出 LLM 管理菜单")
             return

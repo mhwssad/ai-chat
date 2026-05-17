@@ -52,7 +52,11 @@ def _auto_discover() -> dict:
                 exported[attr] = obj
                 logger.debug("发现 Provider 类: %s (来自 %s)", attr, modname)
 
-    logger.info("自动发现完成，共发现 %d 个 Provider 类: %s", len(exported), list(exported.keys()))
+    logger.info(
+        "自动发现完成，共发现 %d 个 Provider 类: %s",
+        len(exported),
+        list(exported.keys()),
+    )
     return exported
 
 

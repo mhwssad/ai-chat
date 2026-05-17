@@ -85,7 +85,9 @@ def get_model_context_size(model_name: str) -> int:
     # 1. 用户覆盖
     overrides = _parse_overrides(settings.model_context_overrides)
     if model_name in overrides:
-        logger.debug("模型 '%s' 使用用户覆盖上下文大小: %d", model_name, overrides[model_name])
+        logger.debug(
+            "模型 '%s' 使用用户覆盖上下文大小: %d", model_name, overrides[model_name]
+        )
         return overrides[model_name]
 
     # 2. 内置默认值
@@ -94,5 +96,7 @@ def get_model_context_size(model_name: str) -> int:
 
     # 3. 全局默认
     default = getattr(settings, "model_default_context_size", DEFAULT_CONTEXT_SIZE)
-    logger.info("模型 '%s' 未在内置表中找到，使用默认上下文大小: %d", model_name, default)
+    logger.info(
+        "模型 '%s' 未在内置表中找到，使用默认上下文大小: %d", model_name, default
+    )
     return default

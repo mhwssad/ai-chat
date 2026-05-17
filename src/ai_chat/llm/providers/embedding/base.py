@@ -14,7 +14,8 @@ class EmbeddingProvider(ModelProvider):
     与 ChatProvider 职责分离，专门处理文本向量化。
     每个具体实现对应一个底层嵌入 API（OpenAI Embeddings、本地模型 …）。
 
-    子类必须实现 embed 和 embed_batch 两个抽象方法。
+    子类必须实现 embed 抽象方法。embed_batch 有默认实现（逐条调用 embed），
+    子类可覆盖以使用原生批量 API 获得更好性能。
     """
 
     @property
@@ -33,11 +34,10 @@ class EmbeddingProvider(ModelProvider):
             浮点数向量列表（维度取决于模型）
         """
 
-    @abstractmethod
     def embed_batch(self, texts: list[str], model_name: str) -> list[list[float]]:
-        """批量嵌入多段文本。
+        """批量嵌入多段文本。默认实现逐条调用 embed()。
 
-        相比逐条调用 embed，批量接口通常具有更好的吞吐性能。
+        子类可覆盖此方法以使用原生批量 API 获得更好性能。
 
         Args:
             texts: 待向量化的文本字符串列表
@@ -46,3 +46,5 @@ class EmbeddingProvider(ModelProvider):
         Returns:
             嵌入向量列表的列表，与输入 texts 一一对应
         """
+        logger.debug("使用默认批量实现: 数量=%d, model=%s", len(texts), model_name)
+        return [self.embed(text, model_name) for text in texts]

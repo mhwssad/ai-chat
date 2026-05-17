@@ -13,10 +13,13 @@ from src.ai_chat.llm.providers.embedding.base import EmbeddingProvider
 logger = get_logger(__name__)
 
 
-@register_embedding("openai_emb", lambda: ProviderConfig(
-    api_key=settings.get_key(settings.openai_api_key),
-    base_url=settings.openai_base_url or None,
-))
+@register_embedding(
+    "openai_emb",
+    lambda: ProviderConfig(
+        api_key=settings.get_key(settings.openai_api_key),
+        base_url=settings.openai_base_url or None,
+    ),
+)
 class OpenAIEmbeddingProvider(EmbeddingProvider):
     """OpenAI 嵌入提供商策略。
 
@@ -34,7 +37,10 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
     def __init__(self, config: Optional[ProviderConfig] = None) -> None:
         self._config = config or ProviderConfig()
-        logger.debug("OpenAIEmbeddingProvider 初始化完成，base_url=%s", self._config.base_url or "<默认>")
+        logger.debug(
+            "OpenAIEmbeddingProvider 初始化完成，base_url=%s",
+            self._config.base_url or "<默认>",
+        )
 
     def _build_client(self, model_name: str) -> OpenAIEmbeddings:
         """构建 OpenAI Embeddings 客户端实例。
@@ -50,6 +56,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             model=model_name,
             api_key=self._config.api_key,
             base_url=self._config.base_url,
+            timeout=self._config.timeout,
         )
 
     def embed(self, text: str, model_name: str) -> list[float]:
@@ -62,8 +69,12 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
     def embed_batch(self, texts: list[str], model_name: str) -> list[list[float]]:
         """批量嵌入多段文本。"""
-        logger.info("OpenAI 批量嵌入请求: model=%s, 文本数量=%d", model_name, len(texts))
+        logger.info(
+            "OpenAI 批量嵌入请求: model=%s, 文本数量=%d", model_name, len(texts)
+        )
         client = self._build_client(model_name)
         results = client.embed_documents(texts)
-        logger.debug("OpenAI 批量嵌入完成: model=%s, 结果数量=%d", model_name, len(results))
+        logger.debug(
+            "OpenAI 批量嵌入完成: model=%s, 结果数量=%d", model_name, len(results)
+        )
         return results
