@@ -71,6 +71,15 @@ class PromptRegistry:
 # ======================================================================
 
 prompt_registry = PromptRegistry()
+_prompt_manager = None
+
+
+def _ensure_loaded() -> None:
+    """确保内置提示词已加载到注册表。"""
+    global _prompt_manager
+    if _prompt_manager is None:
+        from src.ai_chat.prompts.manager import PromptManager
+        _prompt_manager = PromptManager()
 
 
 # ======================================================================
@@ -104,6 +113,7 @@ def has_prompt(prompt_key: str) -> bool:
 
 def render_messages(prompt_key: str, **context) -> list[BaseMessage]:
     """按名称渲染提示词消息列表。"""
+    _ensure_loaded()
     template = prompt_registry.get(prompt_key)
     missing = [name for name in template.input_variables if name not in context]
     if missing:
