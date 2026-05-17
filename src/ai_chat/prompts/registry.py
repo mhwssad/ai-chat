@@ -41,6 +41,30 @@ class PromptRegistry:
         names = list(self._registry)
         return f"PromptRegistry({len(names)} prompts: {names})"
 
+    # ── 批量操作 ───────────────────────────────────────
+
+    def register_many(self, items: dict[str, ChatPromptTemplate]) -> int:
+        """批量注册提示词模板，返回新注册数量。"""
+        count = 0
+        for name, template in items.items():
+            if name not in self._registry:
+                self._registry[name] = template
+                count += 1
+        return count
+
+    def get_many(self, names: list[str]) -> dict[str, ChatPromptTemplate]:
+        """批量获取提示词模板，跳过不存在的。"""
+        return {n: self._registry[n] for n in names if n in self._registry}
+
+    def unregister_many(self, names: list[str]) -> int:
+        """批量移除提示词模板，返回实际移除数量。"""
+        count = 0
+        for name in names:
+            if name in self._registry:
+                del self._registry[name]
+                count += 1
+        return count
+
 
 # ======================================================================
 # 全局单例

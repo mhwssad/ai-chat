@@ -10,7 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from sqlalchemy import text as sa_text
+from sqlalchemy import func as sa_func, text as sa_text
+from sqlalchemy import delete as sa_delete
 from sqlmodel import Session as SqlSession, create_engine, select, col
 
 from src.ai_chat.config.base_config import project_root
@@ -105,6 +106,14 @@ class PromptStore:
                 ))
                 conn.commit()
 
+        # 迁移完成后确保索引和 WAL 模式
+        with self._engine.connect() as conn:
+            conn.execute(sa_text(
+                "CREATE INDEX IF NOT EXISTS ix_prompts_tags ON prompts (tags)"
+            ))
+            conn.execute(sa_text("PRAGMA journal_mode=WAL"))
+            conn.commit()
+
     # ── CRUD ──────────────────────────────────────────
 
     def create(
@@ -196,9 +205,8 @@ class PromptStore:
 
     def count(self) -> int:
         """返回提示词总数。"""
-        from sqlalchemy import func
         with SqlSession(self._engine) as session:
-            result = session.exec(select(func.count()).select_from(PromptTable)).one()
+            result = session.exec(select(sa_func.count()).select_from(PromptTable)).one()
         return result
 
     def search(self, keyword: str, limit: int = 50, offset: int = 0) -> list[PromptRecord]:
@@ -252,24 +260,26 @@ class PromptStore:
 
     def _cleanup_versions(self, session, name: str) -> None:
         """删除超出上限的最旧版本记录。"""
-        from sqlalchemy import func
         total = session.exec(
-            select(func.count())
+            select(sa_func.count())
             .select_from(PromptVersionTable)
             .where(PromptVersionTable.prompt_name == name)
         ).one()
         if total > self.MAX_VERSIONS_PER_PROMPT:
-            excess = total - self.MAX_VERSIONS_PER_PROMPT
-            old_rows = session.exec(
-                select(PromptVersionTable)
+            cutoff = session.exec(
+                select(PromptVersionTable.id)
                 .where(PromptVersionTable.prompt_name == name)
                 .order_by(col(PromptVersionTable.id).asc())
-                .limit(excess)
-            ).all()
-            for old in old_rows:
-                session.delete(old)
-            session.commit()
-            logger.debug("清理 %s 的 %d 个旧版本", name, excess)
+                .offset(self.MAX_VERSIONS_PER_PROMPT - 1).limit(1)
+            ).first()
+            if cutoff is not None:
+                session.exec(
+                    sa_delete(PromptVersionTable)
+                    .where(PromptVersionTable.prompt_name == name, PromptVersionTable.id < cutoff)
+                )
+                session.commit()
+                excess = total - self.MAX_VERSIONS_PER_PROMPT
+                logger.debug("清理 %s 的 %d 个旧版本", name, excess)
 
     def list_versions(self, name: str, limit: int = 20, offset: int = 0) -> list[PromptVersionRecord]:
         """列出指定提示词的版本历史（最新在前）。"""

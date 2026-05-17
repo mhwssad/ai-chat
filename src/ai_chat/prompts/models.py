@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
-from sqlalchemy import Column, JSON
+from sqlalchemy import Column, JSON, Index
 from sqlmodel import SQLModel, Field
 
 
@@ -22,6 +22,9 @@ class PromptTable(SQLModel, table=True):
     """提示词持久化表 — 存储所有提示词的元信息和内容/路径。"""
 
     __tablename__ = "prompts"
+    __table_args__ = (
+        Index("ix_prompts_tags", "tags"),
+    )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str = Field(unique=True, index=True)

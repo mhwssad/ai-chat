@@ -37,6 +37,7 @@ PROMPTS_DIR = project_root / "data" / "prompts"
 _MESSAGE_SPLITTER = re.compile(r"^==\s*(\w+)\s*==\s*$", re.MULTILINE)
 
 _template_cache = LRUCache[str, ChatPromptTemplate](maxsize=64)
+_file_content_cache = LRUCache[str, str](maxsize=32)
 
 
 def _extract_variables(content: str) -> list[str]:
@@ -101,26 +102,39 @@ class PromptManager:
         PROMPTS_DIR.mkdir(parents=True, exist_ok=True)
 
     def _init_builtin_prompts(self) -> None:
-        """首次启动时批量导入内置提示词。"""
+        """初始化内置提示词 — 逐个检查，缺失则创建，tags 为空则补充。"""
         from src.ai_chat.prompts.builtin_data import BUILTIN_PROMPTS
 
-        if self._store.count() > 0:
-            return
-
+        created = 0
+        patched = 0
         for data in BUILTIN_PROMPTS:
-            request = PromptCreateRequest(
-                name=data["name"],
-                content=data.get("content", ""),
-                file_path=data.get("file_path", ""),
-                source_type=data.get("source_type", "inline"),
-                description=data.get("description", ""),
-            )
-            variables = _extract_variables(data.get("content", ""))
-            record = self._store.create(request, is_builtin=True, input_variables=variables)
-            if record.source_type == "file" and record.file_path:
-                self._write_file(record.file_path, record.content)
+            expected_tags = data.get("tags", "")
+            if not self._store.exists(data["name"]):
+                request = PromptCreateRequest(
+                    name=data["name"],
+                    content=data.get("content", ""),
+                    file_path=data.get("file_path", ""),
+                    source_type=data.get("source_type", "inline"),
+                    description=data.get("description", ""),
+                    tags=expected_tags,
+                )
+                variables = _extract_variables(data.get("content", ""))
+                record = self._store.create(request, is_builtin=True, input_variables=variables)
+                if record.source_type == "file" and record.file_path:
+                    self._write_file(record.file_path, record.content)
+                created += 1
+            elif expected_tags:
+                # 已存在但 tags 为空，从 seed data 补充
+                try:
+                    existing = self._store.get(data["name"])
+                    if not existing.tags and expected_tags:
+                        self._store.update(data["name"], tags=expected_tags)
+                        patched += 1
+                except KeyError:
+                    pass
 
-        logger.info("初始化 %d 个内置提示词", len(BUILTIN_PROMPTS))
+        if created or patched:
+            logger.info("内置提示词: 新建 %d 个, 补充 tags %d 个", created, patched)
 
     def _load_to_registry(self) -> None:
         """将数据库中所有提示词加载到内存注册表并预热缓存。"""
@@ -140,11 +154,16 @@ class PromptManager:
         logger.info("加载 %d/%d 条提示词到注册表", loaded, len(records))
 
     def _get_content(self, record: PromptRecord) -> str:
-        """获取提示词的实际内容。"""
+        """获取提示词的实际内容。file 类型优先读缓存。"""
         if record.source_type == "file" and record.file_path:
+            cached = _file_content_cache.get(record.file_path)
+            if cached is not None:
+                return cached
             path = PROMPTS_DIR / record.file_path
             if path.exists():
-                return path.read_text(encoding="utf-8")
+                content = path.read_text(encoding="utf-8")
+                _file_content_cache.put(record.file_path, content)
+                return content
             if record.content:
                 return record.content
         return record.content
@@ -257,6 +276,7 @@ class PromptManager:
         updated = self._store.update(name, **fields)
 
         if record.source_type == "file" and content:
+            _file_content_cache.invalidate(record.file_path)
             self._write_file(record.file_path, content)
 
         _template_cache.invalidate(name)
@@ -277,6 +297,7 @@ class PromptManager:
         self._invalidate(name)
 
         if record.source_type == "file" and record.file_path:
+            _file_content_cache.invalidate(record.file_path)
             self._delete_file(record.file_path)
 
         logger.info("删除提示词: %s", name)
