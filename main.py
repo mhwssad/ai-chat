@@ -6,6 +6,7 @@ warnings.filterwarnings("ignore", category=PendingDeprecationWarning, module="la
 
 from src.ai_chat.graphs import menu_chat
 from src.ai_chat.chains import menu_chains
+from src.ai_chat.workflows import menu_workflows
 from src.ai_chat.tools import menu_tools
 from src.ai_chat.memory import menu_memory
 from src.ai_chat.mcp import menu_mcp
@@ -31,6 +32,7 @@ def main():
         idx = _choose("请选择: ", [
             "对话",
             "调用链",
+            "工作流",
             "LLM 管理",
             "提示词管理",
             "工具管理",
@@ -45,16 +47,18 @@ def main():
         elif idx == 2:
             menu_chains()
         elif idx == 3:
-            menu_llm()
+            menu_workflows()
         elif idx == 4:
-            menu_prompts()
+            menu_llm()
         elif idx == 5:
-            menu_tools()
+            menu_prompts()
         elif idx == 6:
-            menu_memory()
+            menu_tools()
         elif idx == 7:
-            menu_mcp()
+            menu_memory()
         elif idx == 8:
+            menu_mcp()
+        elif idx == 9:
             menu_skills()
         else:
             print("再见！")

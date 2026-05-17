@@ -2,67 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterator, Optional
+from collections.abc import AsyncIterator, Iterator
+from typing import Optional
 
 from langchain_core.messages import BaseMessage
-from langchain_core.output_parsers import StrOutputParser
 
-from src.ai_chat.llm import llm_factory
+from src.ai_chat.chains.base import (
+    ChainConfig,
+    PromptContext,
+    _BasePromptChain,
+    _merge_context,
+)
 from src.ai_chat.prompts import render_messages
-
-
-PromptContext = dict[str, Any]
-
-
-def _merge_context(
-    base: Optional[PromptContext],
-    override: Optional[PromptContext],
-    final: PromptContext,
-) -> PromptContext:
-    context: PromptContext = {}
-    if base:
-        context.update(base)
-    if override:
-        context.update(override)
-    context.update(final)
-    return context
-
-
-class _BasePromptChain:
-    """基于 prompt_key 的调用链基类。"""
-
-    def __init__(
-        self,
-        model_name: Optional[str],
-        prompt_key: str,
-        prompt_context: Optional[PromptContext] = None,
-    ) -> None:
-        self._model_name = model_name or self._get_default_model()
-        self._prompt_key = prompt_key
-        self._prompt_context = dict(prompt_context or {})
-        self._llm = llm_factory.get_chat_provider(self._model_name).get_client(self._model_name)
-        self._chain = self._llm | StrOutputParser()
-
-    @staticmethod
-    def _get_default_model() -> str:
-        from src.ai_chat.config import settings
-
-        return settings.model_name
-
-    def _build_context(
-        self,
-        prompt_context: Optional[PromptContext],
-        **final: Any,
-    ) -> PromptContext:
-        return _merge_context(self._prompt_context, prompt_context, final)
-
-    def _invoke_messages(self, messages: list[BaseMessage]) -> str:
-        return self._chain.invoke(messages)
-
-    def _stream_messages(self, messages: list[BaseMessage]) -> Iterator[str]:
-        for chunk in self._chain.stream(messages):
-            if chunk:
-                yield chunk
 
 
 class ChatChain(_BasePromptChain):
@@ -73,8 +24,9 @@ class ChatChain(_BasePromptChain):
         model_name: Optional[str] = None,
         prompt_key: str = "chain.chat",
         prompt_context: Optional[PromptContext] = None,
+        config: Optional[ChainConfig] = None,
     ) -> None:
-        super().__init__(model_name, prompt_key, prompt_context)
+        super().__init__(model_name, prompt_key, prompt_context, config)
 
     def _build_messages(
         self,
@@ -102,6 +54,23 @@ class ChatChain(_BasePromptChain):
     ) -> Iterator[str]:
         yield from self._stream_messages(self._build_messages(message, history, prompt_context))
 
+    async def ainvoke(
+        self,
+        message: str,
+        history: Optional[list[BaseMessage]] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return await self._ainvoke_messages(self._build_messages(message, history, prompt_context))
+
+    async def astream(
+        self,
+        message: str,
+        history: Optional[list[BaseMessage]] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> AsyncIterator[str]:
+        async for chunk in self._astream_messages(self._build_messages(message, history, prompt_context)):
+            yield chunk
+
 
 class SummarizeChain(_BasePromptChain):
     """文本摘要链。"""
@@ -111,10 +80,11 @@ class SummarizeChain(_BasePromptChain):
         model_name: Optional[str] = None,
         prompt_key: str = "chain.summarize",
         prompt_context: Optional[PromptContext] = None,
+        config: Optional[ChainConfig] = None,
     ) -> None:
         defaults = {"language": "中文", "instruction": "请简洁地总结以下内容，保留关键信息："}
         merged_defaults = _merge_context(defaults, prompt_context, {})
-        super().__init__(model_name, prompt_key, merged_defaults)
+        super().__init__(model_name, prompt_key, merged_defaults, config)
 
     def _build_messages(
         self,
@@ -122,7 +92,7 @@ class SummarizeChain(_BasePromptChain):
         instruction: Optional[str] = None,
         prompt_context: Optional[PromptContext] = None,
     ) -> list[BaseMessage]:
-        final = {"text": text}
+        final: PromptContext = {"text": text}
         if instruction is not None:
             final["instruction"] = instruction
         context = self._build_context(prompt_context, **final)
@@ -144,6 +114,23 @@ class SummarizeChain(_BasePromptChain):
     ) -> Iterator[str]:
         yield from self._stream_messages(self._build_messages(text, instruction, prompt_context))
 
+    async def ainvoke(
+        self,
+        text: str,
+        instruction: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return await self._ainvoke_messages(self._build_messages(text, instruction, prompt_context))
+
+    async def astream(
+        self,
+        text: str,
+        instruction: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> AsyncIterator[str]:
+        async for chunk in self._astream_messages(self._build_messages(text, instruction, prompt_context)):
+            yield chunk
+
 
 class TranslateChain(_BasePromptChain):
     """翻译链。"""
@@ -153,10 +140,11 @@ class TranslateChain(_BasePromptChain):
         model_name: Optional[str] = None,
         prompt_key: str = "chain.translate",
         prompt_context: Optional[PromptContext] = None,
+        config: Optional[ChainConfig] = None,
     ) -> None:
         defaults = {"target": "中文"}
         merged_defaults = _merge_context(defaults, prompt_context, {})
-        super().__init__(model_name, prompt_key, merged_defaults)
+        super().__init__(model_name, prompt_key, merged_defaults, config)
 
     def _build_messages(
         self,
@@ -164,7 +152,7 @@ class TranslateChain(_BasePromptChain):
         target: Optional[str] = None,
         prompt_context: Optional[PromptContext] = None,
     ) -> list[BaseMessage]:
-        final = {"text": text}
+        final: PromptContext = {"text": text}
         if target is not None:
             final["target"] = target
         context = self._build_context(prompt_context, **final)
@@ -186,6 +174,23 @@ class TranslateChain(_BasePromptChain):
     ) -> Iterator[str]:
         yield from self._stream_messages(self._build_messages(text, target, prompt_context))
 
+    async def ainvoke(
+        self,
+        text: str,
+        target: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return await self._ainvoke_messages(self._build_messages(text, target, prompt_context))
+
+    async def astream(
+        self,
+        text: str,
+        target: Optional[str] = None,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> AsyncIterator[str]:
+        async for chunk in self._astream_messages(self._build_messages(text, target, prompt_context)):
+            yield chunk
+
 
 class ExtractionChain(_BasePromptChain):
     """结构化信息抽取链。"""
@@ -195,8 +200,9 @@ class ExtractionChain(_BasePromptChain):
         model_name: Optional[str] = None,
         prompt_key: str = "chain.extraction",
         prompt_context: Optional[PromptContext] = None,
+        config: Optional[ChainConfig] = None,
     ) -> None:
-        super().__init__(model_name, prompt_key, prompt_context)
+        super().__init__(model_name, prompt_key, prompt_context, config)
 
     def _build_messages(
         self,
@@ -228,6 +234,23 @@ class ExtractionChain(_BasePromptChain):
     ) -> Iterator[str]:
         yield from self._stream_messages(self._build_messages(text, fields, prompt_context))
 
+    async def ainvoke(
+        self,
+        text: str,
+        fields: list[str],
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return await self._ainvoke_messages(self._build_messages(text, fields, prompt_context))
+
+    async def astream(
+        self,
+        text: str,
+        fields: list[str],
+        prompt_context: Optional[PromptContext] = None,
+    ) -> AsyncIterator[str]:
+        async for chunk in self._astream_messages(self._build_messages(text, fields, prompt_context)):
+            yield chunk
+
 
 class RefineChain(_BasePromptChain):
     """文本优化链。"""
@@ -237,10 +260,11 @@ class RefineChain(_BasePromptChain):
         model_name: Optional[str] = None,
         prompt_key: str = "chain.refine",
         prompt_context: Optional[PromptContext] = None,
+        config: Optional[ChainConfig] = None,
     ) -> None:
         defaults = {"language": "中文"}
         merged_defaults = _merge_context(defaults, prompt_context, {})
-        super().__init__(model_name, prompt_key, merged_defaults)
+        super().__init__(model_name, prompt_key, merged_defaults, config)
 
     def _build_messages(
         self,
@@ -266,3 +290,20 @@ class RefineChain(_BasePromptChain):
         prompt_context: Optional[PromptContext] = None,
     ) -> Iterator[str]:
         yield from self._stream_messages(self._build_messages(instruction, text, prompt_context))
+
+    async def ainvoke(
+        self,
+        instruction: str,
+        text: str,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> str:
+        return await self._ainvoke_messages(self._build_messages(instruction, text, prompt_context))
+
+    async def astream(
+        self,
+        instruction: str,
+        text: str,
+        prompt_context: Optional[PromptContext] = None,
+    ) -> AsyncIterator[str]:
+        async for chunk in self._astream_messages(self._build_messages(instruction, text, prompt_context)):
+            yield chunk
