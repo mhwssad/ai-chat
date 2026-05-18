@@ -28,7 +28,7 @@
             <header class="page-header">
                 <div>
                     <h1>{{ page_title }}</h1>
-                    <p>当前提供服务端渲染的最小 UI 骨架，后续可平滑扩展为更完整的 Web 前端。</p>
+                    <p>{{ page_subtitle | default("当前提供服务端渲染的最小 UI 骨架，后续可平滑扩展为更完整的 Web 前端。") }}</p>
                 </div>
             </header>
             {% block content %}{% endblock %}
