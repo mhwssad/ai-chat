@@ -43,6 +43,7 @@ def memory_page(
         {
             "request": request,
             "page_title": "记忆",
+            "page_subtitle": "管理会话记忆、摘要和上下文状态。",
             "nav_items": get_nav_items(),
             "current_page": "memory",
             "sessions": sessions,

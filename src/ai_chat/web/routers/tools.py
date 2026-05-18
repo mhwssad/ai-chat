@@ -33,6 +33,7 @@ def tools_page(
         {
             "request": request,
             "page_title": "工具",
+            "page_subtitle": "查看、加载和扫描已注册的工具。",
             "nav_items": get_nav_items(),
             "current_page": "tools",
             "tool_groups": list_tools_grouped(),

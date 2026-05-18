@@ -32,6 +32,7 @@ def mcp_page(
         {
             "request": request,
             "page_title": "MCP",
+            "page_subtitle": "管理 MCP 客户端连接和远程工具。",
             "nav_items": get_nav_items(),
             "current_page": "mcp",
             "status": get_mcp_status(),

@@ -30,6 +30,7 @@ def chains_page(
         {
             "request": request,
             "page_title": "调用链",
+            "page_subtitle": "创建和管理 LCEL 调用链配置。",
             "nav_items": get_nav_items(),
             "current_page": "chains",
             "chain_types": get_chain_type_options(),
@@ -59,6 +60,7 @@ def create_chain(
             {
                 "request": request,
                 "page_title": "调用链",
+            "page_subtitle": "创建和管理 LCEL 调用链配置。",
                 "nav_items": get_nav_items(),
                 "current_page": "chains",
                 "chain_types": get_chain_type_options(),
@@ -85,6 +87,7 @@ def create_chain(
             {
                 "request": request,
                 "page_title": "调用链",
+            "page_subtitle": "创建和管理 LCEL 调用链配置。",
                 "nav_items": get_nav_items(),
                 "current_page": "chains",
                 "chain_types": get_chain_type_options(),
@@ -122,6 +125,7 @@ def invoke_chain(
         {
             "request": request,
             "page_title": "调用链",
+            "page_subtitle": "创建和管理 LCEL 调用链配置。",
             "nav_items": get_nav_items(),
             "current_page": "chains",
             "chain_types": get_chain_type_options(),

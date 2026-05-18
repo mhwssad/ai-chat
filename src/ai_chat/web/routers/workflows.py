@@ -29,6 +29,7 @@ def workflows_page(
         {
             "request": request,
             "page_title": "工作流",
+            "page_subtitle": "创建和编排 LangGraph 工作流。",
             "nav_items": get_nav_items(),
             "current_page": "workflows",
             "workflows": list_saved_workflows(),
@@ -58,6 +59,7 @@ def create_workflow(
             {
                 "request": request,
                 "page_title": "工作流",
+            "page_subtitle": "创建和编排 LangGraph 工作流。",
                 "nav_items": get_nav_items(),
                 "current_page": "workflows",
                 "workflows": list_saved_workflows(),
@@ -84,6 +86,7 @@ def create_workflow(
             {
                 "request": request,
                 "page_title": "工作流",
+            "page_subtitle": "创建和编排 LangGraph 工作流。",
                 "nav_items": get_nav_items(),
                 "current_page": "workflows",
                 "workflows": list_saved_workflows(),
@@ -120,6 +123,7 @@ def invoke_workflow(
         {
             "request": request,
             "page_title": "工作流",
+            "page_subtitle": "创建和编排 LangGraph 工作流。",
             "nav_items": get_nav_items(),
             "current_page": "workflows",
             "workflows": list_saved_workflows(),

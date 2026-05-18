@@ -33,6 +33,7 @@ def skills_page(
         {
             "request": request,
             "page_title": "技能",
+            "page_subtitle": "扫描和管理 SKILL.md 技能插件。",
             "nav_items": get_nav_items(),
             "current_page": "skills",
             "skills": list_all_skills(),
