@@ -8,7 +8,7 @@
 <div class="notice error">{{ error_message }}</div>
 {% endif %}
 
-<div class="mcp-layout">
+<div class="page-layout">
     <section class="panel">
         <div class="panel-head">
             <h2>MCP 状态</h2>
@@ -28,154 +28,77 @@
             <dt>已加载工具</dt>
             <dd>{{ status.tool_count }} 个</dd>
         </dl>
-        <div class="action-buttons" style="margin-top:16px;">
-            <form action="/mcp/initialize" method="post" style="display:inline;">
+        <div class="action-buttons mt-md">
+            <form action="/mcp/initialize" method="post" class="inline-form">
                 <button type="submit">初始化客户端</button>
             </form>
-            <form action="/mcp/shutdown" method="post" style="display:inline;">
+            <form action="/mcp/shutdown" method="post" class="inline-form">
                 <button type="submit" class="btn-danger">关闭客户端</button>
             </form>
         </div>
     </section>
 
     <section class="panel">
-        <div class="panel-head">
-            <h2>服务器配置</h2>
-            <p>已配置的 MCP 外部服务器列表。</p>
-        </div>
-        {% if server_configs %}
-        <div class="chain-items">
-            {% for name, config in server_configs.items() %}
-            <div class="chain-item">
-                <div class="chain-item-header">
-                    <strong>{{ name }}</strong>
+        <div class="main-grid">
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>服务器配置</h2>
+                    <p>已配置的 MCP 外部服务器列表。</p>
                 </div>
-                <pre class="config-pre">{{ config }}</pre>
-            </div>
-            {% endfor %}
-        </div>
-        {% else %}
-        <div class="empty-state">
-            <p>未配置任何 MCP 服务器。请在 .env 中设置 MCP 配置。</p>
-        </div>
-        {% endif %}
-    </section>
-
-    <section class="panel">
-        <div class="panel-head">
-            <h2>已加载工具</h2>
-            <p>MCP 客户端加载的远程工具。</p>
-        </div>
-        {% if mcp_tools %}
-        <div class="chain-items">
-            {% for tool in mcp_tools %}
-            <div class="chain-item">
-                <div class="chain-item-header">
-                    <strong>{{ tool.name }}</strong>
+                {% if server_configs %}
+                <div class="list-items">
+                    {% for name, config in server_configs.items() %}
+                    <div class="list-card">
+                        <div class="list-card-header">
+                            <strong>{{ name }}</strong>
+                        </div>
+                        <pre class="config-pre">{{ config }}</pre>
+                    </div>
+                    {% endfor %}
                 </div>
-                {% if tool.description %}
-                <p class="chain-desc">{{ tool.description }}</p>
+                {% else %}
+                <div class="empty-state">
+                    <p>未配置任何 MCP 服务器。请在 .env 中设置 MCP 配置。</p>
+                </div>
                 {% endif %}
             </div>
-            {% endfor %}
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>已加载工具</h2>
+                    <p>MCP 客户端加载的远程工具。</p>
+                </div>
+                {% if mcp_tools %}
+                <div class="list-items">
+                    {% for tool in mcp_tools %}
+                    <div class="list-card">
+                        <div class="list-card-header">
+                            <strong>{{ tool.name }}</strong>
+                        </div>
+                        {% if tool.description %}
+                        <p class="card-desc">{{ tool.description }}</p>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <p>暂无已加载的 MCP 工具。点击"初始化客户端"加载。</p>
+                </div>
+                {% endif %}
+            </div>
         </div>
-        {% else %}
-        <div class="empty-state">
-            <p>暂无已加载的 MCP 工具。点击"初始化客户端"加载。</p>
-        </div>
-        {% endif %}
     </section>
 </div>
 
 <style>
-.mcp-layout {
-    max-width: 860px;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-.chain-items {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.chain-item {
-    padding: 14px;
-    border: 1px solid var(--line);
-    border-radius: 14px;
-    background: rgba(255, 252, 245, 0.74);
-}
-
-.chain-item-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 6px;
-}
-
-.chain-desc {
-    margin: 4px 0;
-    font-size: 0.92rem;
-    color: var(--muted);
-}
-
-.detail-list {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 6px 16px;
-    margin: 0;
-    font-size: 0.92rem;
-}
-
-.detail-list dt {
-    color: var(--muted);
-    font-weight: 500;
-    white-space: nowrap;
-}
-
-.detail-list dd {
-    margin: 0;
-    color: var(--text);
-}
-
-.badge-ok {
-    display: inline-block;
-    padding: 1px 8px;
-    border-radius: 6px;
-    font-size: 0.82rem;
-    background: var(--success-soft);
-    color: var(--success);
-}
-
-.badge-no {
-    display: inline-block;
-    padding: 1px 8px;
-    border-radius: 6px;
-    font-size: 0.82rem;
-    background: var(--danger-soft);
-    color: var(--danger);
-}
-
-.action-buttons {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-}
-
-.btn-danger {
-    background: var(--danger-soft);
-    color: var(--danger);
-}
-
 .config-pre {
     margin: 4px 0 0;
     font-size: 0.85rem;
     color: var(--muted);
     white-space: pre-wrap;
     word-break: break-word;
-    font-family: monospace;
+    font-family: "IBM Plex Mono", "Cascadia Mono", Consolas, monospace;
 }
 </style>
 {% endblock %}

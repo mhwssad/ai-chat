@@ -8,8 +8,8 @@
 <div class="notice error">{{ error_message }}</div>
 {% endif %}
 
-<div class="chat-layout">
-    <section class="panel session-panel">
+<div class="page-layout">
+    <section class="panel">
         <div class="panel-head">
             <h2>会话</h2>
             <p>创建新会话，或继续最近的聊天记录。</p>
@@ -52,7 +52,7 @@
         </div>
     </section>
 
-    <section class="panel chat-panel">
+    <section class="panel">
         <div class="panel-head">
             <div>
                 <h2>聊天窗口</h2>
@@ -109,4 +109,11 @@
         </form>
     </section>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var board = document.querySelector('.message-board');
+    if (board) board.scrollTop = board.scrollHeight;
+});
+</script>
 {% endblock %}
