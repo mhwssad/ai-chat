@@ -10,7 +10,8 @@
 - **对话记忆** — SQLite 持久化、短期记忆 + 自动摘要、会话管理
 - **MCP 集成** — 连接外部 MCP 工具服务器，或将内置工具暴露为 MCP 服务
 - **技能系统** — 基于 Markdown 的插件式斜杠命令，支持自定义系统提示词和工具绑定
-- **调用链** — 预置 LCEL 链：对话、摘要、翻译、信息抽取、内容优化
+- **工作流引擎** — 基于 LangGraph 的可视化工作流编排，支持条件分支和状态管理
+- **调用链** — 预置 LCEL 链：对话、摘要、翻译、信息抽取、内容优化、代码审查
 - **内置工具** — 提供项目内文件、目录、搜索和只读命令查询能力
 
 ## 快速开始
@@ -23,7 +24,7 @@
 ### 安装
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/mhwssad/ai-chat
 cd ai-chat
 uv sync
 ```
@@ -63,7 +64,8 @@ python main.py
   4. 记忆管理
   5. MCP 管理
   6. 技能管理
-  7. 退出
+  7. 工作流
+  8. 退出
 ```
 
 ## 项目结构
@@ -76,11 +78,23 @@ src/ai_chat/
 ├── chains/       # LCEL 可复用调用链
 ├── graphs/       # LangGraph 代理（ChatAgent / MemoryAgent / UnifiedAgent）
 ├── tools/        # 工具注册中心 + 文件/目录/搜索/只读命令工具
+│   ├── command/    # 只读命令执行工具
+│   ├── file_io/    # 文件读写工具
+│   ├── paths/      # 目录路径工具
+│   └── search/     # 搜索工具
 ├── memory/       # 对话记忆（SQLite / 内存后端）
-├── rag/          # RAG 管线（加载器 / 分块器 / 向量库 / 链）
+│   └── providers/  # 记忆存储提供者
+├── rag/          # RAG 管线
+│   ├── loaders/    # 文档加载器
+│   ├── splitters/  # 文本分块器
+│   └── stores/     # 向量存储
 ├── mcp/          # MCP 客户端 + 服务端
 ├── prompts/      # Jinja2 提示词模板注册
-└── skills/       # 技能插件系统
+├── skills/       # 技能插件系统
+├── workflows/    # 工作流引擎（节点/状态/编排）
+├── middle/       # 中间件（HTTP/错误处理）
+├── utils/        # 工具函数（缓存等）
+└── web/          # Web 界面（FastAPI + Jinja2）
 ```
 
 ## 支持的 LLM 提供商
@@ -110,6 +124,9 @@ src/ai_chat/
 - **翻译链** — 多语言翻译
 - **信息抽取** — 结构化信息提取
 - **内容优化** — 文本润色与改写
+- **代码审查链** — 代码质量分析与建议
+- **批量处理链** — 批量任务处理
+- **RAG 链** — 检索增强问答
 
 ## 内置工具
 
@@ -122,6 +139,15 @@ src/ai_chat/
 
 - 所有内置工具默认限制在项目根目录及其子目录内运行
 - `run_command` 仅用于只读查询，不是通用 shell
+
+## 工作流引擎
+
+基于 LangGraph 的可视化工作流编排系统，支持：
+
+- **节点类型** — LLM 节点、工具节点、条件节点、状态更新节点
+- **状态管理** — 可定义的工作流状态，节点间共享数据
+- **条件分支** — 根据状态动态选择执行路径
+- **观察性** — 节点执行跟踪和性能监控
 
 ## Web 界面
 
@@ -145,8 +171,8 @@ uv run uvicorn src.ai_chat.web.app:create_app --factory --reload
 ## 设计模式
 
 - **策略模式** — 所有 Provider 均基于 ABC 接口，可自由替换实现
-- **抽象工厂** — LLMFactory / MemoryFactory / RAGFactory / AgentFactory / ChainFactory
-- **装饰器自动注册** — `@register_chat` / `@register_embedding` / `@register_memory` / `@registered_tool` 导入即注册
+- **抽象工厂** — LLMFactory / MemoryFactory / RAGFactory / AgentFactory / ChainFactory / WorkflowFactory
+- **装饰器自动注册** — `@register_chat` / `@register_embedding` / `@register_memory` / `@register_tool` 导入即注册
 - **单例** — 工具注册表、技能注册表、提示词注册表等全局唯一
 
 ## 开发
@@ -162,6 +188,6 @@ mypy src/
 
 ## 依赖
 
-核心依赖：`langchain` / `langgraph` / `langchain-openai` / `langchain-anthropic` / `langchain-google-genai` / `langchain-ollama` / `langchain-mcp-adapters` / `mcp` / `sqlmodel` / `jinja2`
+核心依赖：`langchain` / `langgraph` / `langchain-openai` / `langchain-anthropic` / `langchain-google-genai` / `langchain-ollama` / `langchain-mcp-adapters` / `mcp` / `sqlmodel` / `jinja2` / `fastapi` / `pydantic-settings` / `tenacity` / `pybreaker`
 
 开发依赖：`ruff` / `mypy`
