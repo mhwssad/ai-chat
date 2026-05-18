@@ -210,6 +210,7 @@ def _build_chat_context(
     return {
         "request": request,
         "page_title": "聊天",
+        "page_subtitle": "创建会话，选择 Agent 和模型开始对话。",
         "nav_items": get_nav_items(),
         "current_page": "chat",
         "agent_options": get_agent_options(),
