@@ -5,29 +5,46 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "fastapi>=0.115.0",
-    "langchain>=0.3.0",
-    "langchain-openai>=0.3.0",
-    "langchain-google-genai>=2.1.0",
-    "langchain-anthropic>=0.3.0",
-    "langchain-ollama>=0.3.0",
-    "langchain-community>=0.3.0",
-    "langgraph>=0.4.0",
-    "langchain-mcp-adapters>=0.1.10",
-    "mcp>=1.9.2",
-    "python-dotenv>=1.0.0",
+    "fastapi>=0.136.1",
+    "python-multipart>=0.0.20",
+    "langchain>=1.3.1",
+    "langchain-openai>=1.2.2",
+    "langchain-google-genai>=4.2.3",
+    "langchain-anthropic>=1.4.3",
+    "langchain-ollama>=1.1.0",
+    "langchain-community>=0.4.1",
+    "langchain-text-splitters>=0.3.0",
+    "langgraph>=1.2.1",
+    "langchain-mcp-adapters>=0.2.2",
+    "mcp>=1.27.1",
+    "pydantic>=2.10.0",
+    "python-dotenv>=1.2.2",
+    "pyyaml>=6.0.2",
     "jinja2>=3.1.6",
+    "sqlalchemy>=2.0.0",
     "sqlmodel>=0.0.38",
     "pydantic-settings>=2.14.1",
     "uvicorn>=0.34.0",
-    "tiktoken>=0.9.0",
-    "httpx>=0.28.0",
-    "tenacity>=8.2.0",
-    "pybreaker>=1.0.0",
+    "tiktoken>=0.13.0",
+    "httpx>=0.28.1",
+    "tenacity>=9.1.4",
+    "pybreaker>=1.4.1",
+]
+
+[project.optional-dependencies]
+rag = [
+    "faiss-cpu>=1.8.0",
+    "langchain-huggingface>=0.1.0",
 ]
 
 [dependency-groups]
 dev = [
-    "ruff>=0.11.0",
-    "mypy>=1.15.0",
+    "pytest>=9.0.0",
+    "ruff>=0.15.14",
+    "mypy>=2.1.0",
+]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
 ]
