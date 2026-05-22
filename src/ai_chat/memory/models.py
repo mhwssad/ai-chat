@@ -64,10 +64,15 @@ class SessionTable(SQLModel, table=True):
     __tablename__ = "sessions"
     __table_args__ = (
         Index("ix_sessions_updated_at", "updated_at"),
+        Index("ix_sessions_status", "status"),
     )
 
     session_id: str = Field(primary_key=True)
     title: str = Field(default="")
+    current_model: Optional[str] = Field(default=None, index=True)
+    message_count: int = Field(default=0)
+    status: str = Field(default="active")
+    last_error: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     metadata_: dict = Field(default={}, sa_column=Column("metadata", JSON))
@@ -88,12 +93,18 @@ class MessageTable(SQLModel, table=True):
     __tablename__ = "messages"
     __table_args__ = (
         Index("ix_messages_session_id", "session_id"),
+        Index("ix_messages_status", "status"),
+        Index("ix_messages_model", "model"),
     )
 
     id: Optional[int] = Field(default=None, primary_key=True)
     session_id: str = Field(foreign_key="sessions.session_id")
     role: str
     content: str
+    model: Optional[str] = Field(default=None)
+    status: str = Field(default="completed")
+    error_type: Optional[str] = Field(default=None)
+    error_message: Optional[str] = Field(default=None)
     created_at: datetime = Field(default_factory=datetime.now)
     metadata_: dict = Field(default={}, sa_column=Column("metadata", JSON))
 
@@ -126,6 +137,10 @@ class Session(BaseModel):
 
     session_id: str
     title: str = ""
+    current_model: Optional[str] = None
+    message_count: int = 0
+    status: str = "active"
+    last_error: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
     metadata: dict = {}
@@ -142,6 +157,10 @@ class MessageRecord(BaseModel):
     session_id: str = ""
     role: str = ""
     content: str = ""
+    model: Optional[str] = None
+    status: str = "completed"
+    error_type: Optional[str] = None
+    error_message: Optional[str] = None
     created_at: datetime = Field(default_factory=datetime.now)
     metadata: dict = {}
 
@@ -331,6 +350,10 @@ def _table_to_session(row: SessionTable) -> Session:
     return Session(
         session_id=row.session_id,
         title=row.title,
+        current_model=row.current_model,
+        message_count=row.message_count,
+        status=row.status,
+        last_error=row.last_error,
         created_at=row.created_at,
         updated_at=row.updated_at,
         metadata=row.metadata_,
@@ -344,6 +367,10 @@ def _table_to_message_record(row: MessageTable) -> MessageRecord:
         session_id=row.session_id,
         role=row.role,
         content=row.content,
+        model=row.model,
+        status=row.status,
+        error_type=row.error_type,
+        error_message=row.error_message,
         created_at=row.created_at,
         metadata=row.metadata_,
     )

@@ -55,11 +55,34 @@ class SQLiteStore(MemoryProvider):
         _Base.metadata.create_all(self._engine)
         # 确保索引存在（对已有数据库执行迁移）
         with self._engine.connect() as conn:
+            self._ensure_column(conn, "sessions", "current_model", "TEXT")
+            self._ensure_column(conn, "sessions", "message_count", "INTEGER NOT NULL DEFAULT 0")
+            self._ensure_column(conn, "sessions", "status", "TEXT NOT NULL DEFAULT 'active'")
+            self._ensure_column(conn, "sessions", "last_error", "TEXT")
+            self._ensure_column(conn, "messages", "model", "TEXT")
+            self._ensure_column(conn, "messages", "status", "TEXT NOT NULL DEFAULT 'completed'")
+            self._ensure_column(conn, "messages", "error_type", "TEXT")
+            self._ensure_column(conn, "messages", "error_message", "TEXT")
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_session_id ON messages (session_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_status ON messages (status)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_messages_model ON messages (model)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sessions_updated_at ON sessions (updated_at)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_sessions_status ON sessions (status)"))
             conn.execute(text("PRAGMA journal_mode=WAL"))
             conn.commit()
         logger.debug("数据库表初始化完成")
+
+    @staticmethod
+    def _ensure_column(conn, table_name: str, column_name: str, definition: str) -> None:
+        """Add a SQLite column when an existing local database is behind."""
+        from sqlalchemy import text
+
+        columns = {
+            row[1]
+            for row in conn.execute(text(f"PRAGMA table_info({table_name})")).fetchall()
+        }
+        if column_name not in columns:
+            conn.execute(text(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"))
 
     # ── Session ────────────────────────────────────────
 
@@ -229,11 +252,20 @@ class SQLiteStore(MemoryProvider):
             session_id=record.session_id,
             role=record.role,
             content=record.content,
+            model=record.model,
+            status=record.status,
+            error_type=record.error_type,
+            error_message=record.error_message,
             created_at=record.created_at,
             metadata_=record.metadata,
         )
         with SqlSession(self._engine) as session:
             session.add(row)
+            sess_row = session.get(SessionTable, record.session_id)
+            if sess_row:
+                sess_row.message_count += 1
+                sess_row.updated_at = datetime.now()
+                session.add(sess_row)
             session.commit()
             session.refresh(row)
             record.id = row.id

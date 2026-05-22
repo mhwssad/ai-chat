@@ -12,6 +12,7 @@
 - [Web 与 CLI](./requirements/05-web-and-cli.md)
 - [存储、配置与审计](./requirements/06-storage-config-and-audit.md)
 - [Agent Runtime 路线](./requirements/07-agent-runtime-roadmap.md)
+- [数据模型](./requirements/data-model.md)
 
 ## 2. 实施计划
 
