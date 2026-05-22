@@ -17,6 +17,7 @@
 ## 2. 实施计划
 
 - [MVP 实施计划](./plans/01-mvp-implementation-plan.md)
+- [MVP 任务列表](./plans/01-mvp-task-list.md)
 
 ## 3. 架构与规范
 
