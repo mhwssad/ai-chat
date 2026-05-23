@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run *)",
+      "Bash(git stash *)",
+      "Bash(find \"C:\\\\Users\\\\liujian\\\\.claude\\\\plugins\\\\cache\\\\ui-ux-pro-max-skill\\\\ui-ux-pro-max\\\\2.5.0\" -name \"search.py\" 2>/dev/null)",
+      "Read(//c/Users/liujian/.claude/plugins/cache/ui-ux-pro-max-skill/ui-ux-pro-max/2.5.0/**)",
+      "Bash(python src/ui-ux-pro-max/scripts/search.py \"developer tool dashboard admin panel dark minimal\" --design-system -p \"AI Chat Workbench\")",
+      "Bash(pkill -f \"uvicorn\")",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/providers -H 'Content-Type: application/json' -d '{\"provider_key\":\"ollama\",\"display_name\":\"Ollama Local\",\"base_url\":\"http://localhost:11434\",\"api_key\":\"sk-test123\",\"enabled\":true}')",
+      "Bash(sed -i '/^ENCRYPTION_KEY=/d' .env)",
+      "Bash(echo 'Generated key: __TRACKED_VAR__')",
+      "Bash(echo ENCRYPTION_KEY=__TRACKED_VAR__)",
+      "Bash(grep ENCRYPTION_KEY .env)",
+      "Bash(curl -s -X POST http://127.0.0.1:8000/api/providers -H 'Content-Type: application/json' -d '{\"provider_key\":\"test-openai\",\"display_name\":\"OpenAI\",\"base_url\":\"https://api.openai.com/v1\",\"api_key\":\"sk-test123\",\"enabled\":true}')",
+      "Bash(tasklist)",
+      "Bash(netstat -ano)",
+      "Bash(curl -s http://127.0.0.1:8000/models)",
+      "Bash(cat /tmp/server.log 2>&1 | tail -30)",
+      "Read(//tmp/**)",
+      "Bash(python3 \"C:/Users/liujian/.claude/plugins/cache/ui-ux-pro-max-skill/ui-ux-pro-max/2.5.0/.claude/skills/ui-ux-pro-max/scripts/search.py\" \"AI workbench admin dashboard dark mode developer tool\" --design-system -p \"AI Chat Workbench\")",
+      "Bash(python scripts/search.py \"AI workbench admin dashboard dark mode developer tool\" --design-system -p \"AI Chat Workbench\")",
+      "Bash(python scripts/search.py \"sidebar navigation dark mode dashboard admin\" --domain ux)"
+    ]
+  }
+}

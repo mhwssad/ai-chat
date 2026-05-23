@@ -4,7 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概览
 
-AI Chat — 基于 LangChain/LangGraph 生态的多提供商 AI 聊天框架，提供 CLI 交互界面和 FastAPI Web 骨架。Python >= 3.13，使用 uv 管理依赖。
+AI Chat — 基于 FastAPI 的本地 AI 工作台，提供多供应商模型调用、工具执行、MCP 协议、RAG 检索等能力。Python >= 3.13，使用 uv 管理依赖。
+
+## 必读文档
+
+开始任何实现前，先阅读并遵守：
+
+- `docs/README.md`
+- `docs/project-structure-standards.md`
+- `docs/coding-standards.md`
+- `docs/architecture-constraints.md`
+- `docs/data.sql`
+
+其中 `docs/architecture-constraints.md` 是硬约束。若实现需求和该文档冲突，先更新约束文档并说明原因，再改代码。
 
 ## 常用命令
 
@@ -12,11 +24,14 @@ AI Chat — 基于 LangChain/LangGraph 生态的多提供商 AI 聊天框架，�
 # 安装依赖
 uv sync
 
-# 运行 CLI
-python main.py
+# 运行 FastAPI
+uv run python main.py
 
-# 运行 Web（FastAPI 骨架）
-uv run uvicorn src.ai_chat.web.app:create_app --factory --reload
+# 编译检查
+uv run python -m compileall -q src/ai main.py
+
+# 数据库 schema 验证
+sqlite3 :memory: ".read docs/data.sql" "PRAGMA foreign_key_check;"
 
 # 代码检查
 ruff check src/
@@ -25,65 +40,94 @@ ruff format src/
 # 类型检查
 mypy src/
 
-# 运行测试（无 pytest 配置，直接执行）
+# 运行测试
 python -m pytest tests/
-
-# 运行单个测试文件
-python -m pytest tests/tools/test_registry.py
 ```
 
-## 架构与核心设计模式
+FastAPI 启动后访问 `http://127.0.0.1:8000/`
 
-项目采用 **注册 + 工厂 + 策略** 三层扩展模式，所有扩展点遵循统一流程：定义 ABC 接口 → 实现具体 Provider → 装饰器自动注册 → 工厂按名路由。
+## 分层架构
 
-### 装饰器自动注册机制
-
-这是项目最核心的扩展方式——导入模块时装饰器自动将类注册到全局工厂，无需手动维护注册表：
-
-- **LLM Provider**: `@register_chat(name, config_fn)` / `@register_embedding(name, config_fn)` — 类装饰器，在 `llm/providers/` 中使用。注册时通过 `SUPPORTED_MODELS` 类变量自动建立 model_name → provider 的路由映射。
-- **工具**: `@registered_tool(tool_type=ToolType.SYSTEM)` — 函数装饰器，等价于 LangChain `@tool` + 自动注册到 `tool_registry`。
-- **记忆后端**: `@register_memory(name)` — 类装饰器，在 `memory/providers/` 中使用。
-
-### 全局单例
-
-- `llm_factory`（`src.ai_chat/llm/factory.py`）— 抽象工厂，支持泛型 provider_type（chat/embedding/image/video），按 model_name 自动路由到正确 Provider
-- `tool_registry`（`src.ai_chat/tools/registry.py`）— 单例工具注册表，系统工具自动加载，自定义工具按名懒加载
-- `prompt_registry`（`src.ai_chat/prompts/registry.py`）— 提示词内存注册表
-- `settings`（`src/ai_chat/config/settings.py`）— pydantic BaseSettings 全局配置
-
-### 分层架构
-
-```
-graphs/     → LangGraph 状态图编排（Agent 层）— 调用下层能力，不直接操作 SDK 或存储
-chains/     → LCEL 轻量调用链
-llm/        → 模型抽象 + 工厂 + Provider（providers/ 下按供应商分文件）
-memory/     → 会话记忆（ConversationMemory 单会话 / SessionManager 多会话）
-rag/        → RAG 管线（loaders/ splitters/ stores/ 子目录按扩展点分离）
-prompts/    → Jinja2 提示词管理（数据库持久化 + 版本历史 + 内置种子数据）
-tools/      → 工具注册 + 内置系统工具（文件/目录/搜索/命令）
-skills/     → 技能插件（每个技能一个目录 + SKILL.md frontmatter）
-mcp/        → MCP 客户端/服务端适配
-config/     → 全局配置、日志、异常、基础枚举
+```text
+src/ai/
+├── api/            → FastAPI 入口：路由(routes/)、schema(schemas/)、服务层(services/)、页面、静态资源
+├── cli.py          → CLI 补充入口（Typer）
+├── config/         → 启动期最小配置（BaseSettingsConfig + 分域 Settings）
+├── core/
+│   ├── models/     → 模型子系统：Client、Registry、Resolver、Provider、遥测、定价
+│   │   └── providers/  → 具体供应商实现（httpx_openai、langchain_chat 等）
+│   ├── tools/      → 工具子系统：Registry、内置工具(builtins)、执行器
+│   │   └── mcp/    → MCP 协议：Client、Manager、工具适配器
+│   ├── prompts/    → 提示词模板管理（Service + Renderer + 持久化）
+│   ├── memory/     → 记忆子系统（文件 + DB 双存储、相关性检索）
+│   └── skils/      → 技能插件骨架
+├── rag/            → RAG 管线：文件加载、文本切分、Embedding、相似度检索
+├── storage/        → SQLModel ORM、Repository、数据库连接管理
+├── security/       → 加密（Fernet API Key 加密/解密）
+├── exception/      → 统一异常体系（BaseExceptions → LLMException 等）
+└── utils/          → 工具函数（字符串、HTTP 客户端、缓存、脱敏、token 计算）
 ```
 
-### Graph 层 Agent 编排
+## 核心设计模式
 
-- **UnifiedAgent** — 完整代理：意图分类节点 → 条件路由到 ReAct 节点（工具调用）或 RAG 节点（检索问答），集成记忆管理
-- **MemoryAgent** — ReAct + 对话记忆
-- **ChatGraph** — 意图分类 → 对话 / RAG 路由
+### 分层调用链
 
-Graph 层使用 `TypedDict` 定义状态，`StateGraph` 编排节点和条件边。
+典型聊天请求的数据流：
 
-### 提示词系统
+```text
+API Route → api/services/<name>_service.py
+  → ModelClient.chat(ChatRequest)
+    → ModelResolver.resolve(session, request)     # 从 DB 解析 Provider + Model
+    → ModelProviderRegistry.get(capability, req_type)  # 查找 Provider 策略
+    → ModelProvider.request(provider, model, req)      # 执行实际 API 调用
+    → PricingCalculator.calculate(usage, model)        # 计算费用
+    → ModelTelemetryRecorder.record_*()                # 遥测记录
+    → 返回 ModelResponse
+```
 
-提示词通过 `PromptManager` 持久化到 SQLite，支持 Jinja2 模板语法（for/if/include 等）。首次启动从 `builtin_data.py` 导入种子数据。提示词内容支持 `== role ==` 分隔的多消息格式。模板通过 `PromptStore` CRUD + 内存注册表 + LRU 缓存三层管理。
+### Registry + Strategy（模型子系统）
 
-### 记忆系统
+- `ModelProvider`（ABC）定义统一接口，具体供应商（httpx_openai、langchain_chat 等）实现策略
+- `ModelProviderRegistry` 按 `(capability, request_type)` 元组路由到 Provider 实例
+- `ModelResolver` 从数据库解析 model_id / provider_key+model_key → 具体 Provider+Model
+- `ModelClient` 是门面类，编排解析→分发→定价→遥测全流程
 
-`ConversationMemory` 是核心编排器：
-- Token 感知的上下文压缩（tiktoken 计数 + 模型上下文窗口阈值）
-- 短期消息窗口 + 自动摘要压缩
-- SQLite / 内存两种后端（通过 `memory_factory` 路由）
+### Registry + Handler（工具子系统）
+
+- `ToolRegistry` 维护 name → `ToolDefinition` 映射
+- 每个内置工具是 `ToolDefinition`（含 JSON schema、权限标签、async handler）
+- MCP 工具通过 `MCPManager` → `MCPClient` 与外部服务通信
+
+### Repository Pattern（存储层）
+
+- 所有数据库访问通过 Repository 类（`ProviderRepository`、`ModelRepository` 等）
+- ORM 模型使用 SQLModel（`Provider`、`Model`、`PromptTemplate` 等）
+- `get_session()` 上下文管理器自动管理事务（commit/rollback）
+
+### 模块级单例
+
+| 单例 | 位置 | 用途 |
+| --- | --- | --- |
+| `settings` | `config/settings.py` | 分域全局配置 |
+| `provider_registry` | `core/models/registry.py` | 模型 Provider 注册表 |
+| `tool_registry` | `core/tools/registry.py` | 工具注册表 |
+| `mcp_manager` | `core/tools/mcp/manager.py` | MCP 服务器管理 |
+| `prompt_service` | `core/prompts/service.py` | 提示词模板服务 |
+| `memory_service` | `core/memory/service.py` | 记忆管理服务 |
+| `rag_service` | `rag/service.py` | RAG 检索服务 |
+
+## 硬性开发规则
+
+- 禁止新增 `src/ai_chat`。
+- 禁止新增 `src/ai/core/mcp`，MCP 必须在 `src/ai/core/tools/mcp`。
+- 禁止 API 路由直接写业务逻辑——路由只做参数校验和调用 service。
+- 禁止绕过 `core/models` 调用模型。
+- 禁止绕过 `core/tools` 调用工具。
+- 禁止 RAG 自建模型 provider。
+- 禁止业务代码直接 `os.getenv()`，配置统一通过 `config/settings.py`。
+- 禁止新增裸 `Exception` 子类，自定义异常必须继承 `BaseExceptions`。
+- ORM/schema 变化必须同步 `docs/data.sql`。
+- API Key 必须加密保存（Fernet），禁止明文入库。
 
 ## 编码规范要点
 
@@ -91,22 +135,42 @@ Graph 层使用 `TypedDict` 定义状态，`StateGraph` 编排节点和条件边
 - 所有新增函数必须补充参数和返回值类型标注
 - 使用现代类型语法：`list[str]`、`X | None`（Python 3.13）
 - 公共类和函数必须有中文 docstring
-- 配置统一通过 `config/settings.py` 管理，不散落 `os.getenv()` 调用
+- 配置统一通过 `config/settings.py` 管理
 - 抛出项目领域异常（如 `ModelNotSupportedException`），不抛裸 `Exception`
-- 异步优先设计同步包装，同步包装注意事件循环处理（参考 `UnifiedAgent.invoke`）
+- 异步优先设计，同步包装注意事件循环处理
 
 ## 新增功能落位
 
 | 新增内容 | 放置位置 |
 |---------|---------|
-| LLM 供应商 | `llm/providers/chat/<name>.py`，使用 `@register_chat` |
-| 嵌入供应商 | `llm/providers/embedding/<name>.py`，使用 `@register_embedding` |
-| 工具 | `tools/<name>.py`，使用 `@registered_tool` |
-| 技能 | `skills/skills/<name>/SKILL.md` |
-| 记忆后端 | `memory/providers/<name>.py` |
-| RAG 组件 | `rag/loaders/`、`rag/splitters/`、`rag/stores/` 按类型分 |
-| Agent/图 | `graphs/<name>.py` |
+| FastAPI 路由 | `src/ai/api/routes/<name>.py` |
+| API schema | `src/ai/api/schemas/<name>.py` |
+| API service | `src/ai/api/services/<name>_service.py` |
+| HTML 页面 | `src/ai/api/templates/` |
+| 静态资源 | `src/ai/api/static/` |
+| 模型 provider | `src/ai/core/models/providers/<name>.py`，继承 `ModelProvider` ABC |
+| 工具 | `src/ai/core/tools/builtins.py` 添加 `ToolDefinition` |
+| MCP | `src/ai/core/tools/mcp/` |
+| RAG | `src/ai/rag/` |
+| ORM / Repository | `src/ai/storage/<name>_models.py` + `<name>_repository.py` |
+| 提示词模板 | 通过 `PromptService` 管理，持久化到 DB |
+| 记忆 | `src/ai/core/memory/`，文件 + DB 双存储 |
 
 ## 环境配置
 
-根目录 `.env` 文件，支持多提供商 API Key。默认模型 `minmax-2.7`。配置通过 pydantic `BaseSettings` 自动加载，支持 `settings.refresh()` 热重载和 `settings.save_to_env_file()` 回写。
+根目录 `.env` 文件。配置通过 pydantic `BaseSettings` 自动加载，分三个域：
+
+- `LLMSettings` — 模型名、超时、上下文管理
+- `MemorySettings` — 记忆后端、摘要设置
+- `MCPSettings` — MCP 客户端/服务端配置
+
+API Key 和 base_url 存储在数据库 `Provider` 表（加密），不再在 `.env` 中配置。
+
+## 验证要求
+
+每次代码修改后，根据影响面运行最小验证：
+
+- Python 编译：`uv run python -m compileall -q src/ai main.py`
+- 数据库 schema：`sqlite3 :memory: ".read docs/data.sql" "PRAGMA foreign_key_check;"`
+- FastAPI 路由：使用 `TestClient` 做 smoke test
+- RAG、工具、模型 provider：至少跑一条端到端最小路径

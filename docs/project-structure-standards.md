@@ -1,381 +1,202 @@
 # AI Chat 项目结构规范
 
-本文档定义 `ai-chat` 的目录结构、分层职责和新增代码落位规则。目标是让项目在继续演进时保持“目录即架构”的可读性。
+本文档定义当前 `ai-chat` 的目录职责和新增代码落位规则。项目已经进入以 FastAPI 为主入口、CLI 为补充入口的重构阶段，所有新代码以 `src/ai` 为准，不再参考旧 `src/ai_chat` 结构。
 
-## 1. 当前推荐结构
+## 1. 总体结构
 
 ```text
 ai-chat/
-├─ docs/                  # 需求、计划、架构、依赖和开发规范
-│  ├─ requirements/       # 产品需求与模块需求
-│  ├─ plans/              # 实施计划
-│  └─ README.md           # 文档索引
-├─ data/                  # 本地数据、向量库文件、运行期数据
-├─ scripts/               # 独立脚本，如调试脚本、服务脚本
+├─ docs/                         # 需求、计划、规范、数据库 schema
+│  ├─ requirements/              # 产品和模块需求
+│  ├─ plans/                     # 实施计划
+│  ├─ data.sql                   # 目标数据库 schema
+│  ├─ project-structure-standards.md
+│  ├─ coding-standards.md
+│  └─ architecture-constraints.md
+├─ data/                         # 本地 SQLite、索引和运行数据
 ├─ src/
-│  └─ ai_chat/
-│     ├─ chains/          # 链式能力封装
-│     ├─ config/          # 配置、基础异常、日志等基础设施
-│     ├─ graphs/          # LangGraph / Agent 编排层
-│     ├─ llm/             # 模型抽象、工厂、Provider
-│     ├─ mcp/             # MCP 客户端、服务端、配置
-│     ├─ memory/          # 会话记忆与持久化
-│     ├─ prompts/         # Prompt 注册与模板
-│     ├─ rag/             # RAG 相关能力
-│     ├─ storage/         # 运行态数据库表与初始化
-│     ├─ skills/          # 技能定义、扫描、注册
-│     └─ tools/           # 工具定义与注册
-├─ tests/                 # 测试代码
-├─ main.py                # CLI 入口
-└─ pyproject.toml         # 项目配置
+│  └─ ai/
+│     ├─ api/                    # FastAPI 应用层，前后端一体入口
+│     ├─ core/                   # 核心业务能力
+│     ├─ rag/                    # RAG 索引、切分、向量和检索
+│     ├─ storage/                # SQLModel ORM、Repository、数据库连接
+│     ├─ config/                 # 启动期配置、日志、基础配置类
+│     ├─ security/               # 加密、安全相关能力
+│     ├─ exception/              # 统一异常体系
+│     ├─ utils/                  # 无业务状态的通用工具
+│     └─ cli.py                  # CLI 补充入口
+├─ main.py                       # FastAPI 启动入口
+└─ pyproject.toml
 ```
 
-## 2. 根目录约定
+## 2. `src/ai/api`
 
-### 2.1 `docs/`
+FastAPI 应用层，负责 HTTP、HTML 页面、Pydantic schema 和服务编排。
 
-用于保存项目文档，不放运行时代码。
+```text
+api/
+├─ app.py                 # create_app() 和 app 实例
+├─ lifespan.py            # 启动/关闭生命周期
+├─ dependencies.py        # FastAPI Depends
+├─ errors.py              # HTTP 异常处理
+├─ routes/                # HTTP 路由
+├─ schemas/               # Pydantic 请求/响应模型
+├─ services/              # 面向 API 的服务层
+├─ templates/             # Jinja2 HTML 页面
+└─ static/                # CSS/JS/图片等静态资源
+```
 
-适合存放：
+规则：
 
-- 产品需求文档
-- MVP 和阶段实施计划
-- 架构决策与设计说明
-- 依赖策略与审计
-- 编码规范
-- 结构规范
-- 接入第三方服务说明
+- `routes/` 只处理 HTTP 参数、响应和状态码。
+- `services/` 负责调用 `core`、`rag`、`storage`，但不直接实现底层能力。
+- `schemas/` 只放 API 入参/出参，不复用 ORM 作为公网 API schema。
+- `templates/` 放前后端一体 HTML 页面。
+- `static/` 放页面 CSS、JS 和静态资源。
+- API 层可以依赖 `core`、`rag`、`storage`，反向依赖禁止。
 
-不建议存放：
+## 3. `src/ai/core`
 
-- 临时笔记
-- 未整理的调试输出
-- 与项目无关的通用资料
+核心业务能力层。这里的模块应能被 FastAPI、CLI、未来 Agent 共同复用。
 
-当前推荐子目录：
+当前子模块：
 
-- `docs/requirements/`：总需求、MVP 范围和模块需求。
-- `docs/plans/`：按阶段拆分的实施计划。
-- `docs/adr/`：后续用于记录关键架构决策。
+- `core/models`：通用多供应商多类型模型请求，包括 chat、embedding，后续扩展 image/audio/video。
+- `core/tools`：统一工具注册、执行、审计入口。MCP 已合并到 `core/tools/mcp`。
+- `core/memory`：会话记忆和长期记忆边界，当前预留。
+- `core/prompts`：提示词存储和 Jinja2 渲染的领域入口。
+- `core/skils`：Skill 发现、渲染和挂载入口。目录名沿用当前项目拼写。
 
-根目录下可保留少量索引和规范类文档，例如 `README.md`、`coding-standards.md`、`project-structure-standards.md` 和 `dependencies.md`。
+规则：
 
-### 2.2 `data/`
+- `core` 不依赖 FastAPI。
+- 模型请求必须走 `core/models`。
+- 工具调用必须走 `core/tools`。
+- MCP 工具属于工具体系，放在 `core/tools/mcp`。
+- `core/models` 只处理请求与响应，不负责 RAG、记忆、业务编排。
+- `core/prompts` 不定义 ORM/Repository，只通过 `storage` 访问数据库。
+- Skill 可被转换为 `ToolDefinition`，必须通过 `core/tools` 暴露给 Agent 或聊天流程。
 
-用于本地运行数据和可再生成数据。
+## 4. `src/ai/rag`
 
-适合存放：
+RAG 知识库能力层，负责文件内容识别、文本切分、向量生成、向量存储和检索上下文组装。
 
-- 向量索引文件
-- SQLite 数据文件
-- 本地知识库样例
+当前职责：
 
-约束：
+- `loaders.py`：文件加载与内容识别。
+- `splitters.py`：文本切分。
+- `embeddings.py`：调用 `core/models` 的 embedding 能力，必要时使用本地 fallback。
+- `models.py`：RAG ORM 表。
+- `repository.py`：RAG 数据仓库。
+- `service.py`：索引、搜索、上下文构建。
 
-- 不要把源码放到 `data/`
-- 不要把大型临时文件长期提交到仓库，除非明确需要版本管理
+规则：
 
-### 2.3 `scripts/`
+- RAG 不自建模型请求体系，embedding 统一复用 `core/models`。
+- RAG 存储表变更必须同步 `docs/data.sql`。
+- RAG 不直接参与聊天请求，聊天增强通过 API/service 显式启用。
+- RAG ORM 和 Repository 必须放在 `storage`。
 
-用于独立运行脚本，不承载核心业务抽象。
+## 5. `src/ai/storage`
 
-适合存放：
+数据库存储层。
 
-- 一次性导入脚本
-- 本地调试脚本
-- 示例服务，如 `math_server.py`
+职责：
 
-约束：
+- `database.py`：数据库引擎、Session、初始化。
+- `*_models.py`：SQLModel ORM。
+- `*_repository.py`：数据访问。
+- `prompt_models.py` / `prompt_repository.py`：提示词模板和版本存储。
+- `rag_models.py` / `rag_repository.py`：RAG 文档、切片和向量存储。
+- `__init__.py`：稳定导出。
 
-- 脚本中的核心逻辑应尽量复用 `src/ai_chat/` 下已有模块
-- 如果某段脚本逻辑会被长期复用，应下沉到 `src/ai_chat/`
+规则：
 
-### 2.4 `tests/`
+- `storage` 不依赖 `api` 或 `core`。
+- Repository 只做 CRUD 和查询，不写业务流程。
+- 新增 ORM 表必须同步 `docs/data.sql`。
+- API Key 等敏感信息不得明文入库。
 
-- 所有测试统一放在这里
-- 不在 `src/` 中混放测试文件
+## 6. `src/ai/config`
 
-## 3. `src/ai_chat/` 一级目录职责
+配置层只保留启动期最小配置，例如数据库路径、数据库 URL、加密 key。
 
-### 3.1 `config/`
+规则：
 
-基础设施层，负责通用配置与基础能力。
+- 业务配置以数据库为准。
+- 业务模块不得散落调用 `os.getenv()`。
+- 启动期配置通过 `base_config.py` 的 `BootstrapSettings` 获取。
 
-当前职责包括：
+## 7. `src/ai/security`
 
-- `settings.py`：全局业务配置
-- `base_config.py`：配置基类与项目根路径
-- `logging_setup.py`：日志配置
-- `base_exception.py`：基础异常类
+安全相关能力，例如 API Key 加密、密钥生成和解密。
 
-新增内容适合放入：
+规则：
 
-- 统一配置模型
-- 全局基础枚举
-- 全局异常父类
+- API Key 入库前必须加密。
+- 缺少加密 key 时应失败，不自动降级为明文。
 
-不应放入：
+## 8. `src/ai/exception`
 
-- 具体业务编排
-- LLM Provider 实现
+统一异常体系。
 
-### 3.2 `llm/`
+规则：
 
-模型能力抽象层。
+- 所有自定义异常继承 `BaseExceptions`。
+- 各领域异常可以在本模块或领域模块定义，但必须使用统一基类。
 
-当前职责包括：
+## 9. `src/ai/utils`
 
-- `models.py`：Provider 接口与请求响应模型
-- `factory.py`：工厂、注册、模型路由
-- `providers/`：各厂商具体实现
-
-新增规则：
-
-- 新供应商直接放到 `providers/`
-- 共用抽象放 `models.py` 或新增独立抽象文件
-- 路由与注册仍集中在 `factory.py`
-
-### 3.3 `graphs/`
-
-对话图和 Agent 编排层。
-
-当前职责包括：
-
-- 单轮/多轮图
-- 意图分类路由
-- 统一 Agent 编排
-
-新增规则：
-
-- 需要状态流转、节点编排、条件路由的能力放这里
-- 图层调用下层能力，不直接实现底层存储或模型适配
-
-### 3.4 `chains/`
-
-链式调用能力封装层。
+无业务状态的通用工具。
 
 适合放：
 
-- 轻量调用链
-- 不需要完整图编排的链式处理逻辑
-
-建议：
-
-- 当流程已经涉及明显状态节点、分支路由、工具协作时，优先迁移到 `graphs/`
-
-### 3.5 `tools/`
-
-系统工具能力层。
-
-当前职责包括：
-
-- 工具定义
-- 工具注册与扫描
-- 工具菜单入口
-
-新增规则：
-
-- 一个工具一个明确职责
-- 系统级基础工具可自动加载，其他本地工具默认按名称懒加载
-- 工具相关的公共辅助函数仅在确实跨工具复用时放 `common.py`
-- 命令执行类工具若存在，应作为系统工具单独放在独立模块中，不与文件写入逻辑混放
-
-### 3.6 `skills/`
-
-技能元数据与运行配置层。
-
-当前职责包括：
-
-- 技能配置模型
-- 技能扫描与注册
-- `skills/skills/` 下的技能定义目录
-
-新增规则：
-
-- 技能定义采用“目录 + `SKILL.md`”模式
-- 若某技能需要独立资源文件，与该技能目录放在一起
-
-### 3.7 `memory/`
-
-会话记忆层。
-
-当前职责包括：
-
-- 记忆模型
-- 工厂
-- Provider
-- 管理器
-
-新增规则：
-
-- 后端实现放 `providers/`
-- 配置和抽象接口放上层
-- 会话管理流程放 `manager.py` 一类编排文件
-
-### 3.8 `rag/`
-
-检索增强生成能力层。
-
-当前职责包括：
-
-- 向量库工厂
-- 文档加载器
-- 文本分割器
-- 存储实现
-
-推荐子层保持：
-
-- `loaders/`
-- `splitters/`
-- `stores/`
-
-新增规则：
-
-- 按扩展点分类，不要把 loader / splitter / store 混在同一文件
-
-### 3.9 `prompts/`
-
-Prompt 资源管理层。
-
-当前职责包括：
-
-- Prompt 注册器
-- Jinja2 模板
-
-新增规则：
-
-- 模板文件统一放 `templates/`
-- 需要程序化选择模板时，通过注册器访问，不直接在业务代码里硬编码大量 prompt
-
-### 3.10 `mcp/`
-
-MCP 适配层。
-
-适合放：
-
-- MCP 客户端
-- MCP 服务端
-- MCP 配置解析
-- MCP 菜单入口
-
-新增规则：
-
-- 配置解析集中管理
-- 工具暴露为 MCP 服务时，优先复用 `tools/` 中能力，不重复实现
-
-### 3.11 `storage/`
-
-运行态数据库模型和初始化层。
-
-适合放：
-
-- MVP 运行态 SQLModel 表。
-- 数据库初始化入口。
-- schema 版本和轻量迁移边界。
-- 跨模块审计、调用记录和权限决策表。
-
-新增规则：
-
-- 不在 `storage/` 中实现具体业务流程。
-- 会话、消息等已有领域表可继续由领域模块维护，`storage/` 负责统一导入和初始化边界。
-- 审计、模型调用、工具调用、权限决策等跨模块表优先放在 `storage/`。
-
-## 4. 文件组织规则
-
-### 4.1 一个文件只承载一个主要职责
-
-允许：
-
-- 一个文件一个核心类
-- 一个文件一个注册器
-- 一个文件一组紧密相关的数据模型
-
-不建议：
-
-- 在同一文件中同时放菜单、Provider、配置、异常、工具函数
-
-### 4.2 `__init__.py` 只做轻量导出
-
-- 用于声明包和暴露少量常用符号
-- 避免在 `__init__.py` 写复杂初始化逻辑
-- 自动注册若依赖导入副作用，应控制范围并保持可预期
-
-### 4.3 菜单代码集中
-
-当前项目存在多个 `menu.py`，这是合理的入口组织方式。
-
-约束：
-
-- `menu.py` 负责交互和调度
-- 不在 `menu.py` 中沉淀底层实现细节
-
-## 5. 新增功能时的落位规则
-
-### 5.1 新增一个模型供应商
-
-放置位置：
-
-- `src/ai_chat/llm/providers/<provider_name>.py`
-
-不要放在：
-
-- `main.py`
-- `llm/factory.py` 中直接写大段供应商实现
-
-### 5.2 新增一个工具
-
-放置位置：
-
-- `src/ai_chat/tools/<tool_name>.py`
-
-如果只是工具集合的统一注册或查询，再修改：
-
-- `src/ai_chat/tools/registry.py`
-
-### 5.3 新增一个技能
-
-放置位置：
-
-- `src/ai_chat/skills/skills/<skill_name>/SKILL.md`
-
-如有附带模板、示例、资源：
-
-- 与 `SKILL.md` 同目录保存
-
-### 5.4 新增一种存储或检索实现
-
-按类型分别放置：
-
-- 向量库存储：`rag/stores/`
-- 文档加载器：`rag/loaders/`
-- 文本分割器：`rag/splitters/`
-- 记忆后端：`memory/providers/`
-
-## 6. 禁止事项
-
-以下情况应尽量避免：
-
-- 把业务代码继续堆进 `main.py`
-- 在多个模块重复读取环境变量
-- 在 Graph 层直接操作底层第三方 SDK
-- 为了图省事创建新的 `misc.py`、`temp.py`、`helper.py`
-- 把不相关能力混入已有“大而全”文件
-
-## 7. 目录演进建议
-
-随着项目继续扩展，建议逐步补充以下文档或结构：
-
-- `docs/architecture-overview.md`：系统总体架构说明
-- `docs/provider-guide.md`：新增模型供应商接入指南
-- `docs/rag-guide.md`：知识库构建与检索流程说明
-- `tests/` 下按一级模块镜像拆目录，替代单层测试文件堆积
-
-## 8. 一句话判断标准
-
-当你不确定一个文件该放哪时，用下面三句话判断：
-
-1. 这是基础设施、领域能力还是编排入口？
-2. 它是抽象、实现，还是注册与路由？
-3. 后续别人会先去哪个目录找它？
-
-如果这三个问题都能得到一致答案，目录落位通常就是正确的。
+- HTTP 客户端封装。
+- token 计数工具。
+- pricing 计费工具。
+- 文本脱敏、字符串处理、hashing。
+
+不适合放：
+
+- 数据库访问。
+- 模型请求。
+- 工具执行。
+- RAG 索引流程。
+
+## 10. CLI
+
+CLI 是补充入口，不是主入口。
+
+规则：
+
+- CLI 复用 `api/services` 或 `core` 能力。
+- CLI 不重新实现模型请求、工具执行、RAG 索引等业务流程。
+- `main.py` 默认服务 FastAPI。
+
+## 11. 新增功能落位
+
+| 功能 | 位置 |
+| --- | --- |
+| FastAPI 路由 | `src/ai/api/routes/<name>.py` |
+| API schema | `src/ai/api/schemas/<name>.py` |
+| API 服务 | `src/ai/api/services/<name>_service.py` |
+| HTML 页面 | `src/ai/api/templates/` |
+| 静态资源 | `src/ai/api/static/` |
+| 模型 provider | `src/ai/core/models/providers/` |
+| 工具 | `src/ai/core/tools/` |
+| MCP 能力 | `src/ai/core/tools/mcp/` |
+| Skill 能力 | `src/ai/core/skils/` |
+| 提示词能力 | `src/ai/core/prompts/` |
+| RAG 能力 | `src/ai/rag/` |
+| ORM 表 | `src/ai/storage/*_models.py` |
+| Repository | `src/ai/storage/*_repository.py` |
+
+## 12. 判断标准
+
+新增代码前先问三件事：
+
+1. 这是 HTTP 入口、业务能力、存储访问，还是通用工具？
+2. 它是否绕过了现有 `core/models`、`core/tools`、`storage` 边界？
+3. 它的数据库变化是否同步到了 `docs/data.sql`？
+
+如果答案不清楚，先调整设计再写代码。
