@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Memory — AI Chat Workbench{% endblock %}
+
+{% block content %}
+<div class="page-section">
+  <h2>Search Memory</h2>
+  <form method="POST" action="/memory/search" class="form-inline">
+    <input name="query" placeholder="Search memories..." required style="flex:1" value="{{ search_keyword or '' }}" />
+    <button type="submit" class="btn-accent">Search</button>
+  </form>
+</div>
+
+{% if search_results %}
+<div class="page-section">
+  <h2>Search Results</h2>
+  {% for r in search_results %}
+  <div class="card" style="margin-bottom:8px">
+    <div class="card-header">
+      <span class="card-title">{{ r.title or r.name }}</span>
+      <span class="badge badge-on">{{ r.memory_type }}</span>
+    </div>
+    <div class="card-meta">{{ r.text[:300] }}</div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="page-section">
+  <h2>All Entries</h2>
+  {% if entries %}
+  {% for e in entries %}
+  <div class="card" style="margin-bottom:8px">
+    <div class="card-header">
+      <span class="card-title">{{ e.title or e.name or '-' }}</span>
+      <span class="badge {{ 'badge-on' if e.status == 'active' else 'badge-off' }}">{{ e.status }}</span>
+    </div>
+    <div class="card-sub">{{ e.memory_type }} &middot; {{ e.scope }}</div>
+    <div class="card-meta">{{ (e.text or '')[:200] }}</div>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="empty-state">No memory entries</div>
+  {% endif %}
+</div>
+{% endblock %}

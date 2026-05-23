@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}MCP — AI Chat Workbench{% endblock %}
+
+{% block content %}
+<div class="page-section">
+  <h2>MCP Servers</h2>
+  {% if servers %}
+  <table class="data-table">
+    <thead>
+      <tr><th>Server Key</th><th>Transport</th><th>Display Name</th><th>Enabled</th><th>Metadata</th></tr>
+    </thead>
+    <tbody>
+      {% for s in servers %}
+      <tr>
+        <td>{{ s.server_key }}</td>
+        <td>{{ s.transport }}</td>
+        <td>{{ s.display_name or '-' }}</td>
+        <td><span class="badge {{ 'badge-on' if s.enabled else 'badge-off' }}">{{ 'ON' if s.enabled else 'OFF' }}</span></td>
+        <td>{{ s.metadata or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">No MCP servers configured</div>
+  {% endif %}
+</div>
+
+<div class="page-section">
+  <h2>MCP Tools</h2>
+  {% if mcp_tools %}
+  <table class="data-table">
+    <thead>
+      <tr><th>Server</th><th>Name</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      {% for t in mcp_tools %}
+      <tr>
+        <td>{{ t.server_key }}</td>
+        <td>{{ t.name }}</td>
+        <td>{{ t.description or '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">No MCP tools discovered</div>
+  {% endif %}
+</div>
+{% endblock %}

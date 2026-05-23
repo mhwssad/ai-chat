@@ -4,7 +4,7 @@
 
 Usage::
 
-    from src.ai_chat.utils.strings import StringUtils as S
+    from src.ai.utils.strings import StringUtils as S
 
     S.truncate("长文本...", length=200)       # 截断
     S.mask_secret("sk-abcdefgh1234")          # 脱敏

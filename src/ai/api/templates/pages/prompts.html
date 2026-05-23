@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Prompts — AI Chat Workbench{% endblock %}
+
+{% block content %}
+<div class="page-section">
+  <h2>Prompt Templates</h2>
+  {% if prompts %}
+  <table class="data-table">
+    <thead><tr><th>Key</th><th>Name</th><th>Category</th><th>Format</th><th>Updated</th></tr></thead>
+    <tbody>
+      {% for p in prompts %}
+      <tr>
+        <td>{{ p.template_key }}</td>
+        <td>{{ p.name or '-' }}</td>
+        <td>{{ p.category or '-' }}</td>
+        <td>{{ p.template_format }}</td>
+        <td>{{ p.updated_at.strftime('%m/%d %H:%M') if p.updated_at else '-' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">No prompt templates</div>
+  {% endif %}
+</div>
+{% endblock %}

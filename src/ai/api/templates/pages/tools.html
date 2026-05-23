@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Tools — AI Chat Workbench{% endblock %}
+
+{% block content %}
+<div class="page-section">
+  <h2>Registered Tools</h2>
+  {% if tools %}
+  <table class="data-table">
+    <thead>
+      <tr><th>Name</th><th>Source</th><th>Enabled</th><th>Permissions</th><th>Description</th></tr>
+    </thead>
+    <tbody>
+      {% for t in tools %}
+      <tr>
+        <td>{{ t.name }}</td>
+        <td>{{ t.source_type }}{% if t.source_id %} / {{ t.source_id }}{% endif %}</td>
+        <td><span class="badge {{ 'badge-on' if t.enabled else 'badge-off' }}">{{ 'ON' if t.enabled else 'OFF' }}</span></td>
+        <td>{{ t.permissions | join(', ') if t.permissions else '-' }}</td>
+        <td>{{ t.description }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty-state">No tools registered</div>
+  {% endif %}
+</div>
+{% endblock %}

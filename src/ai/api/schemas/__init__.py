@@ -1,0 +1,2 @@
+"""FastAPI Pydantic schemas。"""
+
