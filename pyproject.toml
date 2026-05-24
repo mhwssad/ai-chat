@@ -31,6 +31,10 @@ dependencies = [
     "pybreaker>=1.4.1",
     "typer>=0.15.0",
     "cryptography>=45.0.0",
+    "magika>=1.0.3",
+    # Document loaders dependencies
+    "langchain-unstructured>=0.1.0",
+    "unstructured[pdf,docx,pptx,xlsx,image]>=0.16.0",
 ]
 
 [project.optional-dependencies]
