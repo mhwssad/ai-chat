@@ -1,4 +1,4 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 build/
@@ -15,15 +15,29 @@ wheels/
 # Environment variables
 .env
 
-# uv
-uv.lock
-
 # IDE
 .idea/
+.vscode/
 
-# Data
-data/
+# OS
+.DS_Store
+Thumbs.db
 
-cs/
+# Claude Code
+.claude/settings.local.json
+.claude/worktrees/
+
+# MCP
 .mcp.json
 mcp_servers.json
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Data (运行时生成)
+data/
+
+# Misc
+cs/
