@@ -1,10 +1,9 @@
 """Jinja2 提示词渲染。"""
 
-from __future__ import annotations
 
 from jinja2 import Environment, StrictUndefined, TemplateError
 
-from .errors import PromptRenderError
+from src.ai.exception.prompt_exception import PromptRenderError
 
 
 class PromptRenderer:

@@ -3,15 +3,15 @@
 导入此包即触发内置转换器注册。
 """
 
+from src.ai.exception.http_exception import HttpError
 from src.ai.utils.http.client import (
-    HttpError,
     create_aclient,
     create_client,
     http_aclient,
     http_client,
 )
+from src.ai.exception.http_exception import ConverterError
 from src.ai.utils.http.converter import (
-    ConverterError,
     ConverterRegistry,
     EntityConverter,
     converter_registry,

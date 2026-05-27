@@ -1,6 +1,5 @@
 """审计数据脱敏 — 截断与敏感信息遮蔽。"""
 
-from __future__ import annotations
 
 import re
 

@@ -14,7 +14,6 @@
     plain = decrypt_secret(cipher)
 """
 
-from __future__ import annotations
 
 from src.ai.config.base_config import get_bootstrap_settings
 from src.ai.config.logging_setup import get_logger

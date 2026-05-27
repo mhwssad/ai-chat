@@ -1,6 +1,5 @@
 """统一错误类型体系 — 分类、结构与映射。"""
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum

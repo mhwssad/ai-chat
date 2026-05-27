@@ -34,7 +34,13 @@ dependencies = [
     "magika>=1.0.3",
     # Document loaders dependencies
     "langchain-unstructured>=0.1.0",
-    "unstructured[pdf,docx,pptx,xlsx,image]>=0.16.0",
+    "unstructured[docx,image,pdf,pptx,rst,xlsx, rst]>=0.16.0",
+    "markdown>=3.10.2",
+    "python-magic-bin>=0.4.14",
+    "unstructured-inference>=1.6.11",
+    "rapidocr-onnxruntime>=1.4.4",
+    "chromadb>=1.5.9",
+    "langchain-chroma>=0.2.2",
 ]
 
 [project.optional-dependencies]
@@ -53,4 +59,8 @@ dev = [
 [tool.pytest.ini_options]
 addopts = [
     "--import-mode=importlib",
+]
+pythonpath = [
+    ".",
+    "src",
 ]

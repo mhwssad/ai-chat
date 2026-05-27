@@ -1,6 +1,5 @@
 """提示词数据库仓库。"""
 
-from __future__ import annotations
 
 from sqlmodel import select
 

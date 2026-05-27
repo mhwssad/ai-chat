@@ -1,84 +1,86 @@
-import json
-from pathlib import Path
-
 from pydantic import Field
 
-from src.ai.config.base_config import BaseSettingsConfig, project_root
+from src.ai.config.base_config import BaseSettingsConfig
 
 
 class LLMSettings(BaseSettingsConfig):
-    """全局配置，从 .env 文件和环境变量自动加载。
+    """LLM 全局配置。"""
 
-    API Key 和 base_url 已迁移到数据库 Provider 表（加密存储），
-    通过 ProviderConfigFactory 从数据库读取。
-    """
-
-    # ── 应用级 ──────────────────────────────────────────
     model_name: str = "minmax-2.7"
     request_timeout: int = 60
+    max_input_tokens: int = 128000
+    max_output_tokens: int = 4096
 
-    # ── Token 感知上下文管理 ──────────────────────────────
-    model_context_overrides: str = ""
-    model_context_threshold: float = 0.8
-    model_default_context_size: int = 8192
 
-    # ── LLM 扩展配置 ──────────────────────────────────────
-    llm_extra_models: str = ""
+class RAGSettings(BaseSettingsConfig):
+    """RAG 检索配置。"""
 
-    # ── HTTP 客户端转换 ──────────────────────────────────────
-    http_default_converter: str = "json"
-    http_converter_modules: str = ""
+    rag_persist_dir: str = "data/chroma"
+    rag_collection_name: str = "rag_documents"
+    rag_chunk_size: int = 800
+    rag_chunk_overlap: int = 120
+    rag_top_k: int = 5
+    rag_fallback_dimension: int = 384
+    rag_index_patterns: str = (
+        "**/*.md,**/*.txt,**/*.py,**/*.json,**/*.yaml,**/*.yml,**/*.pdf,**/*.docx"
+    )
 
 
 class MemorySettings(BaseSettingsConfig):
-    # ── Memory ────────────────────────────────────────────
-    memory_backend: str = "sqlite"
-    memory_persist_path: str = ""
-    memory_max_short_term_messages: int = 20
-    memory_summary_model: str = ""
-    memory_summary_token_limit: int = 1000
-    memory_enable_summary: bool = True
+    """记忆模块配置。"""
+
+    memory_dir: str = "data/memory"
+    memory_enable_auto_extract: bool = True
+    memory_max_entries: int = 200
+
+    # 对话历史
+    history_table_name: str = "chat_message_store"
+    history_max_messages: int = 1000
+
+    # Compression 策略参数
+    compression_max_messages: int = 30
+    compression_keep_recent: int = 10
+    compression_batch_size: int = 20
+
+    # RAG 优化检索
+    rag_optimize_query: bool = True
+    rag_merge_strategy: str = "deduplicate"
+    rag_context_top_k: int = 5
+
+    # 对话历史文件存储
+    history_file_enabled: bool = True
+
+
+class SkillSettings(BaseSettingsConfig):
+    """技能发现配置。"""
+
+    skill_dirs: str = ""
+    skill_auto_discover: bool = True
 
 
 class MCPSettings(BaseSettingsConfig):
-    """MCP 服务器配置，从 .env 自动加载。
-
-    优先使用 MCP_CONFIG_FILE 指向的 JSON 文件，
-    其次使用 MCP_SERVERS 内联 JSON。
-    """
+    """MCP 服务器配置。"""
 
     mcp_enabled: bool = Field(default=False, description="是否启用 MCP 客户端")
-    mcp_config_file: str = Field(default="", description="MCP 服务器配置 JSON 文件路径")
-    mcp_servers: str = Field(
-        default="{}", description="MCP 服务器配置 JSON（config_file 优先）"
+    mcp_config_file: str = Field(
+        default="mcp_servers.json", description="MCP 服务器配置 JSON 文件路径"
     )
     mcp_server_enabled: bool = Field(
         default=False, description="是否将内置工具暴露为 MCP 服务器"
     )
-    mcp_server_host: str = Field(default="127.0.0.1")
-    mcp_server_port: int = Field(default=9000)
-    mcp_server_transport: str = Field(default="streamable_http")
-
-    def get_server_configs(self) -> dict:
-        # 优先读配置文件
-        if self.mcp_config_file.strip():
-            path = Path(self.mcp_config_file)
-            if not path.is_absolute():
-                path = project_root / path
-            if path.exists():
-                return json.loads(path.read_text(encoding="utf-8"))
-        # 其次用内联 JSON
-        if self.mcp_servers.strip():
-            return json.loads(self.mcp_servers)
-        return {}
+    mcp_server_host: str = "127.0.0.1"
+    mcp_server_port: int = 9000
+    mcp_server_transport: str = "streamable_http"
 
 
 class Settings(BaseSettingsConfig):
-    """全局配置，从 .env 文件和环境变量自动加载。"""
+    """全局配置。"""
 
-    llm_settings: LLMSettings = LLMSettings()
-    memory_settings: MemorySettings = MemorySettings()
-    mcp_settings: MCPSettings = MCPSettings()
+    llm: LLMSettings = LLMSettings()
+    rag: RAGSettings = RAGSettings()
+    memory: MemorySettings = MemorySettings()
+    skills: SkillSettings = SkillSettings()
+    mcp: MCPSettings = MCPSettings()
 
 
 settings = Settings()

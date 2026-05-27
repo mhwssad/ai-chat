@@ -1,0 +1,46 @@
+这是一个乱码测试文件，用于测试文档加载器在处理编码问题时的表现。
+
+常见乱码场景：
+1. UTF-8 编码的文件被以 GBK 方式打开
+2. GB2312 编码的文件被以 UTF-8 方式打开
+3. 混合编码导致的部分字符显示异常
+
+示例乱码字符：
+锟斤拷 -> 烫烫烫
+Ã© -> é
+æµ™ -> 州
+
+这是一段较长的中文文本，用于测试文档加载器能否正确处理包含大量中文字符的内容。北京、上海、广州、深圳是中国的一线城市，每个城市都有其独特的特点和发展机遇。杭州、成都、武汉、南京、重庆、天津、苏州等城市也在快速崛起，成为新一线城市的重要代表。西安、郑州、长沙、济南、青岛、大连、沈阳、昆明、哈尔滨、长春等城市也在各自的领域内有着重要的发展。
+
+技术文档中的专业术语：人工智能、机器学习、深度学习、自然语言处理、计算机视觉、数据挖掘、云计算、大数据、区块链、物联网、边缘计算、5G通信、智能制造、工业4.0、数字孪生、虚拟现实、增强现实、混合现实、元宇宙、量子计算、生物识别、无人驾驶、智能家居、智慧城市。
+
+数字和符号测试：1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$%^&*()_+-=[]{}|;':",./<>?`~
+
+标点符号全角半角测试：
+半角：,./;'[]-=
+全角：，。／；【】－＝
+
+英文段落测试：
+The quick brown fox jumps over the lazy dog. This sentence contains every letter of the English alphabet. It is commonly used for font testing and typing practice. Programming requires attention to detail, logical thinking, and continuous learning. Software development involves multiple stages including planning, design, implementation, testing, deployment, and maintenance.
+
+代码片段测试：
+def calculate_sum(numbers):
+    total = 0
+    for num in numbers:
+        total += num
+    return total
+
+class DataProcessor:
+    def __init__(self, config):
+        self.config = config
+    
+    def process(self, data):
+        return [self.transform(item) for item in data]
+
+数学公式测试：
+E = mc²
+a² + b² = c²
+∫f(x)dx = F(x) + C
+∂²u/∂t² = c²∇²u
+
+这段文本包含足够多的字符和内容来测试文档加载器在处理大规模文本时的性能。

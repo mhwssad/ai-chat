@@ -5,7 +5,6 @@
 - 响应: JSON → dict / list / BaseModel 实例
 """
 
-from __future__ import annotations
 
 import dataclasses
 import json

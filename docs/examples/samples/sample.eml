@@ -1,0 +1,22 @@
+From: sender@example.com
+To: receiver@example.com
+Subject: 文档加载器测试邮件
+Date: Fri, 20 Jan 2024 10:30:00 +0800
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+
+您好，
+
+这是一封用于测试文档加载器的示例邮件。
+
+邮件内容包含：
+1. 段落文本
+2. 列表项目
+3. 链接地址
+
+邮件签名：
+---
+开发者
+测试团队
+
+如有任何问题，请回复此邮件。

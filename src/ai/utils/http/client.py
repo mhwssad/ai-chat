@@ -10,7 +10,6 @@
 支持 response_type 参数自动反序列化响应，支持请求体自动序列化。
 """
 
-from __future__ import annotations
 
 import dataclasses
 from typing import Any
@@ -20,7 +19,7 @@ from pydantic import BaseModel
 
 from src.ai.config.logging_setup import get_logger
 from src.ai.config.settings import settings
-from src.ai.exception.base_exception import BaseExceptions
+from src.ai.exception.http_exception import HttpError
 from src.ai.utils.http.converter import (
     ConverterError,
     EntityConverter,
@@ -30,33 +29,9 @@ from src.ai.utils.http.converter import (
 logger = get_logger(__name__)
 
 
-# ── 异常 ─────────────────────────────────────────────────
-
-
-class HttpError(BaseExceptions):
-    """HTTP 请求失败异常。"""
-
-    def __init__(
-        self,
-        message: str,
-        *,
-        url: str = "",
-        method: str = "",
-        status_code: int | None = None,
-    ) -> None:
-        self.url = url
-        self.method = method
-        self.status_code = status_code
-        super().__init__(
-            message,
-            context={"url": url, "method": method, "status_code": status_code},
-            error_code="HTTP_ERROR",
-        )
-
-
 # ── 基础设施 ─────────────────────────────────────────────
 
-_DEFAULT_TIMEOUT = float(settings.llm_settings.request_timeout)
+_DEFAULT_TIMEOUT = float(settings.llm.request_timeout)
 
 
 def _handle_response(response: httpx.Response) -> httpx.Response:

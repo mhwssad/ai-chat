@@ -1,59 +1,52 @@
-"""通用多供应商多模型请求模块。"""
+"""模型构建模块。
 
-from src.ai.core.models.client import (
-    ModelClient,
-    create_embedding,
-    create_chat_completion,
-    create_chat_completion_stream,
-)
-from src.ai.core.models.defaults import install_default_providers
-from src.ai.core.models.pricing import PricingCalculator
-from src.ai.core.models.registry import (
-    ModelProvider,
-    ModelProviderRegistry,
-    provider_registry,
-    register_provider,
-)
-from src.ai.core.models.resolver import ModelResolver
-from src.ai.core.models.telemetry import ModelTelemetryRecorder
-from src.ai.core.models.tools import normalize_tools
-from src.ai.core.models.types import (
-    ChatMessage,
-    ChatRequest,
-    EmbeddingRequest,
-    ModelCost,
-    ModelRequest,
-    ModelResponse,
-    ModelStreamChunk,
-    ModelUsage,
-    ToolBinding,
-)
-from src.ai.core.models.usage import UsageCalculator
+通过泛型抽象工厂 + 策略 + 工厂方法构建 LangChain 模型实例（BaseChatModel / Embeddings）。
+不负责请求发送、消息转换或工具绑定。
 
-install_default_providers()
+开闭原则：
+- 新增后端：实现 ``ChatModelBuilder`` → ``chat_model_factory.register(MyBuilder)``
+- 新增模型类型：新建 Builder ABC → 新建 Factory 子类 → ``model_registry.register_factory("rerank", factory)``
+
+示例::
+
+    from src.ai.core.models import model_registry, ChatModelConfig
+
+    config = ChatModelConfig(model_key="gpt-4o", api_key="sk-...", base_url="https://api.openai.com/v1")
+    builder = model_registry.get_builder("chat", "openai")
+    llm = builder.build(config)
+"""
+
+from src.ai.core.models.builders import (
+    ChatModelBuilder,
+    ChatModelFactory,
+    ConfigT,
+    EmbeddingModelBuilder,
+    EmbeddingModelFactory,
+    ModelBuilder,
+    ModelBuilderT,
+    ModelFactory,
+    ModelFactoryRegistry,
+    ReturnT,
+    chat_model_factory,
+    embedding_model_factory,
+    model_registry,
+)
+from src.ai.config.model_settings import ChatModelConfig, EmbeddingModelConfig
 
 __all__ = [
-    "ChatMessage",
-    "ChatRequest",
-    "ModelClient",
-    "EmbeddingRequest",
-    "ModelCost",
-    "ModelProvider",
-    "ModelProviderRegistry",
-    "ModelRequest",
-    "ModelResolver",
-    "ModelResponse",
-    "ModelStreamChunk",
-    "ModelTelemetryRecorder",
-    "ModelUsage",
-    "PricingCalculator",
-    "ToolBinding",
-    "UsageCalculator",
-    "create_chat_completion",
-    "create_chat_completion_stream",
-    "create_embedding",
-    "install_default_providers",
-    "normalize_tools",
-    "provider_registry",
-    "register_provider",
+    "ChatModelBuilder",
+    "ChatModelConfig",
+    "ChatModelFactory",
+    "ConfigT",
+    "EmbeddingModelBuilder",
+    "EmbeddingModelConfig",
+    "EmbeddingModelFactory",
+    "ModelBuilder",
+    "ModelBuilderT",
+    "ModelFactory",
+    "ModelFactoryRegistry",
+    "ReturnT",
+    "chat_model_factory",
+    "embedding_model_factory",
+    "model_registry",
 ]

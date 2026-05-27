@@ -1,5 +1,13 @@
 """通用工具集。"""
 
+from src.ai.utils.file_recognition import (
+    FileRecognizer,
+    file_recognizer,
+    get_file_label,
+    get_file_mime_type,
+    recognize_file,
+)
+from src.ai.utils.obj import singleton
 from src.ai.utils.pricing_utils import (
     PricingCalculator,
     PricingCost,
@@ -9,6 +17,12 @@ from src.ai.utils.pricing_utils import (
 )
 
 __all__ = [
+    "FileRecognizer",
+    "file_recognizer",
+    "get_file_label",
+    "get_file_mime_type",
+    "recognize_file",
+    "singleton",
     "PricingCalculator",
     "PricingCost",
     "PricingRule",

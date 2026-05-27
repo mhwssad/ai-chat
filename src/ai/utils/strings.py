@@ -13,7 +13,6 @@ Usage::
     S.hash_key("a", "b", "c")                # 生成哈希键
 """
 
-from __future__ import annotations
 
 import hashlib
 import re

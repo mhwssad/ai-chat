@@ -1,18 +1,86 @@
 """项目统一异常。"""
 
 from src.ai.exception.base_exception import BaseExceptions
+from src.ai.exception.http_exception import ConverterError, HttpError
+from src.ai.exception.loader_exception import (
+    LoadPermissionError,
+    LoaderError,
+    UnsupportedFileTypeError,
+)
 from src.ai.exception.llm_exception import (
     LLMCircuitOpenError,
     LLMException,
     LLMRetryExhaustedError,
     ModelNotSupportedException,
 )
+from src.ai.exception.mcp_config_exception import MCPConfigError
+from src.ai.exception.mcp_exception import (
+    MCPConnectionError,
+    MCPError,
+    MCPProtocolError,
+    MCPToolCallError,
+    MCPToolDiscoveryError,
+)
+from src.ai.exception.memory_exception import MemoryError, MemoryPathError, MemoryScanError
+from src.ai.exception.prompt_exception import PromptError, PromptNotFoundError, PromptRenderError
+from src.ai.exception.rag_exception import RagEmbeddingError, RagError, SplitterError
+from src.ai.exception.skill_exception import (
+    SkillError,
+    SkillLoadError,
+    SkillNotFoundError,
+    SkillRenderError,
+)
+from src.ai.exception.tool_exception import (
+    ToolDisabledError,
+    ToolError,
+    ToolExecutionError,
+    ToolNotFoundError,
+    ToolPermissionError,
+)
 
 __all__ = [
+    # 基础
     "BaseExceptions",
+    # LLM
     "LLMCircuitOpenError",
     "LLMException",
     "LLMRetryExhaustedError",
     "ModelNotSupportedException",
+    # Tool
+    "ToolDisabledError",
+    "ToolError",
+    "ToolExecutionError",
+    "ToolNotFoundError",
+    "ToolPermissionError",
+    # MCP
+    "MCPConfigError",
+    "MCPConnectionError",
+    "MCPError",
+    "MCPProtocolError",
+    "MCPToolCallError",
+    "MCPToolDiscoveryError",
+    # Loader
+    "LoadPermissionError",
+    "LoaderError",
+    "UnsupportedFileTypeError",
+    # Prompt
+    "PromptError",
+    "PromptNotFoundError",
+    "PromptRenderError",
+    # Skill
+    "SkillError",
+    "SkillLoadError",
+    "SkillNotFoundError",
+    "SkillRenderError",
+    # Memory
+    "MemoryError",
+    "MemoryPathError",
+    "MemoryScanError",
+    # RAG
+    "RagEmbeddingError",
+    "RagError",
+    "SplitterError",
+    # HTTP
+    "ConverterError",
+    "HttpError",
 ]
-

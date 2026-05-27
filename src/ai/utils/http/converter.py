@@ -9,7 +9,6 @@
 参考 memory factory 的 ABC + dict 注册表 + 装饰器 + 单例模式。
 """
 
-from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
@@ -17,16 +16,9 @@ from typing import Any, ClassVar
 import httpx
 
 from src.ai.config.logging_setup import get_logger
-from src.ai.exception.base_exception import BaseExceptions
+from src.ai.exception.http_exception import ConverterError
 
 logger = get_logger(__name__)
-
-
-# ── 异常 ─────────────────────────────────────────────────
-
-
-class ConverterError(BaseExceptions):
-    """实体转换失败异常。"""
 
 
 # ── ABC ──────────────────────────────────────────────────

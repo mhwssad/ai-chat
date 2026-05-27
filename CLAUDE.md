@@ -59,12 +59,12 @@ src/ai/
 │   ├── tools/      → 工具子系统：Registry、内置工具(builtins)、执行器
 │   │   └── mcp/    → MCP 协议：Client、Manager、工具适配器
 │   ├── prompts/    → 提示词模板管理（Service + Renderer + 持久化）
-│   ├── memory/     → 记忆子系统（文件 + DB 双存储、相关性检索）
-│   └── skils/      → 技能插件骨架
+│   ├── memory/     → 记忆子系统（MEMORY.md 索引 + 文件存储、DB 辅助索引、相关性检索）
+│   └── skills/     → 技能插件（SKILL.md 文件驱动、渐进式披露）
 ├── rag/            → RAG 管线：文件加载、文本切分、Embedding、相似度检索
 ├── storage/        → SQLModel ORM、Repository、数据库连接管理
 ├── security/       → 加密（Fernet API Key 加密/解密）
-├── exception/      → 统一异常体系（BaseExceptions → LLMException 等）
+├── exception/      → 统一异常体系（所有自定义异常集中管理：LLM、Tool、MCP、Loader、Prompt、Skill、Memory、RAG、HTTP）
 └── utils/          → 工具函数（字符串、HTTP 客户端、缓存、脱敏、token 计算）
 ```
 
@@ -154,7 +154,7 @@ API Route → api/services/<name>_service.py
 | RAG | `src/ai/rag/` |
 | ORM / Repository | `src/ai/storage/<name>_models.py` + `<name>_repository.py` |
 | 提示词模板 | 通过 `PromptService` 管理，持久化到 DB |
-| 记忆 | `src/ai/core/memory/`，文件 + DB 双存储 |
+| 记忆 | `src/ai/core/memory/`，MEMORY.md 索引 + 文件存储，DB 辅助索引 |
 
 ## 环境配置
 

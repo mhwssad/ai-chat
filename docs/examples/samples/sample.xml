@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<catalog>
+    <book id="1">
+        <title>Python 编程</title>
+        <author>张三</author>
+        <price>99.00</price>
+        <category>
+            <name>技术</name>
+            <subcategory>编程语言</subcategory>
+        </category>
+    </book>
+    <book id="2">
+        <title>数据科学</title>
+        <author>李四</author>
+        <price>129.00</price>
+        <category>
+            <name>技术</name>
+            <subcategory>数据科学</subcategory>
+        </category>
+    </book>
+    <book id="3">
+        <title>机器学习实战</title>
+        <author>王五</author>
+        <price>159.00</price>
+        <category>
+            <name>技术</name>
+            <subcategory>人工智能</subcategory>
+        </category>
+    </book>
+</catalog>

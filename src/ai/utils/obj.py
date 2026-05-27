@@ -4,14 +4,50 @@
 """
 
 import dataclasses
+import functools
 import importlib
 import pkgutil
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 from src.ai.config.logging_setup import get_logger
 
 logger = get_logger(__name__)
+
+F = TypeVar("F", bound=type)
+
+
+def singleton(cls: F) -> F:
+    """单例模式装饰器，确保类只有一个实例。
+
+    使用实例缓存实现，第一次实例化后返回缓存的实例。
+
+    Args:
+        cls: 要装饰的类
+
+    Returns:
+        装饰后的类（仍是原类，只是强制单例行为）
+
+    示例:
+        ```python
+        @singleton
+        class MySingleton:
+            def __init__(self):
+                self.value = 1
+
+        a = MySingleton()
+        b = MySingleton()
+        assert a is b  # True，单例生效
+        ```
+    """
+
+    @functools.wraps(cls)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        if not hasattr(wrapper, "_instance"):
+            wrapper._instance = cls(*args, **kwargs)
+        return wrapper._instance
+
+    return wrapper
 
 
 class Obj:

@@ -1,6 +1,0 @@
-{% if flash_message %}
-<div class="flash flash-{{ flash_type | default('success') }}" id="flashMsg">
-  <span>{{ flash_message }}</span>
-  <button type="button" class="flash-close" onclick="this.parentElement.remove()">&times;</button>
-</div>
-{% endif %}

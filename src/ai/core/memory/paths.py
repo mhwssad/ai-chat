@@ -1,20 +1,19 @@
 """记忆路径解析与安全校验。"""
 
-from __future__ import annotations
 
 import re
 from pathlib import Path
 
 from src.ai.config.base_config import project_root
-
-from .errors import MemoryPathError
+from src.ai.config.settings import settings
+from src.ai.exception.memory_exception import MemoryPathError
 
 
 class MemoryPathResolver:
     """解析自动记忆和团队记忆路径。"""
 
     def __init__(self, *, memory_base: str | Path | None = None) -> None:
-        self._memory_base = Path(memory_base) if memory_base else project_root / "data" / "memory"
+        self._memory_base = Path(memory_base) if memory_base else project_root / settings.memory.memory_dir
 
     def auto_memory_dir(self, *, git_root: str | Path | None = None, override: str | Path | None = None) -> Path:
         if override:

@@ -1,0 +1,30 @@
+# 文档加载器配置示例
+
+loader:
+  # 最大文件大小（字节）
+  max_file_size: 104857600  # 100MB
+  
+  # 支持的编码
+  encodings:
+    - utf-8
+    - gbk
+    - gb2312
+  
+  # 解析模式
+  mode: local  # local | api | auto
+
+# Unstructured 配置
+unstructured:
+  api_key: ""
+  api_url: https://api.unstructured.io/general/v0/general
+  
+# 缓存配置
+cache:
+  enabled: true
+  ttl: 3600
+  max_items: 1000
+
+# 日志配置
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

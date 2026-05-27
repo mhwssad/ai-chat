@@ -20,7 +20,6 @@
         sessions = repo.list(limit=10, offset=0)
 """
 
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Generic, NamedTuple, TypeVar

@@ -1,15 +1,12 @@
 """提示词数据库模型。"""
 
-from __future__ import annotations
 
 from datetime import datetime
 
 from sqlalchemy import Column, Index, String
 from sqlmodel import Field, SQLModel
 
-
-def _dt_now() -> datetime:
-    return datetime.now()
+from src.ai.storage.utils import dt_now as _dt_now
 
 
 class PromptTemplate(SQLModel, table=True):

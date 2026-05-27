@@ -1,0 +1,28 @@
+{
+    "name": "示例配置",
+    "version": "1.0.0",
+    "description": "这是一个 JSON 配置文件示例",
+    "settings": {
+        "debug": true,
+        "max_connections": 100,
+        "timeout": 30,
+        "retry_count": 3
+    },
+    "database": {
+        "host": "localhost",
+        "port": 5432,
+        "name": "test_db",
+        "pool_size": 10
+    },
+    "features": [
+        "文档加载",
+        "文本处理",
+        "格式转换",
+        "元数据提取"
+    ],
+    "metadata": {
+        "created": "2024-01-15",
+        "updated": "2024-01-20",
+        "author": "开发者"
+    }
+}

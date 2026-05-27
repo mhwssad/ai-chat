@@ -1,18 +1,5 @@
-"""运行态数据仓库。
+"""运行态数据仓库。"""
 
-提供运行态表的数据访问层。
-
-使用方式::
-
-    from src.ai.storage.database import get_session
-    from src.ai.storage.runtime_repository import ModelCallRepository, AuditLogRepository
-
-    with get_session() as session:
-        call_repo = ModelCallRepository(session)
-        audit_repo = AuditLogRepository(session)
-"""
-
-from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
@@ -24,33 +11,9 @@ from src.ai.storage.base_repository import BaseRepository
 from src.ai.storage.runtime_models import (
     AuditLog,
     MemoryEntry,
-    Message,
     ModelCall,
-    PermissionDecision,
-    SchemaVersion,
-    Session,
-    Summary,
     ToolCall,
 )
-
-
-class SchemaVersionRepository(BaseRepository[SchemaVersion]):
-    model = SchemaVersion
-
-
-class SessionRepository(BaseRepository[Session]):
-    model = Session
-
-
-class MessageRepository(BaseRepository[Message]):
-    model = Message
-
-    def get_by_session(self, session_id: str) -> list[Message]:
-        return self.list(session_id=session_id, order_by="created_at", descending=False)
-
-
-class SummaryRepository(BaseRepository[Summary]):
-    model = Summary
 
 
 class ModelCallRepository(BaseRepository[ModelCall]):
@@ -105,33 +68,25 @@ class ModelCallRepository(BaseRepository[ModelCall]):
         }
 
     def get_stats_by_model(self, *, since: datetime | None = None) -> list[dict[str, Any]]:
-        """按 model + provider 分组聚合。"""
+        """按 model 分组聚合。"""
         stmt = select(
             ModelCall.model,
-            ModelCall.provider,
             func.count(ModelCall.id),
             func.sum(ModelCall.total_tokens),
             func.sum(ModelCall.total_cost),
-        ).group_by(ModelCall.model, ModelCall.provider)
+        ).group_by(ModelCall.model)
         if since:
             stmt = stmt.where(ModelCall.created_at >= since)
         rows = self.session.exec(stmt).all()
         return [
             {
                 "model": r[0],
-                "provider": r[1],
-                "calls": r[2],
-                "total_tokens": int(r[3] or 0),
-                "total_cost": float(r[4] or 0),
+                "calls": r[1],
+                "total_tokens": int(r[2] or 0),
+                "total_cost": float(r[3] or 0),
             }
             for r in rows
         ]
-
-
-class PermissionDecisionRepository(BaseRepository[PermissionDecision]):
-    """权限决策仓库。"""
-
-    model = PermissionDecision
 
 
 class ToolCallRepository(BaseRepository[ToolCall]):
@@ -150,6 +105,22 @@ class MemoryEntryRepository(BaseRepository[MemoryEntry]):
         if scope:
             filters["scope"] = scope
         return self.list(limit=limit, order_by="updated_at", descending=True, **filters)
+
+    def get_by_type(self, memory_type: str, *, limit: int = 50) -> list[MemoryEntry]:
+        """按记忆类型查询活跃条目。"""
+        return self.list(
+            status="active", memory_type=memory_type,
+            limit=limit, order_by="updated_at", descending=True,
+        )
+
+    def search_summary(self, keyword: str, *, limit: int = 20) -> list[MemoryEntry]:
+        """按关键词搜索 content_summary。"""
+        all_entries = self.get_active(limit=500)
+        keyword_lower = keyword.lower()
+        return [
+            e for e in all_entries
+            if e.content_summary and keyword_lower in e.content_summary.lower()
+        ][:limit]
 
 
 class AuditLogRepository(BaseRepository[AuditLog]):

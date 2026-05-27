@@ -3,7 +3,6 @@
 该模块只处理「用量 + 价格规则 => 费用」的计算，不依赖具体模型请求实现。
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_HALF_UP

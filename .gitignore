@@ -25,3 +25,5 @@ uv.lock
 data/
 
 cs/
+.mcp.json
+mcp_servers.json

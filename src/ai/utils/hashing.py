@@ -14,7 +14,6 @@ Usage::
     H.config_hash(base_url="...", timeout=30) # 配置哈希
 """
 
-from __future__ import annotations
 
 import hashlib
 import uuid

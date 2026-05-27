@@ -1,49 +1,61 @@
 """文档加载器模块。
 
-提供统一的文档加载接口，基于 langchain_unstructured 的 UnstructuredLoader，
-支持多种文件格式：TXT, HTML, XML, JSON, MD, PDF, DOCX, CSV, TSV,
-PPTX, XLSX, EPUB, RTF, RST, ODT, 图片(OCR), EML, MSG 等。
+采用职责链模式，各加载器自注册到 LoaderRegistry，ChainLoader 按优先级遍历执行。
 
-示例:
-    from src.ai.core.loaders import load_document, DocumentLoaderFactory
+示例::
 
-    doc = load_document("/path/to/file.md")
-    factory = DocumentLoaderFactory()
-    doc = factory.load("/path/to/file.pdf")
+    from src.ai.core.loaders import ChainLoader
+
+    # 创建一次，反复使用
+    loader = ChainLoader()
+
+    # 加载单个文件
+    docs = loader.load_file("report.pdf")
+
+    # 加载目录下所有文件
+    docs = loader.load_dir("data/documents/")
+
+    # 批量加载
+    docs = loader.load_batch(["a.pdf", "b.txt", "c.md"])
+
+    # 注册自定义加载器
+    from src.ai.core.loaders import loader_registry
+    loader_registry.register(MyLoader, priority=150, name="my_loader")
 """
 
-from .base import (
-    DocumentLoader,
-    DocumentMetadata,
-    LoadedDocument,
+from src.ai.config.loader_settings import UnstructuredSettings, unstructured_settings
+from src.ai.exception.loader_exception import (
+    LoaderError,
+    LoadPermissionError,
+    UnsupportedFileTypeError,
 )
-from .config import UnstructuredSettings, unstructured_settings
-from .errors import LoaderError, LoadPermissionError, UnsupportedFileTypeError
-from .factory import (
-    DocumentLoaderFactory,
-    get_document_loader_factory,
-    load_document,
-    load_documents,
-)
-from .unified_loader import UnifiedLoader
+from .base import LangchainAdapter, LoaderStrategy
+from .chain_loader import ChainLoader
+from .registry import LoaderRegistry, loader_registry
+
+# 导入各加载器模块以触发自注册
+from .unstructured_loader import UnstructuredLoader  # noqa: E402
+from .ocr_loader import OcrImageLoader  # noqa: E402
+from .text_loader import PlainTextLoader  # noqa: E402
 
 __all__ = [
-    # 基础类和接口
-    "DocumentLoader",
-    "DocumentMetadata",
-    "LoadedDocument",
+    # 基类
+    "LoaderStrategy",
+    "LangchainAdapter",
+    # 注册表
+    "LoaderRegistry",
+    "loader_registry",
+    # 编排器
+    "ChainLoader",
+    # 加载器
+    "UnstructuredLoader",
+    "OcrImageLoader",
+    "PlainTextLoader",
     # 配置
     "UnstructuredSettings",
     "unstructured_settings",
-    # 错误类
+    # 异常
     "LoaderError",
     "UnsupportedFileTypeError",
     "LoadPermissionError",
-    # 统一加载器
-    "UnifiedLoader",
-    # 工厂和便捷函数
-    "DocumentLoaderFactory",
-    "get_document_loader_factory",
-    "load_document",
-    "load_documents",
 ]
