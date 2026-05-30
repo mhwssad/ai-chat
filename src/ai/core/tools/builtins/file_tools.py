@@ -6,11 +6,13 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from src.ai.core.tools.registry import register_tool
+from src.ai.core.tools.register import register_tool
 
 
 @tool
-async def file_read(path: str, encoding: str = "utf-8", max_bytes: int = 1048576) -> str:
+async def file_read(
+    path: str, encoding: str = "utf-8", max_bytes: int = 1048576
+) -> str:
     """读取本地文件内容。
 
     Args:
@@ -81,7 +83,16 @@ async def file_json_read(path: str) -> str:
 
 # ── 自注册 ──────────────────────────────────────────────────────────────────
 
-register_tool(file_read, source_type="builtin", permissions=["file_read"], essential=True)
-register_tool(file_write, source_type="builtin", permissions=["file_write"], essential=True)
-register_tool(edit_file, source_type="builtin", permissions=["file_read", "file_write"], essential=True)
+register_tool(
+    file_read, source_type="builtin", permissions=["file_read"], essential=True
+)
+register_tool(
+    file_write, source_type="builtin", permissions=["file_write"], essential=True
+)
+register_tool(
+    edit_file,
+    source_type="builtin",
+    permissions=["file_read", "file_write"],
+    essential=True,
+)
 register_tool(file_json_read, source_type="builtin", permissions=["file_read"])

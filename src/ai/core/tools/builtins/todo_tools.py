@@ -5,7 +5,7 @@ from typing import Any
 
 from langchain_core.tools import tool
 
-from src.ai.core.tools.registry import register_tool
+from src.ai.core.tools.register import register_tool
 
 _todos: list[dict[str, Any]] = []
 
@@ -18,7 +18,10 @@ async def todo_write(todos: list[dict[str, Any]]) -> str:
         todos: 待办事项列表，每项为包含 content/status 等字段的字典。
     """
     global _todos
-    _todos = [dict(item) if isinstance(item, dict) else {"content": str(item)} for item in todos]
+    _todos = [
+        dict(item) if isinstance(item, dict) else {"content": str(item)}
+        for item in todos
+    ]
     return json.dumps(_todos, ensure_ascii=False, indent=2)
 
 

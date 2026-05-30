@@ -5,7 +5,7 @@ import subprocess
 
 from langchain_core.tools import tool
 
-from src.ai.core.tools.registry import register_tool
+from src.ai.core.tools.register import register_tool
 
 
 @tool

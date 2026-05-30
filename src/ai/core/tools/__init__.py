@@ -11,9 +11,24 @@ from src.ai.exception.tool_exception import (
     ToolNotFoundError,
     ToolPermissionError,
 )
-from src.ai.core.tools.manager import ToolManager, tool_manager
-from src.ai.core.tools.registry import ToolRegistry, register_tool, tool_registry
-from src.ai.core.tools.types import ToolFilterContext, ToolSourceType
+from src.ai.core.tools.manager import ToolManager
+from src.ai.core.tools.register import register_tool
+from src.ai.core.tools.registry import ToolRegistry
+from src.ai.core.tools.types import ToolSourceType
+
+
+# 惰性导入：DI 容器单例
+def __getattr__(name: str):
+    if name == "tool_registry":
+        from src.ai.core.container import container
+
+        return container.tool_container.tool_registry()
+    if name == "tool_manager":
+        from src.ai.core.container import container
+
+        return container.tool_container.tool_manager()
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     # 注册表
@@ -24,7 +39,6 @@ __all__ = [
     "ToolManager",
     "tool_manager",
     # 类型
-    "ToolFilterContext",
     "ToolSourceType",
     # 异常
     "ToolDisabledError",

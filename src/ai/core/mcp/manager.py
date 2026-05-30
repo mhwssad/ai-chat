@@ -1,49 +1,37 @@
-"""MCP server 管理器 — 使用 langchain-mcp-adapters。"""
+"""MCP 管理器 — 协调配置、客户端和健康检查。"""
 
-import logging
 from typing import Any
 
 from langchain_core.tools import BaseTool
-from langchain_mcp_adapters.client import MultiServerMCPClient
 
+from .client import MCPClient
 from .config import MCPConfigRepository
 from .types import MCPHealthResult
 
-logger = logging.getLogger(__name__)
-
 
 class MCPManager:
-    """管理 MCP server 配置、工具发现和资源访问。
+    """MCP 子系统协调器。
 
-    内部使用 langchain-mcp-adapters 的 MultiServerMCPClient 管理连接，
-    discover_tools() 返回 langchain 原生 BaseTool 列表。
+    组合 MCPConfigRepository 和 MCPClient，
+    提供健康检查等跨组件能力。
     """
 
-    def __init__(self) -> None:
-        self._config_repo = MCPConfigRepository()
-        self._client: MultiServerMCPClient | None = None
-        self._config_hash: str | None = None
+    def __init__(self, config_repo: MCPConfigRepository) -> None:
+        self._config_repo = config_repo
+        self._client = MCPClient(config_repo=config_repo)
 
-    def _get_client(self) -> MultiServerMCPClient:
-        """懒创建 MultiServerMCPClient，配置变化时重建。"""
-        connections = self._config_repo.to_connections()
-        config_hash = str(sorted(connections.keys()))
-        if self._client is None or config_hash != self._config_hash:
-            self._client = MultiServerMCPClient(
-                connections,
-                tool_name_prefix=True,
-            )
-            self._config_hash = config_hash
+    @property
+    def client(self) -> MCPClient:
+        """暴露底层客户端。"""
         return self._client
 
     async def discover_tools(self, server_key: str | None = None) -> list[BaseTool]:
-        """发现 MCP 工具，返回 langchain BaseTool 列表。
+        """发现 MCP 工具（委托 client）。
 
         Args:
             server_key: 指定 server 名称，None 表示所有已启用的 server。
         """
-        client = self._get_client()
-        return await client.get_tools(server_name=server_key)
+        return await self._client.discover_tools(server_key)
 
     async def call_tool(
         self,
@@ -52,26 +40,42 @@ class MCPManager:
         tool_name: str,
         arguments: dict[str, Any] | None = None,
     ) -> Any:
-        """调用 MCP 工具。
+        """调用 MCP 工具（委托 client）。
 
-        通过 session 直接调用，返回 MCP SDK 原生结果。
+        Args:
+            server_key: MCP server 标识。
+            tool_name: 工具名称。
+            arguments: 工具参数。
         """
-        client = self._get_client()
-        async with client.session(server_key) as session:
-            return await session.call_tool(tool_name, arguments or {})
+        return await self._client.call_tool(
+            server_key=server_key, tool_name=tool_name, arguments=arguments
+        )
 
     async def list_resources(self, server_key: str) -> list[Any]:
-        """列出 MCP server 资源。"""
-        client = self._get_client()
-        return await client.get_resources(server_name=server_key)
+        """列出资源（委托 client）。
+
+        Args:
+            server_key: MCP server 标识。
+        """
+        return await self._client.list_resources(server_key)
 
     async def read_resource(self, *, server_key: str, uri: str) -> list[Any]:
-        """读取 MCP server 资源。"""
-        client = self._get_client()
-        return await client.get_resources(server_name=server_key, uris=uri)
+        """读取资源（委托 client）。
 
-    async def health_check(self, server_key: str | None = None) -> list[MCPHealthResult]:
-        """检查 MCP server 健康状态。"""
+        Args:
+            server_key: MCP server 标识。
+            uri: 资源 URI。
+        """
+        return await self._client.read_resource(server_key=server_key, uri=uri)
+
+    async def health_check(
+        self, server_key: str | None = None
+    ) -> list[MCPHealthResult]:
+        """检查 MCP server 健康状态。
+
+        Args:
+            server_key: 指定 server 名称，None 表示所有已启用的 server。
+        """
         configs = self._config_repo.list_enabled()
         if server_key:
             configs = [c for c in configs if c.server_key == server_key]
@@ -80,18 +84,19 @@ class MCPManager:
         for config in configs:
             try:
                 tools = await self.discover_tools(config.server_key)
-                results.append(MCPHealthResult(
-                    server_key=config.server_key,
-                    status="available",
-                    tool_count=len(tools),
-                ))
+                results.append(
+                    MCPHealthResult(
+                        server_key=config.server_key,
+                        status="available",
+                        tool_count=len(tools),
+                    )
+                )
             except Exception as exc:
-                results.append(MCPHealthResult(
-                    server_key=config.server_key,
-                    status="error",
-                    message=str(exc),
-                ))
+                results.append(
+                    MCPHealthResult(
+                        server_key=config.server_key,
+                        status="error",
+                        message=str(exc),
+                    )
+                )
         return results
-
-
-mcp_manager = MCPManager()

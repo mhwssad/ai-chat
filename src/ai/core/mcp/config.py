@@ -1,6 +1,5 @@
 """MCP 配置读取 — 从 JSON 文件加载。"""
 
-
 import json
 from pathlib import Path
 from typing import Any
@@ -16,17 +15,8 @@ class MCPConfigRepository:
     默认为项目根目录下的 mcp_servers.json。
     """
 
-    def __init__(self, config_path: str | Path | None = None) -> None:
-        if config_path is None:
-            from src.ai.config.settings import settings
-
-            config_path = settings.mcp.mcp_config_file
-        path = Path(config_path)
-        if not path.is_absolute():
-            from src.ai.config.base_config import project_root
-
-            path = project_root / path
-        self._path = path
+    def __init__(self, config_path: Path) -> None:
+        self._path = config_path
 
     def list_enabled(self) -> list[MCPServerConfig]:
         """列出所有启用的 MCP server 配置。"""
@@ -42,35 +32,11 @@ class MCPConfigRepository:
         """获取指定 server 的配置（必须存在且启用）。"""
         data = self._load_json()
         if server_key not in data:
-            raise MCPConfigError(
-                "MCP server 不存在", context={"server": server_key}
-            )
+            raise MCPConfigError("MCP server 不存在", context={"server": server_key})
         config = self._to_config(server_key, data[server_key])
         if not config.enabled:
-            raise MCPConfigError(
-                "MCP server 未启用", context={"server": server_key}
-            )
+            raise MCPConfigError("MCP server 未启用", context={"server": server_key})
         return config
-
-    def to_connections(self) -> dict[str, dict[str, Any]]:
-        """转为 langchain-mcp-adapters 的 Connection 格式。
-
-        返回 dict[str, Connection]，可直接传给 MultiServerMCPClient。
-        """
-        configs = self.list_enabled()
-        connections: dict[str, dict[str, Any]] = {}
-        for config in configs:
-            conn: dict[str, Any] = {"transport": config.transport}
-            if config.command:
-                conn["command"] = config.command
-            if config.args:
-                conn["args"] = config.args
-            if config.url:
-                conn["url"] = config.url
-            if config.env:
-                conn["env"] = config.env
-            connections[config.server_key] = conn
-        return connections
 
     def _load_json(self) -> dict[str, Any]:
         """读取并解析 JSON 文件。"""

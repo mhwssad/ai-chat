@@ -3,7 +3,7 @@
 from langchain_core.tools import StructuredTool
 from pydantic import BaseModel, ConfigDict
 
-from src.ai.core.tools.registry import register_tool
+from src.ai.core.tools.register import register_tool
 
 
 class _PlaceholderArgs(BaseModel):
@@ -13,9 +13,6 @@ class _PlaceholderArgs(BaseModel):
 
 
 _PLACEHOLDERS: dict[str, str] = {
-    "NotebookEdit": "编辑 Jupyter 笔记本单元格",
-    "WebSearch": "搜索网络获取最新信息",
-    "WebFetch": "获取网页内容并提取信息",
     "TaskCreate": "创建新任务",
     "TaskGet": "获取任务详情",
     "TaskList": "列出所有任务",
@@ -23,13 +20,6 @@ _PLACEHOLDERS: dict[str, str] = {
     "TaskStop": "停止运行中的后台任务",
     "TaskOutput": "获取任务执行输出",
     "Agent": "分叉子代理并行处理复杂任务",
-    "Skill": "执行 slash 命令技能",
-    "EnterPlanMode": "进入计划模式",
-    "ExitPlanMode": "提交计划等待审批",
-    "EnterWorktree": "创建 git worktree",
-    "ExitWorktree": "退出 worktree",
-    "AskUserQuestion": "向用户提问",
-    "SendUserMessage": "向用户发送消息",
     "CronCreate": "创建定时任务",
     "CronDelete": "删除定时任务",
     "CronList": "列出所有定时任务",
@@ -38,7 +28,6 @@ _PLACEHOLDERS: dict[str, str] = {
     "TeamDelete": "删除团队及任务目录",
     "LSP": "代码智能",
     "SendMessage": "向子代理发送消息",
-    "ToolSearchTool": "获取延迟工具 schema",
 }
 
 
