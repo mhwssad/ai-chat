@@ -1,149 +1,486 @@
-# AI Chat 编码规范
+# 代码规范
 
-本文档约束当前 `src/ai` 架构下的编码方式。目标是减少重构漂移，让 FastAPI、core、tools、RAG、storage 能长期保持清晰边界。
+本文档定义 `ai-chat` 项目的编码规范。所有新代码必须遵守。
 
-## 1. 基本原则
+---
 
-- 单一职责：一个模块只承担一个明确职责。
-- 文档优先：需求、schema、规范变更应同步文档。
-- 数据库优先：业务配置和运行态数据以 SQLite 表为 source of truth。
-- 复用现有边界：模型走 `core/models`，工具走 `core/tools`，存储走 `storage`。
-- 不保留旧兼容：当前重构不要求兼容旧 `src/ai_chat`。
+## 1. 语言与命名
 
-## 2. Python 规范
+### 1.1 语言选择
 
-- Python 版本按 `pyproject.toml`：`>=3.13`。
-- 使用现代类型语法：`list[str]`、`dict[str, Any]`、`X | None`。
-- 新增函数和方法必须标注参数和返回值类型。
-- 公共模块、公共类、公共函数必须写中文 docstring。
-- 文件编码统一 UTF-8。
-- 类名使用 `PascalCase`，函数、变量、文件名使用 `snake_case`。
-- 常量使用大写下划线。
+| 场景 | 语言 |
+| --- | --- |
+| 类名、函数名、变量名、文件名 | 英文 |
+| 注释、docstring、commit message | 中文 |
+| 字符串常量（面向用户的提示、错误信息） | 中文 |
 
-## 3. 导入规范
-
-- 使用绝对导入，例如 `from src.ai.core.models import ModelClient`。
-- 标准库、第三方、本地模块分组。
-- 禁止 `from x import *`。
-- 避免在 `__init__.py` 中执行复杂逻辑。
-- 延迟导入只用于避免循环依赖、可选依赖或启动性能问题。
-
-## 4. FastAPI 编码规范
-
-- `routes/` 只处理 HTTP 层，不写业务逻辑。
-- `services/` 负责调用 `core`、`rag`、`storage`。
-- `schemas/` 使用 Pydantic，不直接暴露 ORM。
-- 页面放 `templates/`，静态资源放 `static/`。
-- 异常处理统一在 `api/errors.py`。
-- 路由返回结构必须稳定，避免直接返回不可控第三方对象。
-
-## 5. Core 编码规范
-
-### 5.1 模型
-
-- 所有模型请求统一走 `src/ai/core/models`。
-- `core/models` 只负责请求和接收，不做 RAG、记忆、业务编排。
-- token 统计和价格计算放独立工具模块。
-- 新能力通过 `ModelCapability`、request/response 类型、provider registry 扩展。
-- 新 provider 放 `core/models/providers/`。
-
-### 5.2 工具
-
-- 所有工具统一走 `src/ai/core/tools`。
-- 内置工具、MCP 工具、未来 Skill 工具都必须进入统一注册表。
-- 工具执行统一走 `ToolExecutor`，不能绕过审计。
-- MCP 只放在 `core/tools/mcp`，不再新增 `core/mcp`。
-
-### 5.3 Skill
-
-- Skill 能力放在 `core/skils`。
-- Skill 发现结果写入数据库 `skills` 表。
-- Skill 挂载必须转换为 `ToolDefinition` 并进入统一工具注册表。
-- Skill prompt 渲染使用 Jinja2。
-
-### 5.4 RAG
-
-- RAG 文件加载、切分、存储、检索放 `src/ai/rag`。
-- RAG embedding 必须优先复用 `core/models`。
-- 本地 hash embedding 只能作为 fallback，不能成为新的模型请求体系。
-- RAG 表变更必须同步 `docs/data.sql`。
-
-## 6. Storage 编码规范
-
-- ORM 使用 SQLModel。
-- Repository 继承 `BaseRepository`，只做数据访问。
-- `database.py` 负责引擎、Session、初始化。
-- 新 ORM 必须确保被 `init_database()` 导入注册。
-- 数据库 schema 变更必须同步 `docs/data.sql` 和相关需求文档。
-- 不在 storage 层写模型请求、工具执行、RAG 检索等业务流程。
-- 所有 ORM 和 Repository 必须放在 `storage`，禁止放在 `core`、`rag`、`api`。
-
-## 7. Prompt 编码规范
-
-- 提示词领域能力放在 `core/prompts`。
-- 提示词模板使用数据库保存，表定义在 `storage/prompt_models.py`。
-- 提示词渲染使用 Jinja2，入口为 `PromptService`。
-- 业务代码不得硬编码大段 prompt。
-- Prompt 表变更必须同步 `docs/data.sql`。
-
-## 8. 配置规范
-
-- 启动期最小配置放 `config/base_config.py`。
-- 业务配置存数据库，例如 providers、models、mcp_servers、skills、security_policies。
-- 业务代码禁止直接 `os.getenv()`。
-- API Key 必须加密保存，禁止明文入库。
-- 缺失加密 key 应明确失败。
-
-## 9. 异常规范
-
-- 所有自定义异常必须继承 `BaseExceptions`。
-- 禁止新增裸 `Exception` 子类。
-- 异常必须提供可定位的 message 和 context。
-- FastAPI 通过 `api/errors.py` 统一转换异常响应。
-
-推荐：
+### 1.2 命名约定
 
 ```python
-raise LLMException("模型不存在", context={"model_id": model_id})
+# 类名：PascalCase
+class ModelProviderRegistry: ...
+
+# 函数/方法：snake_case
+def get_chat_llm(): ...
+
+# 常量：UPPER_SNAKE_CASE
+COMPRESS_BASE_PROMPT = "..."
+
+# 私有成员：单下划线前缀
+self._registry = registry
+
+# 模块级私有变量：单下划线前缀
+_engine: Engine | None = None
+
+# 文件名：snake_case
+# 正确：model_registry.py, chat_service.py
+# 错误：ModelRegistry.py, chatService.py
 ```
 
-禁止：
+---
+
+## 2. 类型标注
+
+### 2.1 必须标注
+
+所有新增**公共函数和方法**必须有参数和返回值类型标注：
 
 ```python
-raise Exception("error")
+# ✅ 正确
+def get_history(self, session_id: str) -> BaseChatMessageHistory:
+    ...
+
+# ❌ 错误 — 缺少返回值标注
+def get_history(self, session_id: str):
+    ...
 ```
 
-## 10. 工具函数规范
+### 2.2 现代类型语法
 
-- `utils/` 只能放无业务状态的通用工具。
-- 领域能力不要为了“复用”过早放进 `utils/`。
-- token、pricing、http、redaction 这类跨领域基础能力可以放 `utils/`。
-- 文件加载、RAG 分割、工具执行不属于 utils。
+使用 Python 3.13 的现代类型语法，禁止旧式写法：
 
-## 11. 文件大小和职责
+```python
+# ✅ 正确
+def search(query: str, *, limit: int = 5) -> list[MemorySearchResult]: ...
+def get(name: str) -> MemoryEntry | None: ...
 
-- 文件出现多个不相关职责时必须拆分。
-- Provider、Repository、Service、Schema、Route 分文件维护。
-- 单文件不断增长时优先拆出类型、适配器、仓库、服务。
-- 不创建 `misc.py`、`helper.py`、`common2.py` 这类无边界文件。
+# ❌ 错误
+from typing import List, Optional, Union
+def search(query: str, *, limit: int = 5) -> List[MemorySearchResult]: ...
+def get(name: str) -> Optional[MemoryEntry]: ...
+```
 
-## 12. 测试和验证
+### 2.3 延迟类型求值
 
-改动后至少按影响面运行：
+当类型引用会导致循环导入时，使用 `from __future__ import annotations` + `TYPE_CHECKING`：
 
-- Python 编译：`uv run python -m compileall -q src\ai main.py`
-- SQL schema：`sqlite3 :memory: ".read docs/data.sql" "PRAGMA foreign_key_check;"`
-- FastAPI 路由用 `TestClient` 验证。
-- RAG、工具、模型 provider 这类能力至少写或运行一条端到端 smoke 测试。
+```python
+from __future__ import annotations
 
-## 13. 提交前自查
+from typing import TYPE_CHECKING
 
-提交前检查：
+if TYPE_CHECKING:
+    from langchain_core.language_models import BaseChatModel
+    from src.ai.core.memory.history_store import FileHistoryStore
 
-1. 是否放在正确目录。
-2. 是否绕过了 `core/models` 或 `core/tools`。
-3. 是否新增了裸异常。
-4. 是否直接读取环境变量。
-5. 是否改了 ORM 但没改 `docs/data.sql`。
-6. 是否 API 路由写了业务逻辑。
-7. 是否一个文件承担了多个职责。
+
+class MyService:
+    def __init__(self, llm: BaseChatModel, store: FileHistoryStore) -> None:
+        ...
+```
+
+---
+
+## 3. 依赖注入（DI）
+
+### 3.1 核心原则
+
+**禁止在类内部直接创建依赖。** 所有依赖必须通过构造器注入。
+
+```python
+# ✅ 正确 — 依赖通过构造器注入
+class SkillService:
+    def __init__(self, *, loader: SkillLoader, renderer: SkillRenderer) -> None:
+        self._loader = loader
+        self._renderer = renderer
+
+# ❌ 错误 — 在构造器内部创建依赖
+class SkillService:
+    def __init__(self, *, loader: SkillLoader | None = None) -> None:
+        self._loader = loader or SkillLoader()      # 回退创建
+        self._renderer = SkillRenderer()             # 直接创建
+```
+
+### 3.2 禁止访问全局容器
+
+类的方法内部**禁止** `from src.ai.core.container import container`：
+
+```python
+# ❌ 错误 — 方法内访问全局容器
+def _calculate_budget(self, request) -> int | None:
+    from src.ai.core.container import container
+    app_settings = container.settings()
+    ...
+
+# ✅ 正确 — 通过构造器注入 settings
+class ContextAssembler:
+    def __init__(self, settings: object) -> None:
+        self._settings = settings
+
+    def _calculate_budget(self, request) -> int | None:
+        context_window = self._settings.llm.max_input_tokens
+        ...
+```
+
+### 3.3 禁止访问模块级单例
+
+类的方法内部**禁止** `from src.ai.core.xxx import yyy_service`：
+
+```python
+# ❌ 错误
+def _load_from_db(self) -> str | None:
+    from src.ai.core.prompts import prompt_service
+    result = prompt_service.render(...)
+
+# ✅ 正确
+class UserCollector:
+    def __init__(self, prompt_service: object) -> None:
+        self._prompt_service = prompt_service
+
+    def _load_from_db(self) -> str | None:
+        result = self._prompt_service.render(...)
+```
+
+### 3.4 工厂函数职责
+
+DI 容器中的工厂函数负责**组装和回退逻辑**：
+
+```python
+def _create_prompt_service(store):
+    """提示词模板服务。"""
+    from src.ai.core.prompts.renderer import PromptRenderer
+    from src.ai.core.prompts.service import PromptService
+    # 工厂函数负责创建依赖并注入
+    return PromptService(renderer=PromptRenderer(), store=store)
+```
+
+### 3.5 Builtin 工具注入
+
+`@tool` 装饰器的函数签名是 LLM 的 JSON Schema，不能加业务参数。使用**工厂函数 + 闭包**注入依赖：
+
+```python
+def create_skill_tool(skill_service):
+    """工厂函数：创建绑定了 SkillService 的 skill 工具。"""
+
+    @tool
+    async def skill(name: str, arguments: str = "") -> str:
+        """执行指定技能。"""
+        try:
+            return skill_service.activate(name, arguments=arguments)
+        except Exception as exc:
+            return f"技能执行失败: {exc}"
+
+    return skill
+
+
+def register(skill_service):
+    """注册 skill 工具。"""
+    skill_tool = create_skill_tool(skill_service)
+    register_tool(skill_tool, source_type="builtin", essential=True)
+```
+
+---
+
+## 4. Docstring
+
+### 4.1 公共类和函数
+
+必须有中文 docstring：
+
+```python
+class MemoryService:
+    """统一记忆服务。
+
+    文件系统为长期记忆存储（MEMORY.md 索引 + 详情文件），
+    对话历史和上下文构建通过 LangChain 策略管理。
+    """
+
+    def save(self, request: MemoryWriteRequest) -> MemoryEntry:
+        """保存记忆到文件系统。
+
+        Args:
+            request: 记忆写入请求。
+
+        Returns:
+            保存后的记忆条目。
+        """
+```
+
+### 4.2 Args / Returns / Raises
+
+使用 Google 风格，Args/Returns/Raises 用中文：
+
+```python
+def render(self, request: PromptRenderRequest) -> PromptRenderResult:
+    """渲染提示词模板。
+
+    Args:
+        request: 渲染请求，包含 prompt_key 和变量。
+
+    Returns:
+        渲染结果。
+
+    Raises:
+        PromptNotFoundError: 提示词模板不存在。
+    """
+```
+
+### 4.3 模块级 docstring
+
+每个模块文件顶部必须有中文 docstring：
+
+```python
+"""上下文组装器 — token 预算分配和裁剪。"""
+```
+
+---
+
+## 5. 导入规范
+
+### 5.1 导入顺序
+
+```python
+# 1. 标准库
+import hashlib
+import logging
+from pathlib import Path
+
+# 2. 第三方库
+from langchain_core.tools import BaseTool
+from sqlalchemy import Engine
+
+# 3. 项目内部
+from src.ai.config.base_config import project_root
+from src.ai.core.rag.types import RAGSearchConfig
+
+# 4. 相对导入（同包内）
+from .base import BaseMemoryStrategy
+from .types import MemoryEntry
+```
+
+### 5.2 延迟导入
+
+避免 import 时副作用（如 langchain_core 冷启动），在工厂函数内部使用延迟导入：
+
+```python
+def _create_prompt_service(store):
+    """提示词模板服务。"""
+    # 延迟导入，避免 import 时触发 langchain 冷启动
+    from src.ai.core.prompts.renderer import PromptRenderer
+    from src.ai.core.prompts.service import PromptService
+    return PromptService(renderer=PromptRenderer(), store=store)
+```
+
+### 5.3 禁止顶层导入重型依赖
+
+重型依赖（如 `magika`、`rapidocr`、`langchain_*`）必须延迟导入：
+
+```python
+# ❌ 错误 — 顶层导入重型依赖
+from magika import Magika
+
+class FileRecognizer:
+    def __init__(self):
+        self._magika = Magika()
+
+# ✅ 正确 — 延迟导入
+class FileRecognizer:
+    def __init__(self):
+        from magika import Magika
+        self._magika = Magika()
+```
+
+---
+
+## 6. 异常处理
+
+### 6.1 使用项目领域异常
+
+禁止抛出裸 `Exception`，必须继承 `BaseExceptions`：
+
+```python
+from src.ai.exception.model_exception import ModelNotSupportedException
+
+# ✅ 正确
+raise ModelNotSupportedException(
+    "不支持的模型",
+    context={"model": model_name, "provider": provider_key},
+)
+
+# ❌ 错误
+raise Exception("不支持的模型")
+```
+
+### 6.2 异常上下文
+
+使用 `context` 参数传递结构化调试信息：
+
+```python
+raise MCPConfigError(
+    "MCP server 不存在",
+    context={"server": server_key},
+)
+```
+
+### 6.3 日志与异常
+
+```python
+# 捕获后记录日志，不吞掉异常
+try:
+    result = await some_operation()
+except Exception:
+    logger.warning("操作失败，使用回退方案", exc_info=True)
+    return fallback_value
+```
+
+---
+
+## 7. 异步优先
+
+### 7.1 异步方法命名
+
+异步方法以 `a` 前缀命名：
+
+```python
+class CompressionStrategy:
+    def build_context_messages(self, session_id, system_prompt) -> list[BaseMessage]:
+        """同步构建上下文。"""
+        ...
+
+    async def abuild_context_messages(self, session_id, system_prompt) -> list[BaseMessage]:
+        """异步构建上下文。"""
+        ...
+```
+
+### 7.2 异步优先设计
+
+优先实现异步版本，同步版本作为兼容包装：
+
+```python
+def build(self, request: ContextBuildRequest) -> ContextBuildResult:
+    """同步构建上下文。"""
+    import asyncio
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+
+    if loop and loop.is_running():
+        return self._build_sync(request)
+
+    return asyncio.run(self.abuild(request))
+```
+
+---
+
+## 8. 配置管理
+
+### 8.1 禁止直接 os.getenv
+
+业务代码禁止 `os.getenv()`，配置统一通过 `config/settings.py`：
+
+```python
+# ❌ 错误
+api_key = os.getenv("OPENAI_API_KEY")
+
+# ✅ 正确 — 通过 Settings 访问
+from src.ai.config.settings import settings
+api_key = settings.llm.api_key
+```
+
+### 8.2 配置分域
+
+配置按域划分，通过 pydantic `BaseSettings` 管理：
+
+| 域 | 类 | 用途 |
+| --- | --- | --- |
+| LLM | `LLMSettings` | 模型名、超时、上下文管理 |
+| Memory | `MemorySettings` | 记忆后端、摘要设置 |
+| MCP | `MCPSettings` | MCP 客户端/服务端配置 |
+
+---
+
+## 9. 数据库
+
+### 9.1 Repository Pattern
+
+所有数据库访问通过 Repository 类，禁止直接操作 Session：
+
+```python
+# ✅ 正确
+class ProviderRepository:
+    def get_by_key(self, provider_key: str) -> Provider | None:
+        with get_session() as session:
+            return session.exec(...).first()
+
+# ❌ 错误 — 路由中直接操作 Session
+@router.get("/providers")
+def list_providers():
+    with get_session() as session:
+        return session.exec(select(Provider)).all()
+```
+
+### 9.2 API Key 加密
+
+API Key 必须加密保存（Fernet），禁止明文入库。
+
+### 9.3 Schema 同步
+
+ORM/schema 变化必须同步更新 `docs/data.sql`。
+
+---
+
+## 10. 分层约束
+
+### 10.1 调用链
+
+```text
+API Route → Service → Core (Models/Tools/Memory) → Storage
+```
+
+- 路由只做参数校验和调用 service
+- 禁止路由直接写业务逻辑
+- 禁止绕过 `core/models` 调用模型
+- 禁止绕过 `core/tools` 调用工具
+
+### 10.2 新增功能落位
+
+| 新增内容 | 放置位置 |
+| --- | --- |
+| FastAPI 路由 | `src/ai/api/routes/<name>.py` |
+| API schema | `src/ai/api/schemas/<name>.py` |
+| API service | `src/ai/api/services/<name>_service.py` |
+| 模型 provider | `src/ai/core/models/providers/<name>.py` |
+| 工具 | `src/ai/core/tools/builtins.py` 添加 `ToolDefinition` |
+| ORM / Repository | `src/ai/storage/<name>_models.py` + `<name>_repository.py` |
+
+---
+
+## 11. 验证要求
+
+每次代码修改后，根据影响面运行最小验证：
+
+```bash
+# Python 编译
+uv run python -m compileall -q src/ai main.py
+
+# 代码检查
+ruff check src/
+ruff format src/
+
+# 类型检查
+mypy src/
+
+# 数据库 schema
+sqlite3 :memory: ".read docs/data.sql" "PRAGMA foreign_key_check;"
+```

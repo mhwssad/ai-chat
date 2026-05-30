@@ -246,6 +246,96 @@ VALUES (
 );
 
 -- ============================================================
+-- scheduled_tasks: 定时任务表
+-- 存储定时任务配置和调度信息
+-- ============================================================
+CREATE TABLE IF NOT EXISTS scheduled_tasks (
+    id TEXT PRIMARY KEY,                          -- 任务唯一标识（UUID）
+    name TEXT NOT NULL UNIQUE,                    -- 任务名称（唯一）
+    description TEXT,                             -- 任务描述
+
+    -- 调度配置
+    cron_expr TEXT,                               -- Cron 表达式（5 位：分 时 日 月 周）
+    interval_seconds INTEGER CHECK (interval_seconds IS NULL OR interval_seconds > 0),  -- 间隔秒数
+    one_shot INTEGER NOT NULL DEFAULT 0 CHECK (one_shot IN (0, 1)),  -- 是否为一次性任务
+
+    -- 任务内容
+    task_type TEXT NOT NULL CHECK (task_type IN ('tool_call', 'llm_prompt', 'system_event')),  -- 任务类型
+    task_config TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(task_config)),  -- 任务配置 JSON
+
+    -- 状态管理
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'paused', 'completed', 'failed', 'disabled')),  -- 任务状态
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),  -- 是否启用
+    max_retries INTEGER NOT NULL DEFAULT 3 CHECK (max_retries >= 0),  -- 最大重试次数
+    retry_count INTEGER NOT NULL DEFAULT 0 CHECK (retry_count >= 0),  -- 当前重试次数
+
+    -- 时间追踪
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),  -- 创建时间
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),  -- 更新时间
+    last_run_at TEXT,                             -- 上次执行时间
+    next_run_at TEXT,                             -- 下次执行时间
+    completed_at TEXT,                            -- 完成时间
+
+    -- 执行统计
+    total_runs INTEGER NOT NULL DEFAULT 0 CHECK (total_runs >= 0),  -- 总执行次数
+    success_runs INTEGER NOT NULL DEFAULT 0 CHECK (success_runs >= 0),  -- 成功次数
+    failed_runs INTEGER NOT NULL DEFAULT 0 CHECK (failed_runs >= 0),  -- 失败次数
+
+    -- 扩展字段
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))  -- JSON 扩展字段
+);
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_status_enabled
+    ON scheduled_tasks (status, enabled);  -- 按状态和启用标志索引
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_next_run
+    ON scheduled_tasks (next_run_at);  -- 按下次执行时间索引，用于调度查询
+
+CREATE INDEX IF NOT EXISTS idx_scheduled_tasks_name
+    ON scheduled_tasks (name);  -- 按名称索引
+
+-- ============================================================
+-- task_execution_logs: 任务执行日志表
+-- 记录定时任务的执行历史
+-- ============================================================
+CREATE TABLE IF NOT EXISTS task_execution_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,          -- 自增主键
+    task_id TEXT NOT NULL,                        -- 关联任务 ID
+    run_id TEXT NOT NULL UNIQUE,                  -- 执行唯一标识（UUID）
+    session_id TEXT,                               -- 关联会话 ID
+
+    -- 执行信息
+    status TEXT NOT NULL DEFAULT 'running'
+        CHECK (status IN ('running', 'success', 'failed', 'timeout', 'cancelled')),  -- 执行状态
+    started_at TEXT NOT NULL DEFAULT (datetime('now')),  -- 开始时间
+    finished_at TEXT,                             -- 结束时间
+    duration_ms REAL CHECK (duration_ms IS NULL OR duration_ms >= 0),  -- 执行耗时（毫秒）
+
+    -- 结果
+    result_summary TEXT,                          -- 执行结果摘要
+    error_type TEXT,                              -- 错误类型
+    error_message TEXT,                           -- 错误详情
+
+    -- 扩展
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata)),  -- JSON 扩展字段
+
+    FOREIGN KEY (task_id) REFERENCES scheduled_tasks (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_execution_logs_task_id
+    ON task_execution_logs (task_id);  -- 按任务 ID 索引
+
+CREATE INDEX IF NOT EXISTS idx_task_execution_logs_started_at
+    ON task_execution_logs (started_at DESC);  -- 按开始时间降序索引
+
+CREATE INDEX IF NOT EXISTS idx_task_execution_logs_status
+    ON task_execution_logs (status);  -- 按状态索引
+
+CREATE INDEX IF NOT EXISTS idx_task_execution_logs_run_id
+    ON task_execution_logs (run_id);  -- 按执行 ID 索引
+
+-- ============================================================
 -- Schema 版本记录
 -- ============================================================
 COMMIT;

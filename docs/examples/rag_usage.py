@@ -18,7 +18,6 @@ from src.ai.config.model_settings import chat_model_config
 from src.ai.core.models import model_registry
 from src.ai.core.rag import (
     HashEmbeddings,
-    RagTextSplitter,
     create_rag_service,
     rag_service,
 )
@@ -255,26 +254,6 @@ def demo_delete():
     print()
 
 
-# ── 9. 文本切分 ──────────────────────────────────────────
-
-
-def demo_splitter():
-    """RagTextSplitter 文本切分。"""
-    splitter = RagTextSplitter(chunk_size=200, chunk_overlap=30)
-
-    text = (
-        "AI Chat 是基于 FastAPI 的本地 AI 工作台。"
-        "它提供多供应商模型调用、工具执行、MCP 协议、RAG 检索等能力。"
-        "项目使用 Python 3.13，uv 管理依赖。"
-    )
-
-    print("=== 文本切分 ===")
-    chunks = splitter.split(text)
-    for chunk in chunks:
-        print(f"  chunk {chunk.index}: {chunk.content}")
-    print()
-
-
 # ── 主入口 ──────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -288,7 +267,6 @@ if __name__ == "__main__":
     demo_custom_service()
     demo_embedding_config()
     demo_hash_fallback()
-    demo_splitter()
 
     # 核心：索引 → 搜索 → 上下文 → LLM 问答
     demo_index_single_file()

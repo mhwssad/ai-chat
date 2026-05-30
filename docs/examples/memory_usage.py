@@ -20,8 +20,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from langchain_core.messages import HumanMessage
 
 from src.ai.config.model_settings import chat_model_config
+from src.ai.core.context import ContextBuildRequest
 from src.ai.core.memory import (
-    ContextBuildRequest,
     MemoryWriteRequest,
     memory_service,
 )
@@ -111,12 +111,10 @@ def demo_context_build():
         enable_memory=True,
         memory_search_limit=3,
     )
-    result = memory_service.build_context(request)
-
-    print(f"  策略: {result.strategy_used}")
-    print(f"  token 预算启用: {result.budget_enabled}")
-    print(f"  消息数: {len(result.messages)}")
-    print(f"  系统提示词长度: {len(result.system_message)} 字符")
+    # 上下文构建已迁移到 ContextService（src.ai.core.context）
+    # 此处跳过，仅展示 MemoryService 的记忆管理 API
+    print("  (上下文构建已迁移到 ContextService.abuild，此处跳过)")
+    print()
 
     # 预览系统提示词
     if result.system_message:
