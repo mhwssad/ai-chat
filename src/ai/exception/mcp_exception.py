@@ -1,6 +1,5 @@
 """MCP 模块异常类型。"""
 
-
 from src.ai.exception.base_exception import BaseExceptions
 
 

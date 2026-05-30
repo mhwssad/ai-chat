@@ -1,6 +1,5 @@
 """文档加载器错误类。"""
 
-
 from pathlib import Path
 
 from src.ai.exception.base_exception import BaseExceptions
@@ -9,7 +8,9 @@ from src.ai.exception.base_exception import BaseExceptions
 class LoaderError(BaseExceptions):
     """文档加载失败。"""
 
-    def __init__(self, message: str, *, path: str | None = None, cause: Exception | None = None) -> None:
+    def __init__(
+        self, message: str, *, path: str | None = None, cause: Exception | None = None
+    ) -> None:
         """初始化加载器错误。
 
         Args:
@@ -30,7 +31,9 @@ class LoaderError(BaseExceptions):
 class UnsupportedFileTypeError(LoaderError):
     """不支持的文件类型错误。"""
 
-    def __init__(self, path: str | Path, *, supported_types: list[str] | None = None) -> None:
+    def __init__(
+        self, path: str | Path, *, supported_types: list[str] | None = None
+    ) -> None:
         """初始化不支持文件类型错误。
 
         Args:

@@ -10,7 +10,6 @@
 支持 response_type 参数自动反序列化响应，支持请求体自动序列化。
 """
 
-
 import dataclasses
 from typing import Any
 

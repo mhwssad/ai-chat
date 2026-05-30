@@ -14,7 +14,6 @@
     plain = decrypt_secret(cipher)
 """
 
-
 from src.ai.config.base_config import get_bootstrap_settings
 from src.ai.config.logging_setup import get_logger
 
@@ -78,16 +77,6 @@ def decrypt_secret(ciphertext: str) -> str:
     except Exception as e:
         logger.error("解密失败: %s", e)
         raise ValueError("解密失败：密钥不匹配或数据已损坏") from e
-
-
-def encrypt(plaintext: str) -> str:
-    """兼容旧调用的加密函数。"""
-    return encrypt_secret(plaintext)
-
-
-def decrypt(ciphertext: str) -> str:
-    """兼容旧调用的解密函数。"""
-    return decrypt_secret(ciphertext)
 
 
 def generate_key() -> str:

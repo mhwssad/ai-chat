@@ -33,7 +33,3 @@ class EmbeddingModelConfig(BaseSettingsConfig):
     backend: str = "openai"
     api_key: Optional[str] = None
     base_url: Optional[str] = None
-
-
-chat_model_config = ChatModelConfig()
-embedding_model_config = EmbeddingModelConfig()

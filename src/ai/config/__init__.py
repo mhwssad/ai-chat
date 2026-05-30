@@ -57,7 +57,11 @@ def __getattr__(name: str):
         import importlib
 
         target = _SUBMODULES[name]
-        mod = importlib.import_module(target, __name__) if target.startswith(".") else importlib.import_module(target)
+        mod = (
+            importlib.import_module(target, __name__)
+            if target.startswith(".")
+            else importlib.import_module(target)
+        )
         return getattr(mod, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

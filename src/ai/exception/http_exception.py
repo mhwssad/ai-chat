@@ -1,6 +1,5 @@
 """HTTP 相关异常。"""
 
-
 from src.ai.exception.base_exception import BaseExceptions
 
 

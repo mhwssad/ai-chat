@@ -5,7 +5,6 @@
 - 响应: form-encoded → dict
 """
 
-
 from typing import Any, ClassVar
 from urllib.parse import parse_qs, urlencode
 

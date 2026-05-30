@@ -12,7 +12,6 @@ Usage::
     cache.invalidate("key")
 """
 
-
 import threading
 import time
 from collections import OrderedDict

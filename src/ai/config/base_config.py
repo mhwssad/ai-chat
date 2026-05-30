@@ -6,7 +6,6 @@
 """
 
 import sys
-from functools import lru_cache
 from pathlib import Path
 
 from pydantic import Field
@@ -193,7 +192,6 @@ class BootstrapSettings(BaseSettingsConfig):
         return f"sqlite:///{db_path}"
 
 
-@lru_cache(maxsize=1)
 def get_bootstrap_settings() -> BootstrapSettings:
     """获取启动期配置单例。"""
     return BootstrapSettings()

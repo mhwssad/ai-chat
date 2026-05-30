@@ -1,6 +1,5 @@
 """RAG 和文本切割异常。"""
 
-
 from src.ai.exception.base_exception import BaseExceptions
 
 

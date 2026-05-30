@@ -1,15 +1,7 @@
 from pydantic import Field
 
 from src.ai.config.base_config import BaseSettingsConfig
-
-
-class LLMSettings(BaseSettingsConfig):
-    """LLM 全局配置。"""
-
-    model_name: str = "minmax-2.7"
-    request_timeout: int = 60
-    max_input_tokens: int = 128000
-    max_output_tokens: int = 4096
+from src.ai.config.loader_settings import LoaderSettings
 
 
 class RAGSettings(BaseSettingsConfig):
@@ -24,6 +16,10 @@ class RAGSettings(BaseSettingsConfig):
     rag_index_patterns: str = (
         "**/*.md,**/*.txt,**/*.py,**/*.json,**/*.yaml,**/*.yml,**/*.pdf,**/*.docx"
     )
+    # 查询优化
+    rag_optimize_query: bool = True
+    rag_merge_strategy: str = "deduplicate"
+    rag_context_top_k: int = 5
 
 
 class MemorySettings(BaseSettingsConfig):
@@ -42,13 +38,18 @@ class MemorySettings(BaseSettingsConfig):
     compression_keep_recent: int = 10
     compression_batch_size: int = 20
 
-    # RAG 优化检索
-    rag_optimize_query: bool = True
-    rag_merge_strategy: str = "deduplicate"
-    rag_context_top_k: int = 5
-
     # 对话历史文件存储
     history_file_enabled: bool = True
+
+    # 全量压缩阈值（消息数超过此值触发 FullCompact）
+    full_compact_threshold: int = 100
+
+    # LLM 相关记忆选择
+    relevance_max_results: int = 5
+    relevance_enabled: bool = True
+
+    # MicroCompact 工具结果最大字符数
+    micro_compact_max_tool_chars: int = 4000
 
 
 class SkillSettings(BaseSettingsConfig):
@@ -73,14 +74,37 @@ class MCPSettings(BaseSettingsConfig):
     mcp_server_transport: str = "streamable_http"
 
 
+class SchedulerSettings(BaseSettingsConfig):
+    """定时任务调度器配置。"""
+
+    scheduler_enabled: bool = Field(default=True, description="是否启用定时任务调度器")
+    scheduler_max_concurrent: int = Field(
+        default=5, description="最大并发执行任务数"
+    )
+    scheduler_check_interval: int = Field(
+        default=30, description="任务检查间隔（秒）"
+    )
+    scheduler_default_max_retries: int = Field(
+        default=3, description="默认最大重试次数"
+    )
+    scheduler_task_timeout: int = Field(
+        default=300, description="单个任务执行超时（秒）"
+    )
+    scheduler_cleanup_days: int = Field(
+        default=30, description="自动清理多少天前的执行日志"
+    )
+
+
 class Settings(BaseSettingsConfig):
     """全局配置。"""
 
-    llm: LLMSettings = LLMSettings()
     rag: RAGSettings = RAGSettings()
     memory: MemorySettings = MemorySettings()
     skills: SkillSettings = SkillSettings()
     mcp: MCPSettings = MCPSettings()
+    loader: LoaderSettings = LoaderSettings()
+    scheduler: SchedulerSettings = SchedulerSettings()
 
 
+# 模块级单例 — 项目内统一通过 from src.ai.config.settings import settings 获取
 settings = Settings()

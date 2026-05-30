@@ -9,7 +9,6 @@
 参考 memory factory 的 ABC + dict 注册表 + 装饰器 + 单例模式。
 """
 
-
 from abc import ABC, abstractmethod
 from typing import Any, ClassVar
 

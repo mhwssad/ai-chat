@@ -1,9 +1,52 @@
-"""文档加载器相关配置。"""
+"""文档加载器相关配置。
+
+提供各加载器的独立配置类和统一聚合配置 LoaderSettings。
+通过环境变量驱动，如 LOADER_TEXT_ENCODINGS、LOADER_OCR_IMAGE_EXTENSIONS、UNSTRUCTURED_STRATEGY 等。
+"""
+
+from __future__ import annotations
 
 from pydantic import Field
 from pydantic_settings import SettingsConfigDict
 
 from src.ai.config.base_config import BaseSettingsConfig
+
+
+class PlainTextSettings(BaseSettingsConfig):
+    """纯文本加载器配置。
+
+    环境变量前缀 LOADER_TEXT_，如 LOADER_TEXT_ENCODINGS='["utf-8","gbk"]'。
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="LOADER_TEXT_",
+    )
+
+    encodings: list[str] = Field(
+        default=["utf-8", "gbk", "latin-1"],
+        description="尝试的编码列表，按顺序依次尝试",
+    )
+
+
+class OcrSettings(BaseSettingsConfig):
+    """OCR 图片加载器配置。
+
+    环境变量前缀 LOADER_OCR_，如 LOADER_OCR_IMAGE_EXTENSIONS='[".png",".jpg"]'。
+    """
+
+    model_config = SettingsConfigDict(
+        env_prefix="LOADER_OCR_",
+    )
+
+    image_extensions: list[str] = Field(
+        default=[".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif", ".webp", ".gif"],
+        description="支持的图片文件扩展名列表",
+    )
+
+    @property
+    def image_extensions_set(self) -> set[str]:
+        """返回扩展名集合，用于快速查找。"""
+        return set(self.image_extensions)
 
 
 class UnstructuredSettings(BaseSettingsConfig):
@@ -65,4 +108,21 @@ class UnstructuredSettings(BaseSettingsConfig):
         return self.chunking_strategy or None
 
 
-unstructured_settings = UnstructuredSettings()
+class LoaderSettings(BaseSettingsConfig):
+    """加载器统一配置聚合。
+
+    将各加载器的独立配置聚合为一个入口，通过 DI 容器注入到各加载器。
+    """
+
+    plain_text: PlainTextSettings = Field(
+        default_factory=PlainTextSettings,
+        description="纯文本加载器配置",
+    )
+    ocr: OcrSettings = Field(
+        default_factory=OcrSettings,
+        description="OCR 图片加载器配置",
+    )
+    unstructured: UnstructuredSettings = Field(
+        default_factory=UnstructuredSettings,
+        description="Unstructured 解析服务配置",
+    )

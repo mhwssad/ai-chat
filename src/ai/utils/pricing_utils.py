@@ -3,7 +3,6 @@
 该模块只处理「用量 + 价格规则 => 费用」的计算，不依赖具体模型请求实现。
 """
 
-
 from dataclasses import dataclass, field
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Protocol
@@ -131,7 +130,11 @@ class FlatPricingStrategy:
             output_cost=None,
             explicit_total_cost=total_cost,
             currency=rule.currency,
-            details={"strategy": "flat", "unit": rule.unit, "requests": usage.request_count},
+            details={
+                "strategy": "flat",
+                "unit": rule.unit,
+                "requests": usage.request_count,
+            },
         )
 
 
@@ -179,7 +182,9 @@ def _merge_cost(
     total_cost = explicit_total_cost
     if total_cost is None and (input_cost is not None or output_cost is not None):
         total = Decimal(str(input_cost or 0)) + Decimal(str(output_cost or 0))
-        total_cost = float(total.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP))
+        total_cost = float(
+            total.quantize(Decimal("0.00000001"), rounding=ROUND_HALF_UP)
+        )
 
     return PricingCost(
         input_cost=input_cost,
@@ -191,4 +196,3 @@ def _merge_cost(
 
 
 pricing_calculator = PricingCalculator()
-

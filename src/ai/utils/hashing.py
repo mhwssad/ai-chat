@@ -14,7 +14,6 @@ Usage::
     H.config_hash(base_url="...", timeout=30) # 配置哈希
 """
 
-
 import hashlib
 import uuid
 from typing import Any

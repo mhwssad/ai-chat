@@ -5,7 +5,6 @@
 - 响应: JSON → dict / list / BaseModel 实例
 """
 
-
 import dataclasses
 import json
 from typing import Any, ClassVar
