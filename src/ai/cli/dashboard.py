@@ -9,6 +9,13 @@ from rich.live import Live
 from rich.panel import Panel
 from rich.text import Text
 
+# Windows stdin 句柄（用于非阻塞键盘读取）
+if sys.platform == "win32":
+    import ctypes
+
+    _STD_INPUT_HANDLE = -10
+    _stdin_handle = ctypes.windll.kernel32.GetStdHandle(_STD_INPUT_HANDLE)
+
 from src.ai.cli.sessions import SessionManager
 from src.ai.cli.tabs import BaseTab
 from src.ai.cli.tabs.chat_tab import ChatTab
@@ -254,38 +261,50 @@ class Dashboard:
             return self._read_key_unix()
 
     def _read_key_windows(self) -> str | None:
-        """Windows 平台读取键盘（msvcrt）。"""
-        import msvcrt
-
-        if not msvcrt.kbhit():
+        """Windows 平台读取键盘（ReadConsoleW + WaitForSingleObject）。"""
+        # 非阻塞检查 stdin 是否有输入事件
+        result = ctypes.windll.kernel32.WaitForSingleObject(_stdin_handle, 0)
+        if result != 0:  # 0 = WAIT_OBJECT_0（有输入）
             return None
 
-        ch = msvcrt.getwch()
+        # 用 ReadConsoleW 直接读取（绕过 CRT 缓冲区）
+        buf = ctypes.create_unicode_buffer(4)
+        read = ctypes.c_ulong(0)
+        ok = ctypes.windll.kernel32.ReadConsoleW(
+            _stdin_handle, buf, 4, ctypes.byref(read), None
+        )
+        if not ok or read.value == 0:
+            return None
 
-        # 功能键前缀
-        if ch in ("\x00", "\xe0"):
-            ch2 = msvcrt.getwch()
-            key_map = {
-                "H": "up",
-                "P": "down",
-                "K": "left",
-                "M": "right",
-                "S": "delete",
+        ch = buf.value
+
+        # 检查是否为控制字符序列
+        if len(ch) == 1:
+            code = ord(ch)
+            # 功能键或方向键会产生两个字符：0x00/0xE0 + 扫描码
+            # 但 ReadConsoleW 可能将其作为单独的控制字符返回
+            char_map = {
+                0x09: "tab",       # Tab
+                0x0D: "enter",     # Enter
+                0x0A: "enter",     # LF
+                0x1B: "escape",    # Esc
+                0x7F: "backspace", # DEL
+                0x08: "backspace", # BS
+                0x03: "ctrl_c",    # Ctrl+C
+                0x00: None,        # NUL（功能键前缀第一字节）
             }
-            return key_map.get(ch2)
+            if code in char_map:
+                return char_map[code]
 
-        # 普通键
-        char_map = {
-            "\t": "tab",
-            "\r": "enter",
-            "\n": "enter",
-            "\x1b": "escape",
-            "\x7f": "backspace",
-            "\x08": "backspace",
-            "\x03": "ctrl_c",
-        }
-        if ch in char_map:
-            return char_map[ch]
+            # 方向键在 ReadConsoleW 中可能产生 ESC [ A/B/C/D
+            return ch if code >= 0x20 else None
+
+        # 多字符序列（如 ESC 序列或 Unicode）
+        if ch.startswith("\x1b"):
+            if len(ch) >= 3 and ch[1] == "[":
+                arrow_map = {"A": "up", "B": "down", "C": "right", "D": "left"}
+                return arrow_map.get(ch[2])
+            return "escape"
 
         return ch
 
