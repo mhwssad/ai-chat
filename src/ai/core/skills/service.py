@@ -3,19 +3,34 @@
 import logging
 
 from src.ai.core.skills.loader import SkillLoader
+from src.ai.core.skills.matcher import SkillMatcher
 from src.ai.core.skills.renderer import SkillRenderer
+from src.ai.core.skills.resolver import SkillResolver
 from src.ai.core.skills.types import SkillDefinition, SkillMetadata
-from src.ai.exception.skill_exception import SkillError, SkillNotFoundError
+from src.ai.exception.skill_exception import SkillNotFoundError
 
 logger = logging.getLogger(__name__)
 
 
 class SkillService:
-    """技能上下文注入服务。"""
+    """技能上下文注入服务。
 
-    def __init__(self, *, loader: SkillLoader | None = None) -> None:
-        self._loader = loader or SkillLoader()
-        self._renderer = SkillRenderer()
+    作为协调器，组合 Loader、Renderer、Resolver、Matcher 四个组件，
+    提供缓存管理和渐进式披露（3-level）的统一入口。
+    """
+
+    def __init__(
+        self,
+        *,
+        loader: SkillLoader,
+        renderer: SkillRenderer,
+        resolver: SkillResolver,
+        matcher: SkillMatcher,
+    ) -> None:
+        self._loader = loader
+        self._renderer = renderer
+        self._resolver = resolver
+        self._matcher = matcher
         self._cache: dict[str, SkillDefinition] | None = None
 
     # ── 发现和缓存 ──────────────────────────────────────────
@@ -40,6 +55,18 @@ class SkillService:
     def invalidate(self) -> None:
         """清除缓存，下次调用 discover 时重新扫描。"""
         self._cache = None
+
+    # ── 工具注册 ──────────────────────────────────────────────
+
+    def register_tools(self, registry) -> None:
+        """将技能工具注册到工具注册表。
+
+        Args:
+            registry: 工具注册表实例。
+        """
+        from src.ai.core.skills.tools import register_skill_tools
+
+        register_skill_tools(registry, self)
 
     # ── 渐进式披露 ──────────────────────────────────────────
 
@@ -73,84 +100,60 @@ class SkillService:
         """
         defn = self.get(name)
         if defn is None:
-            raise SkillNotFoundError(
-                f"技能不存在: {name}", context={"name": name}
-            )
+            raise SkillNotFoundError(f"技能不存在: {name}", context={"name": name})
         return self._renderer.render(
-            defn.instruction_template, arguments=arguments,
+            defn.instruction_template,
+            arguments=arguments,
         )
 
-    # ── 支持文件 ────────────────────────────────────────────
+    # ── 支持文件（委托 Resolver）─────────────────────────────
 
     def list_references(self, name: str) -> list[str]:
         """列出技能的 references/ 目录中的文件。"""
-        defn = self.get(name)
-        if defn is None:
-            raise SkillNotFoundError(f"技能不存在: {name}", context={"name": name})
-        ref_dir = defn.skill_dir / "references"
-        if not ref_dir.is_dir():
-            return []
-        return [f.name for f in sorted(ref_dir.iterdir()) if f.is_file()]
+        defn = self._require(name)
+        return self._resolver.list_references(defn.skill_dir)
 
     def load_reference(self, name: str, filename: str) -> str:
         """Level 3: 加载技能的 references/ 目录中的文件内容。"""
-        defn = self.get(name)
-        if defn is None:
-            raise SkillNotFoundError(f"技能不存在: {name}", context={"name": name})
-        ref_path = defn.skill_dir / "references" / filename
-        if not ref_path.is_file():
-            raise SkillError(
-                f"参考文件不存在: {filename}",
-                context={"name": name, "filename": filename},
-            )
-        try:
-            return ref_path.read_text(encoding="utf-8")
-        except OSError as exc:
-            raise SkillError(
-                f"读取参考文件失败: {filename}",
-                context={"name": name, "filename": filename, "error": str(exc)},
-            ) from exc
+        defn = self._require(name)
+        return self._resolver.load_reference(defn.skill_dir, filename)
 
     def list_scripts(self, name: str) -> list[str]:
         """列出技能的 scripts/ 目录中的文件。"""
-        defn = self.get(name)
-        if defn is None:
-            raise SkillNotFoundError(f"技能不存在: {name}", context={"name": name})
-        script_dir = defn.skill_dir / "scripts"
-        if not script_dir.is_dir():
-            return []
-        return [f.name for f in sorted(script_dir.iterdir()) if f.is_file()]
+        defn = self._require(name)
+        return self._resolver.list_scripts(defn.skill_dir)
 
-    # ── 匹配 ────────────────────────────────────────────────
+    # ── 匹配（委托 Matcher）─────────────────────────────────
 
     def match_slash_command(self, user_message: str) -> SkillDefinition | None:
         """匹配用户消息中的斜杠命令。"""
-        user_message = user_message.strip()
-        if not user_message.startswith("/"):
-            return None
-        command = user_message.split()[0][1:]
-        if not command:
-            return None
-        for defn in self.discover():
-            if defn.user_invocable and defn.name == command:
-                return defn
-        return None
+        self.discover()
+        assert self._cache is not None
+        return self._matcher.match_slash_command(user_message, self._cache)
 
     def get_slash_commands(self) -> list[dict[str, str]]:
         """列出所有用户可调用的斜杠命令。"""
-        return [
-            {"command": f"/{d.name}", "description": d.description}
-            for d in self.discover()
-            if d.user_invocable
-        ]
+        self.discover()
+        assert self._cache is not None
+        return self._matcher.get_slash_commands(self._cache)
 
     def list_user_invocable(self) -> list[SkillDefinition]:
         """列出所有用户可调用的技能（user_invocable=True）。"""
-        return [d for d in self.discover() if d.user_invocable]
+        self.discover()
+        assert self._cache is not None
+        return self._matcher.list_user_invocable(self._cache)
 
     def list_auto_triggerable(self) -> list[SkillDefinition]:
         """列出所有可自动触发的技能（disable_model_invocation=False）。"""
-        return [d for d in self.discover() if d.is_auto_triggerable]
+        self.discover()
+        assert self._cache is not None
+        return self._matcher.list_auto_triggerable(self._cache)
 
+    # ── 内部辅助 ────────────────────────────────────────────
 
-skill_service = SkillService()
+    def _require(self, name: str) -> SkillDefinition:
+        """获取技能，不存在则抛出 SkillNotFoundError。"""
+        defn = self.get(name)
+        if defn is None:
+            raise SkillNotFoundError(f"技能不存在: {name}", context={"name": name})
+        return defn

@@ -5,14 +5,18 @@
 - **泛型抽象工厂**：``ModelFactory[BuilderT]`` 统一注册、查询、创建
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import Any, Generic, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Generic, List, Optional, TypeVar, Union
 
-from langchain_core.embeddings import Embeddings
-from langchain_core.language_models import BaseChatModel
-
-from src.ai.config.model_settings import ChatModelConfig, EmbeddingModelConfig
 from src.ai.exception.llm_exception import LLMException
+
+if TYPE_CHECKING:
+    from langchain_core.embeddings import Embeddings
+    from langchain_core.language_models import BaseChatModel
+
+    from src.ai.config.model_settings import ChatModelConfig, EmbeddingModelConfig
 
 
 # ── 策略接口 ───────────────────────────────────────────
@@ -35,7 +39,7 @@ class ModelBuilder(ABC, Generic[ConfigT, ReturnT]):
         """构建模型实例。"""
 
 
-class ChatModelBuilder(ModelBuilder[ChatModelConfig, BaseChatModel]):
+class ChatModelBuilder(ModelBuilder["ChatModelConfig", "BaseChatModel"]):
     """Chat 模型构建策略接口。"""
 
     @abstractmethod
@@ -50,7 +54,7 @@ class ChatModelBuilder(ModelBuilder[ChatModelConfig, BaseChatModel]):
         """构建 Chat 模型实例。"""
 
 
-class EmbeddingModelBuilder(ModelBuilder[EmbeddingModelConfig, Embeddings]):
+class EmbeddingModelBuilder(ModelBuilder["EmbeddingModelConfig", "Embeddings"]):
     """Embedding 模型构建策略接口。"""
 
     @abstractmethod
@@ -79,10 +83,12 @@ class ModelFactory(ABC, Generic[ModelBuilderT]):
     def register(self, builder: Union[ModelBuilderT, type[ModelBuilderT], None] = None):
         """注册构建器 — 可作装饰器（不传参）或直接调用。"""
         if builder is None:
+
             def decorator(cls_or_inst: Union[ModelBuilderT, type[ModelBuilderT]]):
                 inst = cls_or_inst() if isinstance(cls_or_inst, type) else cls_or_inst
                 self._do_register(inst)
                 return cls_or_inst
+
             return decorator
         inst = builder() if isinstance(builder, type) else builder
         self._do_register(inst)
@@ -92,7 +98,9 @@ class ModelFactory(ABC, Generic[ModelBuilderT]):
         for backend in builder.backend:
             self._registry[backend] = builder
 
-    def register_all(self, builders: list[Union[ModelBuilderT, type[ModelBuilderT]]]) -> None:
+    def register_all(
+        self, builders: list[Union[ModelBuilderT, type[ModelBuilderT]]]
+    ) -> None:
         """批量注册构建器。"""
         for b in builders:
             self.register(b)
@@ -128,5 +136,7 @@ class ModelFactory(ABC, Generic[ModelBuilderT]):
         """通用解析逻辑，子类 create_builder 可直接委托。"""
         builder = self._find_builder(backend)
         if builder is None:
-            raise LLMException(f"未注册的 {type_label} 后端: {backend!r}，可用: {self.list_backends()}")
+            raise LLMException(
+                f"未注册的 {type_label} 后端: {backend!r}，可用: {self.list_backends()}"
+            )
         return builder

@@ -10,18 +10,9 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 
 from src.ai.config.base_config import project_root
-from src.ai.config.model_settings import EmbeddingModelConfig
-from src.ai.config.settings import settings
-from src.ai.core.loaders.base import LoaderStrategy
-from src.ai.core.loaders.chain_loader import ChainLoader
-from src.ai.core.models import model_registry
-from src.ai.core.prompts import PromptRenderRequest, prompt_service
-from src.ai.core.splitters.base import SplitChunk, SplitterStrategy
-from src.ai.core.splitters.chain_splitter import ChainSplitter
-from src.ai.exception.prompt_exception import PromptNotFoundError
+from src.ai.core.rag.loaders.base import LoaderStrategy
+from src.ai.core.rag.splitters.base import SplitChunk, SplitterStrategy
 from src.ai.exception.rag_exception import RagError
-
-from .embeddings import HashEmbeddings
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +55,8 @@ class RagService:
         persist_directory: str | Path,
         collection_name: str,
         top_k: int = 5,
+        settings: object,
+        prompt_service: object,
     ) -> None:
         self._embeddings = embeddings
         self._loader = loader
@@ -71,6 +64,8 @@ class RagService:
         self._persist_dir = str(persist_directory)
         self._base_collection = collection_name
         self._top_k = top_k
+        self._settings = settings
+        self._prompt_service = prompt_service
         self._stores: dict[str, Chroma] = {}
 
     # ── 向量存储 ──────────────────────────────────────────
@@ -126,7 +121,9 @@ class RagService:
         # 3. 检查已存在
         existing = store.get(where={"source_path": source_path})
         if existing["ids"] and not reindex:
-            return self._make_doc_info(source_path, loaded_docs[0], len(existing["ids"]))
+            return self._make_doc_info(
+                source_path, loaded_docs[0], len(existing["ids"])
+            )
         if existing["ids"]:
             store.delete(ids=existing["ids"])
 
@@ -165,7 +162,9 @@ class RagService:
             raise RagError(f"目录不存在: {path}")
 
         patterns = patterns or [
-            p.strip() for p in settings.rag.rag_index_patterns.split(",") if p.strip()
+            p.strip()
+            for p in self._get_settings().rag.rag_index_patterns.split(",")
+            if p.strip()
         ]
         documents: list[RagDocumentInfo] = []
         for pattern in patterns:
@@ -203,7 +202,9 @@ class RagService:
             meta = doc.metadata
             output.append(
                 RagSearchResult(
-                    id=meta.get("content_hash", "") + "#" + str(meta.get("chunk_index", 0)),
+                    id=meta.get("content_hash", "")
+                    + "#"
+                    + str(meta.get("chunk_index", 0)),
                     source_path=meta.get("source_path", ""),
                     title=meta.get("title", ""),
                     content=doc.page_content,
@@ -230,20 +231,15 @@ class RagService:
             for i, r in enumerate(results, start=1)
         ]
 
-        try:
-            rendered = prompt_service.render(
-                PromptRenderRequest(
-                    prompt_key="rag.context_format",
-                    variables={"results": prepared},
-                )
+        from src.ai.core.prompts.types import PromptRenderRequest
+
+        rendered = self._prompt_service.render(
+            PromptRenderRequest(
+                prompt_key="rag.context_format",
+                variables={"results": prepared},
             )
-            return rendered.content
-        except PromptNotFoundError:
-            logger.warning("DB 中未找到 rag.context_format 模板，使用内置默认")
-            return "\n\n".join(
-                f"[{i}] {r.title or r.source_path}\n{r.content}"
-                for i, r in enumerate(results, start=1)
-            )
+        )
+        return rendered.content
 
     # ── 删除 ──────────────────────────────────────────────
 
@@ -281,7 +277,7 @@ class RagService:
         sessions: list[str] = []
         for name in client.list_collections():
             if name.startswith(prefix):
-                sessions.append(name[len(prefix):])
+                sessions.append(name[len(prefix) :])
         return sessions
 
     def delete_session(self, session_id: str) -> bool:
@@ -294,7 +290,9 @@ class RagService:
             store._client.delete_collection(collection_name)
             return True
         except Exception:
-            logger.warning("删除会话 collection 失败: %s", collection_name, exc_info=True)
+            logger.warning(
+                "删除会话 collection 失败: %s", collection_name, exc_info=True
+            )
             return False
 
     # ── 查询 ──────────────────────────────────────────────
@@ -341,6 +339,10 @@ class RagService:
 
     # ── 内部 ──────────────────────────────────────────────
 
+    def _get_settings(self):
+        """获取配置。"""
+        return self._settings
+
     @staticmethod
     def _make_doc_info(
         source_path: str,
@@ -364,44 +366,27 @@ def _sha256(text: str) -> str:
 
 def create_rag_service(
     *,
-    embeddings: Embeddings | None = None,
-    loader: LoaderStrategy | None = None,
-    splitter: SplitterStrategy | None = None,
+    embeddings: Embeddings,
+    loader: LoaderStrategy,
+    splitter: SplitterStrategy,
+    settings: object,
+    prompt_service: object,
 ) -> RagService:
-    """工厂函数：从配置解析依赖，创建 RagService。
+    """工厂函数：创建 RagService。
 
-    依赖解析优先级：
-    1. 调用方显式传入（测试、自定义场景）
-    2. EmbeddingModelConfig → model_registry → LangChain Embeddings
-    3. HashEmbeddings 回退
+    所有依赖必须由调用方（DI 容器）显式传入。
 
     Args:
-        embeddings: 显式传入的 Embeddings 实例。
-        loader: 显式传入的文档加载器。
-        splitter: 显式传入的文本切割器。
+        embeddings: Embeddings 实例。
+        loader: 文档加载器。
+        splitter: 文本切割器。
+        settings: 全局配置。
+        prompt_service: 提示词服务。
 
     Returns:
         配置好的 RagService 实例。
     """
     rag = settings.rag
-
-    if embeddings is None:
-        config = EmbeddingModelConfig()
-        if config.model_key:
-            builder = model_registry.get_builder("embedding", config.backend)
-            embeddings = builder.build(config)
-        else:
-            logger.warning("未配置 Embedding 模型，使用本地 Hash Embedding 回退")
-            embeddings = HashEmbeddings()
-
-    if loader is None:
-        loader = ChainLoader()
-
-    if splitter is None:
-        splitter = ChainSplitter(
-            chunk_size=rag.rag_chunk_size,
-            chunk_overlap=rag.rag_chunk_overlap,
-        )
 
     return RagService(
         embeddings=embeddings,
@@ -410,7 +395,6 @@ def create_rag_service(
         persist_directory=project_root / rag.rag_persist_dir,
         collection_name=rag.rag_collection_name,
         top_k=rag.rag_top_k,
+        settings=settings,
+        prompt_service=prompt_service,
     )
-
-
-rag_service = create_rag_service()

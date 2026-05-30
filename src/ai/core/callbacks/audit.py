@@ -4,7 +4,6 @@
 所有 DB 写入集中在 callback 中，core 业务代码完全不感知数据库。
 """
 
-
 import json
 import logging
 import time
@@ -159,7 +158,9 @@ class AuditCallbackHandler(BaseCallbackHandler):
                 output_tokens = usage.get("output_tokens")
                 total_tokens = usage.get("total_tokens")
 
-                model_name = getattr(response, "llm_output", {}).get("model_name", "unknown")
+                model_name = getattr(response, "llm_output", {}).get(
+                    "model_name", "unknown"
+                )
 
                 try:
                     with get_session() as session:

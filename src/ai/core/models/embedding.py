@@ -5,10 +5,16 @@
 扩展方式：实现 ``EmbeddingModelBuilder`` 并注册到 ``embedding_model_factory``。
 """
 
-from langchain_core.embeddings import Embeddings
+from __future__ import annotations
 
-from src.ai.config.model_settings import EmbeddingModelConfig
-from src.ai.core.models.builders.base import EmbeddingModelBuilder, ModelFactory
+from typing import TYPE_CHECKING
+
+from src.ai.core.models.base import EmbeddingModelBuilder, ModelFactory
+
+if TYPE_CHECKING:
+    from langchain_core.embeddings import Embeddings
+
+    from src.ai.config.model_settings import EmbeddingModelConfig
 
 
 # ── 内置构建器 ─────────────────────────────────────────

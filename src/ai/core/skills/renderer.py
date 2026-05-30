@@ -48,11 +48,16 @@ class SkillRenderer:
     @staticmethod
     def _execute_commands(template: str) -> str:
         """执行 !`command` 动态命令并替换为 stdout。"""
+
         def _run(match: re.Match) -> str:
             cmd = match.group(1)
             try:
                 proc = subprocess.run(
-                    cmd, shell=True, capture_output=True, text=True, timeout=30,
+                    cmd,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
                 )
                 return proc.stdout.strip()
             except subprocess.TimeoutExpired:

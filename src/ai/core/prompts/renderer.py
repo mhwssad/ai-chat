@@ -1,6 +1,5 @@
 """Jinja2 提示词渲染。"""
 
-
 from jinja2 import Environment, StrictUndefined, TemplateError
 
 from src.ai.exception.prompt_exception import PromptRenderError
@@ -21,5 +20,6 @@ class PromptRenderer:
         try:
             return self._env.from_string(template).render(**variables)
         except TemplateError as exc:
-            raise PromptRenderError("提示词渲染失败", context={"error": str(exc)}) from exc
-
+            raise PromptRenderError(
+                "提示词渲染失败", context={"error": str(exc)}
+            ) from exc

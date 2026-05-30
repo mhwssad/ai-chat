@@ -1,8 +1,21 @@
 """提示词领域类型。"""
 
-
 from dataclasses import dataclass, field
 from typing import Any
+
+
+@dataclass(frozen=True)
+class PromptData:
+    """提示词模板数据，替代直接依赖 ORM PromptTemplate。"""
+
+    prompt_key: str
+    template: str
+    version: int = 1
+    display_name: str | None = None
+    description: str | None = None
+    category: str = "general"
+    enabled: bool = True
+    extra: str = "{}"
 
 
 @dataclass(frozen=True)
@@ -21,4 +34,3 @@ class PromptRenderResult:
     content: str
     version: int
     metadata: dict[str, Any] = field(default_factory=dict)
-

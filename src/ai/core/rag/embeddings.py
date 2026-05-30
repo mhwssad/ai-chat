@@ -9,8 +9,6 @@ import math
 
 from langchain_core.embeddings import Embeddings
 
-from src.ai.config.settings import settings
-
 
 class HashEmbeddings(Embeddings):
     """确定性本地 fallback embedding，实现 LangChain Embeddings 接口。
@@ -18,8 +16,8 @@ class HashEmbeddings(Embeddings):
     基于 SHA-256 哈希生成固定维度向量，无需外部模型即可跑通 RAG 链路。
     """
 
-    def __init__(self, dimension: int | None = None) -> None:
-        self.dimension = dimension or settings.rag.rag_fallback_dimension
+    def __init__(self, dimension: int) -> None:
+        self.dimension = dimension
 
     def embed_documents(self, texts: list[str]) -> list[list[float]]:
         """批量 embed 文档文本。"""

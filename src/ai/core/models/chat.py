@@ -6,12 +6,16 @@
 扩展方式：实现 ``ChatModelBuilder`` 并注册到 ``chat_model_factory``。
 """
 
-from typing import Optional
+from __future__ import annotations
 
-from langchain_core.language_models import BaseChatModel
+from typing import TYPE_CHECKING, Optional
 
-from src.ai.config.model_settings import ChatModelConfig
-from src.ai.core.models.builders.base import ChatModelBuilder, ModelFactory
+from src.ai.core.models.base import ChatModelBuilder, ModelFactory
+
+if TYPE_CHECKING:
+    from langchain_core.language_models import BaseChatModel
+
+    from src.ai.config.model_settings import ChatModelConfig
 
 
 # ── 内置构建器 ─────────────────────────────────────────

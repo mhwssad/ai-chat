@@ -112,9 +112,13 @@ class SkillLoader:
         # 解析 allowed-tools（逗号分隔）
         allowed_tools_str = meta.get("allowed-tools", "")
         if isinstance(allowed_tools_str, list):
-            allowed_tools = [str(t).strip() for t in allowed_tools_str if str(t).strip()]
+            allowed_tools = [
+                str(t).strip() for t in allowed_tools_str if str(t).strip()
+            ]
         elif isinstance(allowed_tools_str, str) and allowed_tools_str:
-            allowed_tools = [t.strip() for t in allowed_tools_str.split(",") if t.strip()]
+            allowed_tools = [
+                t.strip() for t in allowed_tools_str.split(",") if t.strip()
+            ]
         else:
             allowed_tools = []
 
@@ -130,7 +134,9 @@ class SkillLoader:
             skill_dir=path.parent,
             instruction_template=body,
             disable_model_invocation=bool(meta.get("disable-model-invocation", False)),
-            user_invocable=bool(meta.get("user-invocable", meta.get("user_invocable", True))),
+            user_invocable=bool(
+                meta.get("user-invocable", meta.get("user_invocable", True))
+            ),
             allowed_tools=allowed_tools,
             argument_hint=meta.get("argument-hint") or meta.get("argument_hint"),
             model=meta.get("model"),
