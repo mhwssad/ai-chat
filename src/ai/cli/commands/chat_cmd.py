@@ -9,8 +9,7 @@ def _get_history_manager():
     """延迟获取历史管理器。"""
     from src.ai.core.container import container
 
-    memory_svc = container.memory_container.memory_service()
-    return memory_svc.get_history_manager()
+    return container.context_container.chat_history_manager()
 
 
 @chat_app.command("list")

@@ -330,7 +330,9 @@ def _cmd_stats(session_id: str, memory_svc) -> None:
     from src.ai.utils.token_utils import token_counter
 
     stats = memory_svc.get_stats()
-    history_mgr = memory_svc.get_history_manager()
+    from src.ai.core.container import container as _c
+
+    history_mgr = _c.context_container.chat_history_manager()
     messages = history_mgr.get_messages(session_id)
     token_usage = token_counter.estimate_messages_tokens(messages)
     typer.echo(f"  记忆: {stats.get('total', 0)} 条")
@@ -340,7 +342,9 @@ def _cmd_stats(session_id: str, memory_svc) -> None:
 
 def _cmd_clear(session_id: str, memory_svc) -> None:
     """清空当前会话的对话历史。"""
-    history_mgr = memory_svc.get_history_manager()
+    from src.ai.core.container import container as _c
+
+    history_mgr = _c.context_container.chat_history_manager()
     history_mgr.clear_history(session_id)
     typer.echo(f"  会话 {session_id} 的历史已清空")
 
@@ -406,7 +410,9 @@ async def _chat_once(
         response = await llm_with_tools.ainvoke(messages)
 
     # 保存历史
-    history_mgr = memory_svc.get_history_manager()
+    from src.ai.core.container import container as _c
+
+    history_mgr = _c.context_container.chat_history_manager()
     history_mgr.add_message(session_id, HumanMessage(content=user_input))
     history_mgr.add_message(session_id, response)
 
@@ -423,8 +429,7 @@ def dashboard() -> None:
     from src.ai.cli.sessions import SessionManager
     from src.ai.core.container import container
 
-    memory_svc = container.memory_container.memory_service()
-    history_mgr = memory_svc.get_history_manager()
+    history_mgr = container.context_container.chat_history_manager()
     session_mgr = SessionManager(history_mgr)
 
     dash = Dashboard(session_mgr)
