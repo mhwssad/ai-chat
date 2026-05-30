@@ -261,13 +261,61 @@ class Dashboard:
             return self._read_key_unix()
 
     def _read_key_windows(self) -> str | None:
-        """Windows 平台读取键盘（ReadConsoleW + WaitForSingleObject）。"""
+        """Windows 平台读取键盘（ReadConsoleW + WaitForSingleObject）。
+
+        在 ENABLE_VIRTUAL_TERMINAL_INPUT 模式下，方向键产生 ESC [ A/B/C/D
+        三字节序列。ReadConsoleW 可能只返回第一个字节，因此检测到 ESC 后
+        需要立即尝试读取后续字节。
+        """
         # 非阻塞检查 stdin 是否有输入事件
         result = ctypes.windll.kernel32.WaitForSingleObject(_stdin_handle, 0)
         if result != 0:  # 0 = WAIT_OBJECT_0（有输入）
             return None
 
-        # 用 ReadConsoleW 直接读取（绕过 CRT 缓冲区）
+        ch = self._read_console_char()
+        if ch is None:
+            return None
+
+        # ESC 开头 → 可能是方向键等 VT 序列
+        if ch == "\x1b":
+            # 等极短时间看有没有后续字节
+            wait = ctypes.windll.kernel32.WaitForSingleObject(_stdin_handle, 20)
+            if wait == 0:
+                ch2 = self._read_console_char()
+                if ch2 == "[":
+                    wait2 = ctypes.windll.kernel32.WaitForSingleObject(_stdin_handle, 20)
+                    if wait2 == 0:
+                        ch3 = self._read_console_char()
+                        arrow_map = {
+                            "A": "up",
+                            "B": "down",
+                            "C": "right",
+                            "D": "left",
+                        }
+                        if ch3 in arrow_map:
+                            return arrow_map[ch3]
+                    return "escape"
+                # ESC + 非 [ → 两次 Esc 或其他序列
+                return "escape"
+            # 没有后续字节 → 单独的 Esc 键
+            return "escape"
+
+        char_map = {
+            "\t": "tab",
+            "\r": "enter",
+            "\n": "enter",
+            "\x7f": "backspace",
+            "\x08": "backspace",
+            "\x03": "ctrl_c",
+            "\x00": None,
+        }
+        if ch in char_map:
+            return char_map[ch]
+
+        return ch
+
+    def _read_console_char(self) -> str | None:
+        """从 Windows stdin 读取单个字符。"""
         buf = ctypes.create_unicode_buffer(4)
         read = ctypes.c_ulong(0)
         ok = ctypes.windll.kernel32.ReadConsoleW(
@@ -275,38 +323,7 @@ class Dashboard:
         )
         if not ok or read.value == 0:
             return None
-
-        ch = buf.value
-
-        # 检查是否为控制字符序列
-        if len(ch) == 1:
-            code = ord(ch)
-            # 功能键或方向键会产生两个字符：0x00/0xE0 + 扫描码
-            # 但 ReadConsoleW 可能将其作为单独的控制字符返回
-            char_map = {
-                0x09: "tab",       # Tab
-                0x0D: "enter",     # Enter
-                0x0A: "enter",     # LF
-                0x1B: "escape",    # Esc
-                0x7F: "backspace", # DEL
-                0x08: "backspace", # BS
-                0x03: "ctrl_c",    # Ctrl+C
-                0x00: None,        # NUL（功能键前缀第一字节）
-            }
-            if code in char_map:
-                return char_map[code]
-
-            # 方向键在 ReadConsoleW 中可能产生 ESC [ A/B/C/D
-            return ch if code >= 0x20 else None
-
-        # 多字符序列（如 ESC 序列或 Unicode）
-        if ch.startswith("\x1b"):
-            if len(ch) >= 3 and ch[1] == "[":
-                arrow_map = {"A": "up", "B": "down", "C": "right", "D": "left"}
-                return arrow_map.get(ch[2])
-            return "escape"
-
-        return ch
+        return buf.value
 
     def _read_key_unix(self) -> str | None:
         """Unix 平台读取键盘（termios + select）。"""
