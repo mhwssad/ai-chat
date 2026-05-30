@@ -15,6 +15,10 @@ if sys.platform == "win32":
 
     _STD_INPUT_HANDLE = -10
     _stdin_handle = ctypes.windll.kernel32.GetStdHandle(_STD_INPUT_HANDLE)
+    # 控制台模式标志
+    _ENABLE_ECHO_INPUT = 0x0004
+    _ENABLE_LINE_INPUT = 0x0002
+    _ENABLE_VIRTUAL_TERMINAL_INPUT = 0x0200
 
 from src.ai.cli.sessions import SessionManager
 from src.ai.cli.tabs import BaseTab
@@ -84,6 +88,11 @@ class Dashboard:
         # 尝试初始化服务信息
         self._init_status()
 
+        # Windows: 保存并修改控制台模式（禁用行缓冲，启用 VT 输入）
+        old_mode = None
+        if sys.platform == "win32":
+            old_mode = self._set_console_mode_raw()
+
         try:
             with Live(
                 self._build_layout(),
@@ -103,7 +112,26 @@ class Dashboard:
         except KeyboardInterrupt:
             pass
         finally:
+            # Windows: 恢复控制台模式
+            if old_mode is not None:
+                ctypes.windll.kernel32.SetConsoleMode(_stdin_handle, old_mode)
             self._console.print("[info]已退出控制台[/]")
+
+    def _set_console_mode_raw(self) -> int | None:
+        """设置 Windows 控制台为原始模式（禁用行缓冲/回显，启用 VT）。
+
+        Returns:
+            旧的控制台模式值，用于退出时恢复。
+        """
+        mode = ctypes.c_ulong()
+        if not ctypes.windll.kernel32.GetConsoleMode(_stdin_handle, ctypes.byref(mode)):
+            return None
+
+        old_mode = mode.value
+        # 禁用 ENABLE_LINE_INPUT 和 ENABLE_ECHO_INPUT，启用 ENABLE_VIRTUAL_TERMINAL_INPUT
+        new_mode = (old_mode & ~_ENABLE_LINE_INPUT & ~_ENABLE_ECHO_INPUT) | _ENABLE_VIRTUAL_TERMINAL_INPUT
+        ctypes.windll.kernel32.SetConsoleMode(_stdin_handle, new_mode)
+        return old_mode
 
     def _init_status(self) -> None:
         """初始化状态栏信息。"""
