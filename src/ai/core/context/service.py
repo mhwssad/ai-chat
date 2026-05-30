@@ -1,0 +1,229 @@
+"""上下文服务 — 整合收集、组装、压缩的门面。"""
+
+import logging
+from typing import Any
+
+from src.ai.core.context.assembler import ContextAssembler
+from src.ai.core.context.collector import ContextCoordinator
+from src.ai.core.context.compact import MicroCompact
+from src.ai.core.context.sections import SystemPromptSections
+from src.ai.core.context.types import (
+    ContextBuildRequest,
+    ContextBuildResult,
+    ContextSection,
+)
+
+logger = logging.getLogger(__name__)
+
+
+class ContextService:
+    """上下文服务。
+
+    替代原 ContextBuilder，整合收集器并行收集、段缓存、
+    token 预算执行和微压缩。
+
+    Args:
+        coordinator: 并行收集协调器。
+        assembler: token 预算组装器。
+        sections: 段缓存管理器。
+        strategy: 记忆策略（负责消息历史管理）。
+        micro_compact: 微压缩器（可选）。
+    """
+
+    def __init__(
+        self,
+        coordinator: ContextCoordinator,
+        assembler: ContextAssembler,
+        sections: SystemPromptSections,
+        strategy: Any,
+        micro_compact: MicroCompact,
+        restorer: Any = None,
+    ) -> None:
+        self._coordinator = coordinator
+        self._assembler = assembler
+        self._sections = sections
+        self._strategy = strategy
+        self._micro_compact = micro_compact
+        self._restorer = restorer
+
+    @property
+    def strategy(self) -> Any:
+        """当前使用的记忆策略。"""
+        return self._strategy
+
+    @strategy.setter
+    def strategy(self, value: Any) -> None:
+        self._strategy = value
+
+    async def abuild(self, request: ContextBuildRequest) -> ContextBuildResult:
+        """异步构建上下文。
+
+        流程：并行收集 → 段缓存 → token 预算 → 策略构建 → 微压缩。
+
+        Args:
+            request: 上下文构建请求。
+
+        Returns:
+            构建结果。
+        """
+        # 1. 并行收集所有上下文段
+        sections = await self._coordinator.collect_all(request)
+
+        # 2. token 预算裁剪
+        system_prompt, budget_report, total_tokens = self._assembler.assemble(
+            sections, request
+        )
+
+        # 3. 策略构建上下文消息（管理对话历史）
+        context_messages = await self._strategy.abuild_context_messages(
+            session_id=request.session_id,
+            system_prompt=system_prompt,
+        )
+
+        # 4. 压缩后上下文恢复
+        restored = None
+        if self._restorer and request.session_id:
+            restored = await self._restore_context(request.session_id)
+            if restored and restored.plan:
+                # 将恢复的计划注入到系统提示之后
+                from langchain_core.messages import SystemMessage
+
+                restore_msg = SystemMessage(
+                    content=f"## 压缩摘要恢复的上下文\n\n{restored.to_system_message()}"
+                )
+                # 插入到系统消息之后、历史消息之前
+                insert_pos = (
+                    1
+                    if context_messages
+                    and getattr(context_messages[0], "type", "") == "system"
+                    else 0
+                )
+                context_messages = list(context_messages)
+                context_messages.insert(insert_pos, restore_msg)
+
+        # 5. 合并消息：策略消息 + 当前请求消息
+        final_messages: list[Any] = list(context_messages)
+        if request.messages:
+            final_messages.extend(request.messages)
+
+        # 6. 微压缩（清理旧工具结果 + 截断过长内容）
+        final_messages = self._micro_compact.compact(final_messages)
+
+        return ContextBuildResult(
+            messages=final_messages,
+            system_message=system_prompt,
+            sections=sections,
+            budget_report=budget_report,
+            total_input_tokens=total_tokens,
+            budget_enabled=self._assembler._calculate_budget(request) is not None,
+            strategy_used=self._strategy.strategy_name,
+            restored_context=restored,
+        )
+
+    def build(self, request: ContextBuildRequest) -> ContextBuildResult:
+        """同步构建上下文。
+
+        与 abuild 相同流程，但收集器使用同步调用。
+        适用于无事件循环的场景。
+
+        Args:
+            request: 上下文构建请求。
+
+        Returns:
+            构建结果。
+        """
+        import asyncio
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # 在事件循环中，回退到同步策略
+            return self._build_sync(request)
+
+        return asyncio.run(self.abuild(request))
+
+    def _build_sync(self, request: ContextBuildRequest) -> ContextBuildResult:
+        """纯同步构建（不使用 asyncio.gather）。"""
+        # 同步收集：逐个运行收集器
+        sections: list[ContextSection] = []
+        for collector in self._coordinator._collectors:
+            try:
+                import asyncio
+
+                result = asyncio.run(collector.collect(request))
+                sections.extend(result.sections)
+            except Exception:
+                logger.debug("收集器 %s 失败", collector.name, exc_info=True)
+
+        sections.sort(key=lambda s: s.priority)
+
+        # token 预算裁剪
+        system_prompt, budget_report, total_tokens = self._assembler.assemble(
+            sections, request
+        )
+
+        # 策略构建
+        context_messages = self._strategy.build_context_messages(
+            session_id=request.session_id,
+            system_prompt=system_prompt,
+        )
+
+        final_messages: list[Any] = list(context_messages)
+        if request.messages:
+            final_messages.extend(request.messages)
+
+        final_messages = self._micro_compact.compact(final_messages)
+
+        return ContextBuildResult(
+            messages=final_messages,
+            system_message=system_prompt,
+            sections=sections,
+            budget_report=budget_report,
+            total_input_tokens=total_tokens,
+            budget_enabled=self._assembler._calculate_budget(request) is not None,
+            strategy_used=self._strategy.strategy_name,
+        )
+
+    async def _restore_context(self, session_id: str) -> Any:
+        """从压缩摘要中恢复上下文。
+
+        Args:
+            session_id: 会话 ID。
+
+        Returns:
+            RestoredContext 实例，无摘要时返回 None。
+        """
+        try:
+            strategy = self._strategy
+            file_store = getattr(strategy, "_file_store", None)
+            if not file_store:
+                return None
+
+            summary_data = file_store.read_summary(session_id)
+            if not summary_data or not summary_data.get("summary"):
+                return None
+
+            return await self._restorer.restore(summary_data["summary"])
+        except Exception:
+            logger.debug("上下文恢复失败", exc_info=True)
+            return None
+
+    def invalidate(self, name: str) -> None:
+        """清除指定段的缓存。
+
+        Args:
+            name: 段名称（如 'memory'、'tools'）。
+        """
+        self._sections.invalidate(name)
+
+    def invalidate_all(self) -> None:
+        """清除全部段缓存（/clear、/compact 时调用）。"""
+        self._sections.invalidate_all()
+
+    @property
+    def cached_section_names(self) -> list[str]:
+        """当前已缓存的段名称列表。"""
+        return self._sections.cached_names
