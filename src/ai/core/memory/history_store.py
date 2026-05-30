@@ -1,55 +1,63 @@
-"""文件系统对话历史存储 — JSONL 格式持久化对话记录。"""
+"""文件系统对话历史存储。
+
+职责分离：
+- FileMessageStore: JSONL 格式的对话消息读写
+- FileSummaryStore: JSON 格式的压缩摘要读写
+- FileHistoryStore: 组合门面，对外保持统一接口
+
+存储结构：
+{base_dir}/sessions/{session_id}/
+    history.jsonl    — 对话消息（每行一条 JSON）
+    summary.json     — 压缩摘要元数据
+"""
+
+from __future__ import annotations
 
 import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
-
-from langchain_core.messages import (
-    AIMessage,
-    BaseMessage,
-    HumanMessage,
-    SystemMessage,
-    ToolMessage,
-)
+from typing import TYPE_CHECKING, Any
 
 from src.ai.utils.obj import Obj
-from src.ai.utils.strings import StringUtils
+
+if TYPE_CHECKING:
+    from langchain_core.messages import BaseMessage
 
 logger = logging.getLogger(__name__)
 
-_MSG_TYPE_MAP: dict[str, type[BaseMessage]] = {
-    "human": HumanMessage,
-    "ai": AIMessage,
-    "system": SystemMessage,
-    "tool": ToolMessage,
-}
+
+def _get_msg_type_map() -> dict[str, type[BaseMessage]]:
+    """延迟加载消息类型映射。"""
+    from langchain_core.messages import (
+        AIMessage,
+        HumanMessage,
+        SystemMessage,
+        ToolMessage,
+    )
+
+    return {
+        "human": HumanMessage,
+        "ai": AIMessage,
+        "system": SystemMessage,
+        "tool": ToolMessage,
+    }
 
 
-class FileHistoryStore:
-    """基于文件系统的对话历史存储。
+class FileMessageStore:
+    """JSONL 格式的对话消息存储。
 
-    每个会话对应一个目录：
-        {base_dir}/sessions/{session_id}/
-            history.jsonl    — 对话消息（每行一条 JSON）
-            summary.json     — 压缩摘要元数据
+    每条消息序列化为一行 JSON，追加写入 history.jsonl。
     """
 
     def __init__(self, base_dir: Path) -> None:
         self._base_dir = base_dir
 
     def _session_dir(self, session_id: str) -> Path:
-        """获取会话目录路径。"""
         return self._base_dir / "sessions" / session_id
 
     def _history_path(self, session_id: str) -> Path:
-        """获取历史文件路径。"""
         return self._session_dir(session_id) / "history.jsonl"
-
-    def _summary_path(self, session_id: str) -> Path:
-        """获取摘要文件路径。"""
-        return self._session_dir(session_id) / "summary.json"
 
     def append_message(self, session_id: str, message: BaseMessage) -> None:
         """追加一条消息到 JSONL 文件。"""
@@ -66,6 +74,9 @@ class FileHistoryStore:
             "index": index,
             "metadata": getattr(message, "additional_kwargs", {}),
         }
+        tool_call_id = getattr(message, "tool_call_id", None)
+        if tool_call_id:
+            record["tool_call_id"] = tool_call_id
 
         with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
@@ -122,14 +133,67 @@ class FileHistoryStore:
         return self._count_lines(self._history_path(session_id))
 
     def clear(self, session_id: str) -> None:
-        """清空会话历史。"""
+        """清空会话消息历史。"""
         path = self._history_path(session_id)
         if path.exists():
             path.unlink()
 
-    # ── 摘要持久化 ──────────────────────────────────────
+    # ── 内部工具 ────────────────────────────────────────
 
-    def save_summary(
+    @staticmethod
+    def _count_lines(path: Path) -> int:
+        if not path.exists():
+            return 0
+        with path.open("r", encoding="utf-8") as f:
+            return sum(1 for _ in f)
+
+    @staticmethod
+    def _message_type_name(message: BaseMessage) -> str:
+        from langchain_core.messages import (
+            AIMessage,
+            HumanMessage,
+            SystemMessage,
+            ToolMessage,
+        )
+
+        if isinstance(message, HumanMessage):
+            return "human"
+        if isinstance(message, AIMessage):
+            return "ai"
+        if isinstance(message, SystemMessage):
+            return "system"
+        if isinstance(message, ToolMessage):
+            return "tool"
+        return getattr(message, "type", "unknown")
+
+    @staticmethod
+    def _record_to_message(record: dict[str, Any]) -> BaseMessage | None:
+        msg_type = record.get("type", "")
+        cls = _get_msg_type_map().get(msg_type)
+        if cls is None:
+            return None
+        kwargs: dict[str, Any] = {"content": record.get("content", "")}
+        if msg_type == "tool":
+            kwargs["tool_call_id"] = record.get("tool_call_id", "")
+        return cls(**kwargs)
+
+
+class FileSummaryStore:
+    """JSON 格式的压缩摘要存储。
+
+    每个会话的摘要保存为 summary.json。
+    """
+
+    def __init__(self, base_dir: Path) -> None:
+        self._base_dir = base_dir
+
+    def _session_dir(self, session_id: str) -> Path:
+        return self._base_dir / "sessions" / session_id
+
+    def _summary_path(self, session_id: str) -> Path:
+        return self._session_dir(session_id) / "summary.json"
+
+    def save(
         self,
         session_id: str,
         summary: str,
@@ -152,55 +216,80 @@ class FileHistoryStore:
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
 
-    def read_summary(self, session_id: str) -> dict[str, Any] | None:
+    def read(self, session_id: str) -> dict[str, Any] | None:
         """读取压缩摘要。"""
         path = self._summary_path(session_id)
         if not path.exists():
             return None
         return json.loads(path.read_text(encoding="utf-8"))
 
-    # ── 内部工具 ────────────────────────────────────────
 
-    @staticmethod
-    def _count_lines(path: Path) -> int:
-        """统计文件行数。"""
-        if not path.exists():
-            return 0
-        with path.open("r", encoding="utf-8") as f:
-            return sum(1 for _ in f)
+class FileHistoryStore:
+    """基于文件系统的对话历史存储门面。
 
-    @staticmethod
-    def _message_type_name(message: BaseMessage) -> str:
-        """获取消息类型名称。"""
-        if isinstance(message, HumanMessage):
-            return "human"
-        if isinstance(message, AIMessage):
-            return "ai"
-        if isinstance(message, SystemMessage):
-            return "system"
-        if isinstance(message, ToolMessage):
-            return "tool"
-        return getattr(message, "type", "unknown")
+    组合 FileMessageStore 和 FileSummaryStore，
+    对外保持统一接口以兼容现有调用方。
+    """
 
-    @staticmethod
-    def _record_to_message(record: dict[str, Any]) -> BaseMessage | None:
-        """将 JSON 记录转换为 LangChain 消息。"""
-        msg_type = record.get("type", "")
-        cls = _MSG_TYPE_MAP.get(msg_type)
-        if cls is None:
-            return None
-        return cls(content=record.get("content", ""))
+    def __init__(self, base_dir: Path) -> None:
+        self._messages = FileMessageStore(base_dir)
+        self._summaries = FileSummaryStore(base_dir)
 
-    @staticmethod
-    def format_file_references(
-        file_refs: list[dict[str, Any]], max_show: int = 20
-    ) -> str:
-        """格式化文件引用提示。"""
-        if not file_refs:
-            return ""
-        lines = ["### 可回读的原始消息位置", ""]
-        for ref in file_refs[:max_show]:
-            idx = ref.get("index", "?")
-            snippet = StringUtils.truncate(ref.get("snippet", ""), length=50)
-            lines.append(f"- 消息#{idx}: {snippet}")
-        return "\n".join(lines)
+    @property
+    def messages(self) -> FileMessageStore:
+        """消息存储。"""
+        return self._messages
+
+    @property
+    def summaries(self) -> FileSummaryStore:
+        """摘要存储。"""
+        return self._summaries
+
+    # ── 委托给 FileMessageStore ─────────────────────────
+
+    def append_message(self, session_id: str, message: BaseMessage) -> None:
+        self._messages.append_message(session_id, message)
+
+    def read_messages(
+        self,
+        session_id: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[BaseMessage]:
+        return self._messages.read_messages(session_id, offset=offset, limit=limit)
+
+    def read_records(
+        self,
+        session_id: str,
+        *,
+        offset: int = 0,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        return self._messages.read_records(session_id, offset=offset, limit=limit)
+
+    def message_count(self, session_id: str) -> int:
+        return self._messages.message_count(session_id)
+
+    def clear(self, session_id: str) -> None:
+        self._messages.clear(session_id)
+
+    # ── 委托给 FileSummaryStore ─────────────────────────
+
+    def save_summary(
+        self,
+        session_id: str,
+        summary: str,
+        *,
+        compressed_range: tuple[int, int],
+        file_references: list[dict[str, Any]],
+    ) -> None:
+        self._summaries.save(
+            session_id,
+            summary,
+            compressed_range=compressed_range,
+            file_references=file_references,
+        )
+
+    def read_summary(self, session_id: str) -> dict[str, Any] | None:
+        return self._summaries.read(session_id)

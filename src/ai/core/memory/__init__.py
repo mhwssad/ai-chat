@@ -2,7 +2,24 @@
 
 集成长期记忆（文件系统）、对话历史（LangChain SQLChatMessageHistory）
 和上下文构建（策略驱动）。
+
+所有子模块延迟导入，避免 import 时触发 langchain_core 冷启动。
 """
+
+from __future__ import annotations
+
+from typing import Any
+
+# 轻量级类型和工具（不依赖 langchain）
+from src.ai.core.memory.types import (
+    MEMORY_TYPES,
+    CompressedSummary,
+    MemoryEntry,
+    MemorySearchResult,
+    MemoryType,
+    MemoryWriteRequest,
+    generate_memory_name,
+)
 
 # 记忆异常
 from src.ai.exception.memory_exception import (
@@ -11,97 +28,74 @@ from src.ai.exception.memory_exception import (
     MemoryScanError,
 )
 
-# 长期记忆（文件系统）
-from src.ai.core.memory.extractor import MemoryExtractor
-from src.ai.core.memory.frontmatter import parse_frontmatter, parse_memory_file
-from src.ai.core.memory.llm_utils import build_llm_chain, get_chat_llm
+# 路径工具（纯文件操作，无 langchain 依赖）
 from src.ai.core.memory.paths import (
     MemoryPathResolver,
     sanitize_path_name,
     validate_memory_path,
 )
-from src.ai.core.memory.prompt import MemoryPromptBuilder
-from src.ai.core.memory.scanner import MemoryScanner
-from src.ai.core.memory.store import MemoryStore
 
-# 文件历史存储
-from src.ai.core.memory.history_store import FileHistoryStore
 
-# 类型
-from src.ai.core.memory.types import (
-    MEMORY_TYPES,
-    CompressedSummary,
-    ContextBuildRequest,
-    ContextBuildResult,
-    ContextSourceBudget,
-    ContextSourcePriority,
-    MemoryEntry,
-    MemorySearchResult,
-    MemoryStrategyType,
-    MemoryWriteRequest,
-    RAGSearchConfig,
-)
+# ── 惰性导入 ─────────────────────────────────────────────────────
 
-# 服务
-from src.ai.core.memory.service import MemoryService, memory_service
+_LAZY_IMPORTS: dict[str, tuple[str, str]] = {
+    # (module_path, attribute_name)
+    "MemoryExtractor": ("src.ai.core.memory.extractor", "MemoryExtractor"),
+    "MemorySearcher": ("src.ai.core.memory.searcher", "MemorySearcher"),
+    "MemoryPromptBuilder": ("src.ai.core.memory.prompt", "MemoryPromptBuilder"),
+    "MemoryStore": ("src.ai.core.memory.store", "MemoryStore"),
+    "MemoryIndex": ("src.ai.core.memory.store", "MemoryIndex"),
+    "FileHistoryStore": ("src.ai.core.memory.history_store", "FileHistoryStore"),
+    "FileMessageStore": ("src.ai.core.memory.history_store", "FileMessageStore"),
+    "FileSummaryStore": ("src.ai.core.memory.history_store", "FileSummaryStore"),
+    "MemoryService": ("src.ai.core.memory.service", "MemoryService"),
+    "ChatHistoryManager": ("src.ai.core.memory.history", "ChatHistoryManager"),
+}
 
-# 对话历史
-from src.ai.core.memory.history import ChatHistoryManager, get_chat_history_manager
 
-# RAG 查询优化器
-from src.ai.core.memory.rag_encoder import RAGQueryEncoder
+def __getattr__(name: str) -> Any:
+    if name in _LAZY_IMPORTS:
+        module_path, attr_name = _LAZY_IMPORTS[name]
+        import importlib
 
-# 策略
-from src.ai.core.memory.strategies import create_memory_strategy
-from src.ai.core.memory.strategies.base import BaseMemoryStrategy
-from src.ai.core.memory.strategies.compression import CompressionStrategy
+        mod = importlib.import_module(module_path)
+        return getattr(mod, attr_name)
 
-# 上下文构建
-from src.ai.core.memory.context import ContextBuilder
+    if name == "memory_service":
+        from src.ai.core.container import container
+
+        return container.memory_container.memory_service()
+
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
-    # 类型
+    # 类型与工具
     "MEMORY_TYPES",
     "CompressedSummary",
-    "ContextBuildRequest",
-    "ContextBuildResult",
-    "ContextSourceBudget",
-    "ContextSourcePriority",
     "MemoryEntry",
     "MemorySearchResult",
-    "MemoryStrategyType",
+    "MemoryType",
     "MemoryWriteRequest",
-    "RAGSearchConfig",
-    # 长期记忆
-    "MemoryExtractor",
+    "generate_memory_name",
+    # 路径
     "MemoryPathResolver",
-    "MemoryPromptBuilder",
-    "MemoryScanner",
-    "MemoryStore",
-    "memory_service",
-    "MemoryService",
-    "parse_frontmatter",
-    "parse_memory_file",
     "sanitize_path_name",
     "validate_memory_path",
-    # LLM 工具
-    "build_llm_chain",
-    "get_chat_llm",
-    # 文件历史存储
-    "FileHistoryStore",
-    # 对话历史
-    "ChatHistoryManager",
-    "get_chat_history_manager",
-    # RAG 查询优化器
-    "RAGQueryEncoder",
-    # 策略
-    "BaseMemoryStrategy",
-    "CompressionStrategy",
-    "create_memory_strategy",
-    # 上下文构建
-    "ContextBuilder",
     # 异常
     "MemoryError",
     "MemoryPathError",
     "MemoryScanError",
+    # 惰性导入
+    "MemoryExtractor",
+    "MemorySearcher",
+    "MemoryPromptBuilder",
+    "MemoryStore",
+    "MemoryIndex",
+    "FileHistoryStore",
+    "FileMessageStore",
+    "FileSummaryStore",
+    "MemoryService",
+    "ChatHistoryManager",
+    "memory_service",
 ]

@@ -1,11 +1,13 @@
 """记忆模块类型定义。
 
-包含长期记忆类型（MemoryEntry 等）和上下文构建类型（ContextBuildRequest 等）。
+包含长期记忆类型（MemoryEntry 等）。
 统一使用 4 个分类：user、feedback、project、reference。
 """
 
+import re
 from dataclasses import dataclass, field
-from enum import Enum, IntEnum
+from datetime import datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal
 
@@ -14,6 +16,28 @@ from typing import Any, Literal
 
 MemoryType = Literal["user", "feedback", "project", "reference"]
 MEMORY_TYPES: tuple[MemoryType, ...] = ("user", "feedback", "project", "reference")
+
+_SLUG_RE = re.compile(r"[^a-zA-Z0-9一-鿿]+")
+
+
+def generate_memory_name(
+    memory_type: MemoryType, text: str, *, with_hash: bool = False
+) -> str:
+    """根据记忆类型和内容生成文件名安全的名称。
+
+    Args:
+        memory_type: 记忆分类。
+        text: 记忆内容文本。
+        with_hash: 是否附加内容哈希后缀（避免同 slug 碰撞）。
+
+    Returns:
+        格式为 ``{memory_type}-{slug}`` 或 ``{memory_type}-{slug}-{hash}`` 的名称。
+    """
+    slug = _SLUG_RE.sub("-", text[:30]).strip("-")[:30]
+    if with_hash:
+        hash_part = sha256(text.encode("utf-8")).hexdigest()[:8]
+        return f"{memory_type}-{slug}-{hash_part}"
+    return f"{memory_type}-{slug}"
 
 
 @dataclass(frozen=True)
@@ -26,7 +50,7 @@ class MemoryEntry:
     content: str
     file_path: Path | None = None
     session_id: str | None = None
-    created_at: Any | None = None
+    created_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -36,7 +60,7 @@ class MemorySearchResult:
 
     entry: MemoryEntry
     score: float
-    match_type: str  # "exact" | "partial" | "keyword" | "vector"
+    match_type: str  # "exact" | "partial" | "keyword" | "vector" | "llm_relevance"
 
 
 @dataclass
@@ -50,26 +74,6 @@ class MemoryWriteRequest:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-# ── 记忆策略类型 ─────────────────────────────────────────────
-
-
-class MemoryStrategyType(str, Enum):
-    """记忆策略类型。
-
-    通过 settings.memory.memory_strategy 配置选择：
-    - buffer: 保留所有消息，超限时裁剪
-    - summary: 长对话自动摘要压缩
-    - summary_buffer: 摘要 + 近期缓冲混合
-    - vector: 基于 ChromaDB 的语义搜索
-    """
-
-    BUFFER = "buffer"
-    SUMMARY = "summary"
-    SUMMARY_BUFFER = "summary_buffer"
-    VECTOR = "vector"
-    COMPRESSION = "compression"
-
-
 @dataclass(frozen=True)
 class CompressedSummary:
     """压缩摘要数据。"""
@@ -77,67 +81,4 @@ class CompressedSummary:
     summary: str
     compressed_range: tuple[int, int]
     file_references: list[dict[str, Any]] = field(default_factory=list)
-    updated_at: Any | None = None
-
-
-@dataclass(frozen=True)
-class RAGSearchConfig:
-    """RAG 检索配置。"""
-
-    enabled: bool = True
-    top_k: int = 5
-    optimize_query: bool = True
-    merge_strategy: str = "deduplicate"
-
-
-# ── 上下文构建类型（原 context/types.py） ──────────────────────
-
-
-class ContextSourcePriority(IntEnum):
-    """上下文来源优先级（数值越小，优先级越高）。"""
-
-    SYSTEM_PROMPT = 0
-    CONVERSATION = 1
-    MEMORY = 2
-    TOOLS = 3
-    RAG = 4
-
-
-@dataclass(frozen=True)
-class ContextSourceBudget:
-    """单个上下文来源的预算分配结果。"""
-
-    source: str
-    allocated_tokens: int
-    actual_tokens: int = 0
-    truncated: bool = False
-
-
-@dataclass
-class ContextBuildRequest:
-    """上下文构建请求。"""
-
-    messages: list[Any] = field(default_factory=list)  # list[ChatMessage]
-    model_config: Any = None  # ChatModelConfig
-    session_id: str | None = None
-    enable_memory: bool = True
-    enable_tools: bool = False
-    rag_content: str = ""
-    custom_system_prompt: str | None = None
-    memory_search_limit: int = 5
-    safety_margin: int = 200
-    enable_rag: bool = False
-    rag_query: str = ""
-    rag_top_k: int = 5
-
-
-@dataclass
-class ContextBuildResult:
-    """上下文构建结果。"""
-
-    messages: list[Any] = field(default_factory=list)  # list[BaseMessage | ChatMessage]
-    system_message: str = ""
-    budget_report: list[ContextSourceBudget] = field(default_factory=list)
-    total_input_tokens: int = 0
-    budget_enabled: bool = False
-    strategy_used: str = ""
+    updated_at: datetime | None = None

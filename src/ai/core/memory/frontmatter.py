@@ -69,7 +69,7 @@ def parse_memory_file(path: Path) -> MemoryEntry | None:
         return None
 
     data = parse_frontmatter(match.group(1))
-    content = text[match.end():].strip()
+    content = text[match.end() :].strip()
     return _parse_entry(data, content, path)
 
 
@@ -153,17 +153,19 @@ def format_session_file(session_id: str, entries: list[MemoryEntry]) -> str:
         created = entry.created_at or now
         if isinstance(created, datetime):
             created = created.isoformat()
-        lines.extend([
-            "---",
-            f"name: {entry.name}",
-            f"type: {entry.memory_type}",
-            f"description: {entry.description}",
-            f"created_at: {created}",
-            "---",
-            "",
-            entry.content.strip(),
-            "",
-        ])
+        lines.extend(
+            [
+                "---",
+                f"name: {entry.name}",
+                f"type: {entry.memory_type}",
+                f"description: {entry.description}",
+                f"created_at: {created}",
+                "---",
+                "",
+                entry.content.strip(),
+                "",
+            ]
+        )
 
     return "\n".join(lines)
 

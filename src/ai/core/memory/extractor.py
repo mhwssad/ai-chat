@@ -5,14 +5,17 @@
 2. 增强模式：正则筛选 + LLM 精确判断，适合高质量提取
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import re
+from typing import TYPE_CHECKING
 
-from langchain_core.language_models import BaseChatModel
+from .types import MemoryType, MemoryWriteRequest, generate_memory_name
 
-from .llm_utils import build_llm_chain
-from .types import MemoryType, MemoryWriteRequest
+if TYPE_CHECKING:
+    from langchain_core.language_models import BaseChatModel
 
 logger = logging.getLogger(__name__)
 
@@ -49,68 +52,50 @@ _PATTERNS: dict[MemoryType, list[tuple[str, float]]] = {
     ],
 }
 
-_EXTRACT_SYSTEM = """你是一个专业的信息提取专家。从对话中提取值得长期记忆的信息。
-
-## 记忆类型定义
-
-- **user**: 用户偏好、习惯、角色、工作方式
-- **feedback**: 用户对工作方式的纠正、改进建议、负面反馈
-- **project**: 项目状态、任务进展、待办事项、截止日期
-- **reference**: 外部资源链接、文档地址、工具入口
-
-## 提取原则
-
-1. 只提取有长期价值的信息，忽略闲聊和一次性内容
-2. 保留原始表述，不要过度概括
-3. 每条信息独立成条，不要合并多个不相关的信息
-4. 如果信息不足以判断类型，不要猜测
-
-## 输入格式
-
-对话内容，每行格式：[消息#编号] 角色: 内容
-
-## 输出格式（JSON 数组）
-
-```json
-[
-  {{
-    "content": "提取的关键信息（保留原文关键部分）",
-    "memory_type": "user|feedback|project|reference",
-    "description": "一句话描述（不超过 100 字）",
-    "confidence": 0.0-1.0
-  }}
-]
-```
-
-如果没有值得记忆的信息，返回空数组 `[]`。
-
-只输出 JSON，不要解释。"""
-
-_EXTRACT_HUMAN = """请从以下对话中提取值得记忆的信息：
-
-{text}"""
-
 
 class MemoryExtractor:
     """从对话文本中提取值得记忆的信息。
 
     支持两种模式：
-    - extract(): 快速模式，纯正则匹配
+    - extract(): 快速模式，纯正则提取
     - aextract_with_llm(): 增强模式，正则筛选 + LLM 精确判断
+
+    Args:
+        llm: 用于增强模式的 LLM 实例。
+        prompt_service: 提示词服务（从 DB 获取提示词模板）。
     """
 
-    def __init__(self, llm: BaseChatModel | None = None) -> None:
+    def __init__(self, llm: BaseChatModel, prompt_service: object) -> None:
         self._llm = llm
+        self._prompt_service = prompt_service
         self._compiled: dict[str, list[tuple[re.Pattern, float]]] = {
-            key: [(re.compile(pattern, re.IGNORECASE), score) for pattern, score in patterns]
+            key: [
+                (re.compile(pattern, re.IGNORECASE), score)
+                for pattern, score in patterns
+            ]
             for key, patterns in _PATTERNS.items()
         }
         self._extract_chain = None
 
-    def _ensure_chain(self) -> None:
-        """延迟初始化 LLM 提取链。"""
-        if self._extract_chain is None and self._llm is not None:
-            self._extract_chain = build_llm_chain(self._llm, _EXTRACT_SYSTEM, _EXTRACT_HUMAN)
+    def _get_extract_chain(self):
+        """延迟构建 LLM 提取链。"""
+        if self._extract_chain is None:
+            from src.ai.utils.llm_utils import build_llm_chain
+
+            system_prompt = self._get_template_content("memory.extract_system")
+            human_template = self._get_template_content("memory.extract_human")
+            self._extract_chain = build_llm_chain(
+                self._llm, system_prompt, human_template
+            )
+        return self._extract_chain
+
+    def _get_template_content(self, prompt_key: str) -> str:
+        """从 prompt_service 获取模板原始内容。"""
+        template = self._prompt_service.get_template(prompt_key)
+        if template is None:
+            logger.warning("DB 中未找到 %s 模板", prompt_key)
+            return ""
+        return template.template
 
     def extract(self, text: str) -> list[MemoryWriteRequest]:
         """快速模式：纯正则提取候选记忆。"""
@@ -131,7 +116,7 @@ class MemoryExtractor:
                 continue
 
             description = line[:120].replace("\n", " ")
-            name = self._make_name(best_type, line)
+            name = generate_memory_name(best_type, line)
 
             request = MemoryWriteRequest(
                 content=line,
@@ -142,7 +127,6 @@ class MemoryExtractor:
             )
             candidates.append((confidence, request))
 
-        # 去重（按 name）并按置信度排序
         seen_names: set[str] = set()
         unique: list[MemoryWriteRequest] = []
         candidates.sort(key=lambda c: c[0], reverse=True)
@@ -154,21 +138,8 @@ class MemoryExtractor:
         return unique[:10]
 
     async def aextract_with_llm(self, text: str) -> list[MemoryWriteRequest]:
-        """增强模式：LLM 提取高质量记忆。
-
-        流程：
-        1. 使用 LLM 分析对话内容
-        2. 提取值得记忆的信息
-        3. 结构化输出为 MemoryWriteRequest
-        """
-        if not self._llm:
-            logger.warning("LLM 未初始化，回退到快速模式")
-            return self.extract(text)
-
-        self._ensure_chain()
-
+        """增强模式：LLM 提取高质量记忆。"""
         try:
-            # 格式化输入：添加消息编号
             lines = text.split("\n")
             formatted_lines = []
             for i, line in enumerate(lines):
@@ -176,13 +147,11 @@ class MemoryExtractor:
                     formatted_lines.append(f"[消息#{i}] {line.strip()}")
             formatted_text = "\n".join(formatted_lines)
 
-            # 调用 LLM
-            result = await self._extract_chain.ainvoke({"text": formatted_text})
+            chain = self._get_extract_chain()
+            result = await chain.ainvoke({"text": formatted_text})
 
-            # 解析 JSON 结果
             items = self._parse_llm_result(result)
 
-            # 转换为 MemoryWriteRequest
             requests = []
             for item in items:
                 if not item.get("content") or not item.get("memory_type"):
@@ -192,7 +161,7 @@ class MemoryExtractor:
                 if memory_type not in ("user", "feedback", "project", "reference"):
                     continue
 
-                name = self._make_name(memory_type, item["content"])
+                name = generate_memory_name(memory_type, item["content"])
                 confidence = float(item.get("confidence", 0.7))
 
                 request = MemoryWriteRequest(
@@ -213,7 +182,6 @@ class MemoryExtractor:
 
     def _parse_llm_result(self, result: str) -> list[dict]:
         """解析 LLM 返回的 JSON 结果。"""
-        # 尝试提取 JSON 数组
         json_match = re.search(r"\[.*\]", result, re.DOTALL)
         if not json_match:
             return []
@@ -249,8 +217,3 @@ class MemoryExtractor:
             score += 0.1
 
         return min(score, 1.0)
-
-    def _make_name(self, memory_type: MemoryType, text: str) -> str:
-        """生成记忆名称。"""
-        slug = re.sub(r"[^a-zA-Z0-9一-鿿]+", "-", text[:30]).strip("-")
-        return f"{memory_type}-{slug}"
