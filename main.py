@@ -3,7 +3,10 @@
 子命令：
   serve         启动 FastAPI 服务
   chat          交互式对话（记忆 + 工具调用）
+  agent         Agent 模式（自主任务执行）
   generate-key  生成 API Key 加密密钥
+  dashboard     TUI 控制台仪表盘
+  manage        管理子命令组（tools/memory/scheduler/chat）
 """
 
 import asyncio
@@ -47,6 +50,16 @@ def chat(
     asyncio.run(_chat_loop(session))
 
 
+@app.command()
+def agent(
+    task: str = typer.Argument(..., help="任务描述"),
+    session: str = typer.Option("agent-session", "--session", "-s", help="会话 ID"),
+    max_iterations: int = typer.Option(10, "--max-iterations", "-m", help="最大迭代次数"),
+) -> None:
+    """Agent 模式 — 自主任务执行。"""
+    asyncio.run(_agent_run(task, session, max_iterations))
+
+
 async def _chat_loop(session_id: str) -> None:
     """异步交互式对话主循环。"""
     from src.ai.core.container import container
@@ -58,6 +71,48 @@ async def _chat_loop(session_id: str) -> None:
     chat_cfg = container.chat_model_config()
     tool_mgr = container.tool_container.tool_manager()
     skill_svc = container.skill_container.skill_service()
+
+
+async def _agent_run(task: str, session_id: str, max_iterations: int) -> None:
+    """Agent 模式执行。"""
+    from src.ai.core.container import container
+
+    # 从 DI 容器获取 Agent 编排器
+    agent_orchestrator = container.agent_container.agent_orchestrator()
+
+    typer.echo("=" * 50)
+    typer.echo("AI Agent — 自主任务执行")
+    typer.echo("=" * 50)
+    typer.echo(f"任务: {task}")
+    typer.echo(f"会话: {session_id}")
+    typer.echo(f"最大迭代: {max_iterations}")
+    typer.echo("=" * 50)
+    typer.echo()
+
+    try:
+        result = await agent_orchestrator.run(
+            session_id=session_id,
+            user_message=task,
+            max_iterations=max_iterations,
+        )
+
+        typer.echo(f"\n{'=' * 50}")
+        typer.echo(f"执行完成: {result.status.value}")
+        typer.echo(f"迭代次数: {result.iterations}")
+        typer.echo(f"工具调用: {len(result.tool_calls)} 次")
+        typer.echo(f"{'=' * 50}")
+        typer.echo(f"\n结果:\n{result.content}")
+
+        if result.tool_calls:
+            typer.echo(f"\n工具调用记录:")
+            for tc in result.tool_calls:
+                status = "✓" if tc.error is None else "✗"
+                typer.echo(f"  {status} {tc.name} ({tc.duration_ms}ms)")
+                if tc.error:
+                    typer.echo(f"    错误: {tc.error}")
+
+    except Exception as e:
+        typer.echo(f"\n执行失败: {e}", err=True)
 
     typer.echo("=" * 50)
     typer.echo("AI Chat — 交互式对话")
@@ -356,6 +411,31 @@ async def _chat_once(
     history_mgr.add_message(session_id, response)
 
     return response.content
+
+
+# ── dashboard ─────────────────────────────────────────────────
+
+
+@app.command()
+def dashboard() -> None:
+    """启动 TUI 控制台仪表盘。"""
+    from src.ai.cli.dashboard import Dashboard
+    from src.ai.cli.sessions import SessionManager
+    from src.ai.core.container import container
+
+    memory_svc = container.memory_container.memory_service()
+    history_mgr = memory_svc.get_history_manager()
+    session_mgr = SessionManager(history_mgr)
+
+    dash = Dashboard(session_mgr)
+    dash.run()
+
+
+# ── manage 子命令组 ───────────────────────────────────────────
+
+from src.ai.cli.commands import manage_app  # noqa: E402
+
+app.add_typer(manage_app, name="manage")
 
 
 # ── generate-key ──────────────────────────────────────────────

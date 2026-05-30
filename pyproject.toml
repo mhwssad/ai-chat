@@ -43,6 +43,7 @@ dependencies = [
     "langchain-chroma>=0.2.2",
     "dependency-injector>=4.46.0",
     "croniter>=6.2.2",
+    "rich>=13.0.0",
 ]
 
 [project.scripts]
@@ -59,6 +60,7 @@ dev = [
     "pytest>=9.0.0",
     "ruff>=0.15.14",
     "mypy>=2.1.0",
+    "pytest-asyncio>=1.4.0",
 ]
 
 [tool.pytest.ini_options]
