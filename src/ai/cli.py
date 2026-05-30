@@ -1,6 +1,5 @@
 """AI Chat 命令行入口。"""
 
-
 import typer
 
 from src.ai.security.crypto import generate_key

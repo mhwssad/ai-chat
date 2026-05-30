@@ -41,7 +41,12 @@ dependencies = [
     "rapidocr-onnxruntime>=1.4.4",
     "chromadb>=1.5.9",
     "langchain-chroma>=0.2.2",
+    "dependency-injector>=4.46.0",
+    "croniter>=6.2.2",
 ]
+
+[project.scripts]
+ai-chat = "main:app"
 
 [project.optional-dependencies]
 rag = [
