@@ -11,7 +11,10 @@ from src.ai.storage.database import (
 from src.ai.exception.mcp_config_exception import MCPConfigError
 from src.ai.core.mcp.types import MCPServerConfig
 from src.ai.storage.prompt_models import PromptTemplate, PromptVersion
-from src.ai.storage.prompt_repository import PromptTemplateRepository, PromptVersionRepository
+from src.ai.storage.prompt_repository import (
+    PromptTemplateRepository,
+    PromptVersionRepository,
+)
 from src.ai.storage.runtime_models import (
     AuditLog,
     MemoryEntry,
@@ -23,6 +26,11 @@ from src.ai.storage.runtime_repository import (
     MemoryEntryRepository,
     ModelCallRepository,
     ToolCallRepository,
+)
+from src.ai.storage.scheduler_models import ScheduledTask, TaskExecutionLog
+from src.ai.storage.scheduler_repository import (
+    ScheduledTaskRepository,
+    TaskExecutionLogRepository,
 )
 
 __all__ = [
@@ -39,6 +47,10 @@ __all__ = [
     "PromptTemplateRepository",
     "PromptVersion",
     "PromptVersionRepository",
+    "ScheduledTask",
+    "ScheduledTaskRepository",
+    "TaskExecutionLog",
+    "TaskExecutionLogRepository",
     "ToolCall",
     "ToolCallRepository",
     "close_database",

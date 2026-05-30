@@ -1,6 +1,5 @@
 """提示词数据库模型。"""
 
-
 from datetime import datetime
 
 from sqlalchemy import Column, Index, String
@@ -51,4 +50,3 @@ class PromptVersion(SQLModel, table=True):
         default="{}",
         sa_column=Column("metadata", String, nullable=False, server_default="{}"),
     )
-

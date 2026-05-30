@@ -1,6 +1,5 @@
 """提示词数据库仓库。"""
 
-
 from sqlmodel import select
 
 from src.ai.storage.base_repository import BaseRepository
@@ -12,7 +11,9 @@ class PromptTemplateRepository(BaseRepository[PromptTemplate]):
 
     model = PromptTemplate
 
-    def get_by_key(self, prompt_key: str, *, enabled_only: bool = True) -> PromptTemplate | None:
+    def get_by_key(
+        self, prompt_key: str, *, enabled_only: bool = True
+    ) -> PromptTemplate | None:
         stmt = select(PromptTemplate).where(PromptTemplate.prompt_key == prompt_key)
         if enabled_only:
             stmt = stmt.where(PromptTemplate.enabled == True)  # noqa: E712
@@ -54,8 +55,12 @@ class PromptTemplateRepository(BaseRepository[PromptTemplate]):
             prompt = self.update(
                 prompt,
                 template=template,
-                display_name=display_name if display_name is not None else prompt.display_name,
-                description=description if description is not None else prompt.description,
+                display_name=display_name
+                if display_name is not None
+                else prompt.display_name,
+                description=description
+                if description is not None
+                else prompt.description,
                 category=category or prompt.category,
                 version=prompt.version + 1,
             )
@@ -69,4 +74,3 @@ class PromptVersionRepository(BaseRepository[PromptVersion]):
 
     def list_by_prompt(self, prompt_id: int) -> list[PromptVersion]:
         return self.list(prompt_id=prompt_id, order_by="version", descending=True)
-

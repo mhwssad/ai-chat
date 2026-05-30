@@ -1,6 +1,5 @@
 """运行态数据仓库。"""
 
-
 from datetime import datetime
 from typing import Any
 
@@ -27,11 +26,15 @@ class ModelCallRepository(BaseRepository[ModelCall]):
 
     def get_by_model(self, model: str, *, limit: int = 50) -> list[ModelCall]:
         """获取指定模型的调用记录。"""
-        return self.list(model=model, limit=limit, order_by="created_at", descending=True)
+        return self.list(
+            model=model, limit=limit, order_by="created_at", descending=True
+        )
 
     def get_errors(self, *, limit: int = 50) -> list[ModelCall]:
         """获取所有错误记录。"""
-        return self.list(status="error", limit=limit, order_by="created_at", descending=True)
+        return self.list(
+            status="error", limit=limit, order_by="created_at", descending=True
+        )
 
     def get_aggregated_stats(self, *, since: datetime | None = None) -> dict[str, Any]:
         """聚合统计：总调用数、成功数、失败数、总 token、总费用、平均耗时。"""
@@ -67,7 +70,9 @@ class ModelCallRepository(BaseRepository[ModelCall]):
             "error_rate": round(errors / total, 4) if total else 0.0,
         }
 
-    def get_stats_by_model(self, *, since: datetime | None = None) -> list[dict[str, Any]]:
+    def get_stats_by_model(
+        self, *, since: datetime | None = None
+    ) -> list[dict[str, Any]]:
         """按 model 分组聚合。"""
         stmt = select(
             ModelCall.model,
@@ -100,7 +105,9 @@ class MemoryEntryRepository(BaseRepository[MemoryEntry]):
 
     model = MemoryEntry
 
-    def get_active(self, *, scope: str | None = None, limit: int = 100) -> list[MemoryEntry]:
+    def get_active(
+        self, *, scope: str | None = None, limit: int = 100
+    ) -> list[MemoryEntry]:
         filters = {"status": "active"}
         if scope:
             filters["scope"] = scope
@@ -109,8 +116,11 @@ class MemoryEntryRepository(BaseRepository[MemoryEntry]):
     def get_by_type(self, memory_type: str, *, limit: int = 50) -> list[MemoryEntry]:
         """按记忆类型查询活跃条目。"""
         return self.list(
-            status="active", memory_type=memory_type,
-            limit=limit, order_by="updated_at", descending=True,
+            status="active",
+            memory_type=memory_type,
+            limit=limit,
+            order_by="updated_at",
+            descending=True,
         )
 
     def search_summary(self, keyword: str, *, limit: int = 20) -> list[MemoryEntry]:
@@ -118,7 +128,8 @@ class MemoryEntryRepository(BaseRepository[MemoryEntry]):
         all_entries = self.get_active(limit=500)
         keyword_lower = keyword.lower()
         return [
-            e for e in all_entries
+            e
+            for e in all_entries
             if e.content_summary and keyword_lower in e.content_summary.lower()
         ][:limit]
 
@@ -130,7 +141,9 @@ class AuditLogRepository(BaseRepository[AuditLog]):
 
     def get_by_event_type(self, event_type: str, *, limit: int = 50) -> list[AuditLog]:
         """按事件类型查询。"""
-        return self.list(event_type=event_type, limit=limit, order_by="created_at", descending=True)
+        return self.list(
+            event_type=event_type, limit=limit, order_by="created_at", descending=True
+        )
 
     def get_by_session(self, session_id: str) -> list[AuditLog]:
         """获取指定会话的所有审计记录。"""

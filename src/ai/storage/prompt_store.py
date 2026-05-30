@@ -1,9 +1,8 @@
 """DbPromptStore — 基于 PromptTemplateRepository 的 PromptStore 实现。"""
 
-
 import logging
 
-from src.ai.core.prompts.persistence import PromptData
+from src.ai.core.prompts.types import PromptData
 from src.ai.storage.database import get_session
 from src.ai.storage.prompt_repository import PromptTemplateRepository
 
@@ -13,9 +12,13 @@ logger = logging.getLogger(__name__)
 class DbPromptStore:
     """提示词持久化实现，读写 prompt_templates 表。"""
 
-    def get_by_key(self, prompt_key: str, *, enabled_only: bool = True) -> PromptData | None:
+    def get_by_key(
+        self, prompt_key: str, *, enabled_only: bool = True
+    ) -> PromptData | None:
         with get_session() as session:
-            row = PromptTemplateRepository(session).get_by_key(prompt_key, enabled_only=enabled_only)
+            row = PromptTemplateRepository(session).get_by_key(
+                prompt_key, enabled_only=enabled_only
+            )
             if row is None:
                 return None
             return _to_data(row)

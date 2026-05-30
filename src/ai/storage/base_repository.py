@@ -20,7 +20,6 @@
         sessions = repo.list(limit=10, offset=0)
 """
 
-
 from datetime import datetime
 from typing import Any, Generic, NamedTuple, TypeVar
 
@@ -138,7 +137,9 @@ class BaseRepository(Generic[T]):
     def exists(self, pk_value: Any) -> bool:
         """检查主键对应的记录是否存在。"""
         pk_cols = self._pk_columns()
-        stmt = select(func.count()).select_from(self.model).where(pk_cols[0] == pk_value)
+        stmt = (
+            select(func.count()).select_from(self.model).where(pk_cols[0] == pk_value)
+        )
         return self.session.exec(stmt).one() > 0
 
     # ==================== 写入 ====================
