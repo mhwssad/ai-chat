@@ -31,6 +31,20 @@ def _create_tool_collector(tool_registry):
     return ToolCollector(tool_registry=tool_registry)
 
 
+def _create_mcp_collector(mcp_manager):
+    """MCP 状态收集器。"""
+    from src.ai.core.context.collectors.mcp_collector import MCPCollector
+
+    return MCPCollector(mcp_manager=mcp_manager)
+
+
+def _create_skill_collector(skill_service):
+    """技能元数据收集器。"""
+    from src.ai.core.context.collectors.skill_collector import SkillCollector
+
+    return SkillCollector(skill_service=skill_service)
+
+
 def _create_rag_collector(rag_encoder, settings):
     """RAG 检索收集器。"""
     from src.ai.core.context.collectors.rag_collector import RAGCollector
@@ -150,6 +164,8 @@ class ContextContainer(containers.DeclarativeContainer):
     llm = providers.Dependency()
     rag_service = providers.Dependency()
     file_store = providers.Dependency()
+    mcp_manager = providers.Dependency()
+    skill_service = providers.Dependency()
 
     # 内部组件：系统收集器
     system_collector = providers.Singleton(_create_system_collector)
@@ -164,6 +180,14 @@ class ContextContainer(containers.DeclarativeContainer):
     tool_collector = providers.Singleton(
         _create_tool_collector,
         tool_registry=tool_registry,
+    )
+    mcp_collector = providers.Singleton(
+        _create_mcp_collector,
+        mcp_manager=mcp_manager,
+    )
+    skill_collector = providers.Singleton(
+        _create_skill_collector,
+        skill_service=skill_service,
     )
     rag_encoder = providers.Singleton(
         _create_rag_encoder,
@@ -184,6 +208,8 @@ class ContextContainer(containers.DeclarativeContainer):
             user_collector,
             memory_collector,
             tool_collector,
+            mcp_collector,
+            skill_collector,
             rag_collector,
         ),
     )

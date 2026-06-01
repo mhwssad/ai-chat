@@ -14,9 +14,15 @@ if TYPE_CHECKING:
     from src.ai.core.models.base import (
         ChatModelBuilder,
         EmbeddingModelBuilder,
+        ImageModelBuilder,
         ModelBuilder,
         ModelFactory,
+        TTSModelBuilder,
     )
+    from src.ai.core.models.chat import ChatModelFactory
+    from src.ai.core.models.embedding import EmbeddingModelFactory
+    from src.ai.core.models.image import ImageModelFactory
+    from src.ai.core.models.tts import TTSModelFactory
 
 
 class ModelFactoryRegistry:
@@ -72,6 +78,16 @@ class ModelFactoryRegistry:
         self, model_type: Literal["embedding"], backend: str
     ) -> EmbeddingModelBuilder: ...
 
+    @overload
+    def get_builder(
+        self, model_type: Literal["image"], backend: str
+    ) -> ImageModelBuilder: ...
+
+    @overload
+    def get_builder(
+        self, model_type: Literal["tts"], backend: str
+    ) -> TTSModelBuilder: ...
+
     def get_builder(self, model_type: str, backend: str) -> ModelBuilder:
         """根据 (模型类型, 后端) 获取构建器。
 
@@ -88,3 +104,13 @@ class ModelFactoryRegistry:
     def embedding(self) -> EmbeddingModelFactory:
         """快捷访问 Embedding 工厂。"""
         return self.get_factory("embedding")  # type: ignore[return-value]
+
+    @property
+    def image(self) -> ImageModelFactory:
+        """快捷访问 Image 工厂。"""
+        return self.get_factory("image")  # type: ignore[return-value]
+
+    @property
+    def tts(self) -> TTSModelFactory:
+        """快捷访问 TTS 工厂。"""
+        return self.get_factory("tts")  # type: ignore[return-value]

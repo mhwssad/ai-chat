@@ -6,6 +6,7 @@ AppContainer 组合各模块子容器，测试时可通过
 
 from dependency_injector import containers, providers
 
+from src.ai.core.agent.container import AgentContainer
 from src.ai.core.context.container import ContextContainer
 from src.ai.core.mcp.container import MCPContainer
 from src.ai.core.memory.container import MemoryContainer
@@ -80,7 +81,7 @@ class AppContainer(containers.DeclarativeContainer):
     tool_container = providers.Container(
         ToolContainer,
         http_aclient=http_container.http_aclient,
-        mcp_manager=mcp_container.mcp_manager,
+        model_service=model_container.model_service,
     )
 
     memory_container = providers.Container(
@@ -111,6 +112,17 @@ class AppContainer(containers.DeclarativeContainer):
         llm=chat_llm,
         rag_service=rag_container.rag_service,
         file_store=memory_container.file_store,
+        mcp_manager=mcp_container.mcp_manager,
+        skill_service=skill_container.skill_service,
+    )
+
+    # ── Layer 3: Agent ──
+    agent_container = providers.Container(
+        AgentContainer,
+        model_service=model_container.model_service,
+        tool_manager=tool_container.tool_manager,
+        context_service=context_container.context_service,
+        tool_registry=tool_container.tool_registry,
     )
 
 

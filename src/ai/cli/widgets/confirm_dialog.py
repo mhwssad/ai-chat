@@ -76,6 +76,10 @@ class ConfirmDialog:
         if not self.visible:
             return None
 
+        # 自适应宽度：终端宽度的 40%，最小 40，最大 60
+        term_width = console.width or 80
+        panel_width = max(40, min(60, term_width * 2 // 5))
+
         text = Text()
         text.append(f"{Icons.WARNING} ", style="warning")
         text.append(self.message, style="warning")
@@ -92,11 +96,11 @@ class ConfirmDialog:
             text.append(" [ 是 ] ", style="selected")
 
         text.append("\n\n")
-        text.append("← → 切换 │ Enter 确认 │ Esc 取消", style="muted")
+        text.append("< > 切换 | Enter 确认 | Esc 取消", style="muted")
 
         return Panel(
             text,
             title="[warning]确认操作[/]",
             border_style="warning",
-            width=50,
+            width=panel_width,
         )

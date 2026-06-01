@@ -42,20 +42,19 @@ class ToolCollector(ContextCollector):
             if not tools:
                 return ContextCollectorResult()
 
-            builtin_names = []
-            mcp_names = []
+            grouped: dict[str, list[str]] = {"builtin": [], "mcp": [], "skill": []}
             for tool in tools:
                 meta = self._registry.get_meta(tool.name)
-                if meta.source_type == "mcp":
-                    mcp_names.append(tool.name)
-                else:
-                    builtin_names.append(tool.name)
+                source = meta.source_type if meta.source_type in grouped else "builtin"
+                grouped[source].append(tool.name)
 
             lines = ["## 工具使用指引", ""]
-            if builtin_names:
-                lines.append(f"内置工具: {', '.join(builtin_names)}")
-            if mcp_names:
-                lines.append(f"MCP 工具: {', '.join(mcp_names)}")
+            if grouped["builtin"]:
+                lines.append(f"内置工具: {', '.join(grouped['builtin'])}")
+            if grouped["mcp"]:
+                lines.append(f"MCP 工具: {', '.join(grouped['mcp'])}")
+            if grouped["skill"]:
+                lines.append(f"技能工具: {', '.join(grouped['skill'])}")
             lines.extend(
                 [
                     "",

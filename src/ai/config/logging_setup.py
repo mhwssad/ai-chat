@@ -8,7 +8,6 @@ import logging
 from enum import Enum
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
-from typing import Optional
 
 from pydantic import Field
 
@@ -43,7 +42,7 @@ class LogConfig(BaseSettingsConfig):
     log_format: LogFormat = Field(default=LogFormat.STANDARD)
 
     # 日志文件路径，None 表示只输出到控制台
-    log_file: Optional[Path] = Field(default=None)
+    log_file: Path | None = Field(default=None)
 
     # 日志文件最大大小（字节），默认 10MB
     log_max_bytes: int = Field(default=10 * 1024 * 1024)
@@ -125,7 +124,7 @@ class ColoredFormatter(logging.Formatter):
         return message
 
 
-def setup_logging(config: Optional[LogConfig] = None) -> logging.Logger:
+def setup_logging(config: LogConfig | None = None) -> logging.Logger:
     """设置日志系统。
 
     初始化根日志记录器，添加控制台和可选的文件处理器。
@@ -172,7 +171,7 @@ def setup_logging(config: Optional[LogConfig] = None) -> logging.Logger:
     return root_logger
 
 
-def get_logger(name: Optional[str] = None) -> logging.Logger:
+def get_logger(name: str | None = None) -> logging.Logger:
     """获取日志记录器。
 
     Args:

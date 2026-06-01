@@ -18,8 +18,12 @@ if TYPE_CHECKING:
     from .prompt import MemoryPromptBuilder
     from .searcher import MemorySearcher
     from .store import MemoryStore
+    from .vector_store import MemoryVectorStore
 
 logger = logging.getLogger(__name__)
+
+# 触发自动维护的记忆数量阈值
+_AUTO_MAINTENANCE_THRESHOLD = 500
 
 
 class MemoryService:
@@ -30,12 +34,14 @@ class MemoryService:
     - 搜索代理（委托给 MemorySearcher）
     - 从对话提取记忆（委托给 MemoryExtractor）
     - 构建系统 prompt 上下文（委托给 MemoryPromptBuilder）
+    - 向量索引同步
 
     Args:
         store: 文件系统记忆存储。
         extractor: 记忆提取器。
         prompt_builder: 记忆提示构建器。
         searcher: 统一搜索器。
+        vector_store: 向量存储（可选）。
     """
 
     def __init__(
@@ -45,11 +51,13 @@ class MemoryService:
         extractor: MemoryExtractor,
         prompt_builder: MemoryPromptBuilder,
         searcher: MemorySearcher,
+        vector_store: MemoryVectorStore | None = None,
     ) -> None:
         self._store = store
         self._extractor = extractor
         self._prompt = prompt_builder
         self._searcher = searcher
+        self._vector_store = vector_store
 
     @property
     def store(self) -> MemoryStore:
@@ -90,6 +98,13 @@ class MemoryService:
             metadata=entry.metadata,
         )
 
+        # 同步向量索引
+        if self._vector_store is not None:
+            try:
+                self._vector_store.index_entry(entry)
+            except Exception:
+                logger.debug("向量索引同步失败: %s", entry.name, exc_info=True)
+
         logger.info(
             "记忆已保存: %s (%s) [session=%s]",
             entry.name,
@@ -106,6 +121,12 @@ class MemoryService:
         """删除记忆。"""
         success = self._store.delete(name)
         if success:
+            # 同步删除向量索引
+            if self._vector_store is not None:
+                try:
+                    self._vector_store.delete_entry(name)
+                except Exception:
+                    logger.debug("向量索引删除失败: %s", name, exc_info=True)
             logger.info("记忆已删除: %s", name)
         return success
 
@@ -199,3 +220,19 @@ class MemoryService:
         from .store import MemoryIndex
 
         return MemoryIndex.compute_stats(self._store.list_all())
+
+    # ── 自动维护 ──────────────────────────────────────────────
+
+    async def auto_maintenance(self) -> dict[str, int]:
+        """执行自动维护（过期、去重、合并）。
+
+        Returns:
+            各阶段处理数量的统计字典。
+        """
+        from .lifecycle import MemoryLifecycleManager
+
+        manager = MemoryLifecycleManager(
+            store=self._store,
+            vector_store=self._vector_store,
+        )
+        return await manager.run_maintenance()

@@ -33,7 +33,7 @@ class ModelCallRepository(BaseRepository[ModelCall]):
     def get_errors(self, *, limit: int = 50) -> list[ModelCall]:
         """获取所有错误记录。"""
         return self.list(
-            status="error", limit=limit, order_by="created_at", descending=True
+            status="failed", limit=limit, order_by="created_at", descending=True
         )
 
     def get_aggregated_stats(self, *, since: datetime | None = None) -> dict[str, Any]:

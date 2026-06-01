@@ -46,6 +46,37 @@ python -m pytest tests/
 
 FastAPI 启动后访问 `http://127.0.0.1:8000/`
 
+## 代码搜索规范
+
+项目已安装 `python-lsp-server`（pylsp），**默认使用 LSP 进行代码搜索和导航**，而非纯文本搜索。
+
+### 优先级
+
+1. **LSP 符号搜索**（首选）— 按函数名、类名、变量名精确查找定义和引用
+2. **Grep 文本搜索**（次选）— 仅用于搜索注释、字符串字面量、配置值等非符号内容
+3. **Glob 文件搜索** — 仅用于按文件名模式查找文件
+
+### 使用场景
+
+| 需求 | 使用方式 |
+|------|---------|
+| 查找函数/类定义 | LSP symbol search |
+| 查找变量在哪里被引用 | LSP references |
+| 查看函数签名和参数 | LSP hover |
+| 跳转到类型定义 | LSP type definition |
+| 搜索日志/错误信息文本 | Grep |
+| 查找配置文件、测试文件 | Glob |
+
+### LSP 启动
+
+```bash
+# stdio 模式（编辑器集成）
+uv run pylsp
+
+# TCP 模式（调试/远程）
+uv run pylsp --tcp --port 2087
+```
+
 ## 分层架构
 
 ```text
@@ -57,7 +88,7 @@ src/ai/
 │   ├── models/     → 模型子系统：Client、Registry、Resolver、Provider、遥测、定价
 │   │   └── providers/  → 具体供应商实现（httpx_openai、langchain_chat 等）
 │   ├── tools/      → 工具子系统：Registry、内置工具(builtins)、执行器
-│   │   └── mcp/    → MCP 协议：Client、Manager、工具适配器
+│   ├── mcp/        → MCP 协议：Client、Manager、工具适配器
 │   ├── prompts/    → 提示词模板管理（Service + Renderer + 持久化）
 │   ├── memory/     → 记忆子系统（MEMORY.md 索引 + 文件存储、DB 辅助索引、相关性检索）
 │   └── skills/     → 技能插件（SKILL.md 文件驱动、渐进式披露）
@@ -111,7 +142,7 @@ API Route → api/services/<name>_service.py
 | `settings` | `config/settings.py` | 分域全局配置 |
 | `provider_registry` | `core/models/registry.py` | 模型 Provider 注册表 |
 | `tool_registry` | `core/tools/registry.py` | 工具注册表 |
-| `mcp_manager` | `core/tools/mcp/manager.py` | MCP 服务器管理 |
+| `mcp_manager` | `core/mcp/manager.py` | MCP 服务器管理 |
 | `prompt_service` | `core/prompts/service.py` | 提示词模板服务 |
 | `memory_service` | `core/memory/service.py` | 记忆管理服务 |
 | `rag_service` | `rag/service.py` | RAG 检索服务 |
@@ -119,7 +150,7 @@ API Route → api/services/<name>_service.py
 ## 硬性开发规则
 
 - 禁止新增 `src/ai_chat`。
-- 禁止新增 `src/ai/core/mcp`，MCP 必须在 `src/ai/core/tools/mcp`。
+- MCP 模块位于 `src/ai/core/mcp/`，禁止将其迁移到其他位置。
 - 禁止 API 路由直接写业务逻辑——路由只做参数校验和调用 service。
 - 禁止绕过 `core/models` 调用模型。
 - 禁止绕过 `core/tools` 调用工具。
@@ -150,7 +181,7 @@ API Route → api/services/<name>_service.py
 | 静态资源 | `src/ai/api/static/` |
 | 模型 provider | `src/ai/core/models/providers/<name>.py`，继承 `ModelProvider` ABC |
 | 工具 | `src/ai/core/tools/builtins.py` 添加 `ToolDefinition` |
-| MCP | `src/ai/core/tools/mcp/` |
+| MCP | `src/ai/core/mcp/` |
 | RAG | `src/ai/rag/` |
 | ORM / Repository | `src/ai/storage/<name>_models.py` + `<name>_repository.py` |
 | 提示词模板 | 通过 `PromptService` 管理，持久化到 DB |

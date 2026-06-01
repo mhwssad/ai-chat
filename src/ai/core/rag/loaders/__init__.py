@@ -42,6 +42,8 @@ _LAZY_IMPORTS = {
     "UnstructuredLoader": ".unstructured_loader",
     "OcrImageLoader": ".ocr_loader",
     "PlainTextLoader": ".text_loader",
+    "UrlLoader": ".url_loader",
+    "StreamLoader": ".stream_loader",
 }
 
 
@@ -71,6 +73,8 @@ __all__ = [
     "UnstructuredLoader",
     "OcrImageLoader",
     "PlainTextLoader",
+    "UrlLoader",
+    "StreamLoader",
     # 配置
     "LoaderSettings",
     "PlainTextSettings",

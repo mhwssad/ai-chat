@@ -36,5 +36,5 @@ def register_skill_tools(registry, skill_service) -> None:
     tool_obj = create_skill_tool(skill_service)
     registry.register(
         tool_obj,
-        meta=ToolMeta(source_type="builtin", essential=True),
+        meta=ToolMeta(source_type="skill", essential=True),
     )

@@ -15,7 +15,7 @@
 """
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 from langchain_core.messages import BaseMessage, AIMessage
 
@@ -127,7 +127,7 @@ class TokenCounter:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def extract_usage(result: AIMessage) -> Optional[dict]:
+    def extract_usage(result: AIMessage) -> dict | None:
         """从 LangChain AIMessage 响应中提取 token 使用量。
 
         兼容不同提供商的 metadata 格式：
@@ -217,7 +217,7 @@ class TokenCounter:
         self,
         messages: list[BaseMessage],
         *,
-        result: Optional[AIMessage] = None,
+        result: AIMessage | None = None,
     ) -> TokenUsage:
         """获取消息列表的 token 使用量。
 

@@ -1,5 +1,6 @@
 """多会话管理器 — 管理并行对话会话的生命周期。"""
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
@@ -81,8 +82,7 @@ class SessionManager:
             ValueError: session_id 已存在。
         """
         if session_id is None:
-            count = len(self._sessions) + 1
-            session_id = f"session-{count}"
+            session_id = f"session-{uuid.uuid4().hex[:8]}"
         if session_id in self._sessions:
             raise ValueError(f"会话 '{session_id}' 已存在")
 
@@ -160,17 +160,15 @@ class SessionManager:
         """从历史记录中发现已有的会话。
 
         扫描 ChatHistoryManager 中已有的会话并同步到内存。
+        连续 3 个前缀探测无结果时提前退出。
 
         Returns:
             发现的会话数量。
         """
-        # 通过历史管理器获取已有会话
-        # ChatHistoryManager 基于 SQLChatMessageHistory，
-        # 需要通过 message_count 探测
         discovered = 0
-        # 使用已知的会话 ID 模式进行探测
         known_prefixes = ["cli-chat", "agent-session", "session-"]
         for prefix in known_prefixes:
+            empty_streak = 0
             for i in range(1, 50):
                 sid = (
                     f"{prefix}{i}"
@@ -187,8 +185,15 @@ class SessionManager:
                         )
                         self._sessions[sid] = info
                         discovered += 1
+                        empty_streak = 0
+                    else:
+                        empty_streak += 1
                 except Exception:
                     # message_count 可能因表不存在而抛异常
+                    break
+
+                # 连续 3 次无结果，提前退出当前前缀
+                if empty_streak >= 3:
                     break
         return discovered
 

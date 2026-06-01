@@ -1,5 +1,6 @@
 """格式化工具函数 — 统一 CLI 输出格式。"""
 
+import unicodedata
 from datetime import datetime
 
 
@@ -48,20 +49,90 @@ def format_duration(seconds: float | None) -> str:
     return f"{d}d {h}h"
 
 
-def truncate(text: str, max_len: int = 60, suffix: str = "...") -> str:
-    """截断长文本。
+def display_width(text: str) -> int:
+    """计算文本的显示宽度（CJK 字符占 2 列，零宽字符不计）。
 
     Args:
         text: 原始文本。
-        max_len: 最大长度（含 suffix）。
+
+    Returns:
+        显示宽度。
+    """
+    width = 0
+    for ch in text:
+        cat = unicodedata.category(ch)
+        # Mn=非间距标记, Cf=格式字符（含零宽空格等）→ 不占宽度
+        if cat in ("Mn", "Cf"):
+            continue
+        eaw = unicodedata.east_asian_width(ch)
+        width += 2 if eaw in ("W", "F") else 1
+    return width
+
+
+def truncate(text: str, max_len: int = 60, suffix: str = "...") -> str:
+    """截断长文本（CJK 感知）。
+
+    Args:
+        text: 原始文本。
+        max_len: 最大显示宽度（含 suffix）。
         suffix: 截断后缀。
 
     Returns:
         截断后的字符串。
     """
-    if len(text) <= max_len:
+    if display_width(text) <= max_len:
         return text
-    return text[: max_len - len(suffix)] + suffix
+
+    suffix_width = display_width(suffix)
+    target = max_len - suffix_width
+    result: list[str] = []
+    current_width = 0
+    for ch in text:
+        eaw = unicodedata.east_asian_width(ch)
+        w = 2 if eaw in ("W", "F") else 1
+        if current_width + w > target:
+            break
+        result.append(ch)
+        current_width += w
+    return "".join(result) + suffix
+
+
+def wrap_text(text: str, width: int) -> list[str]:
+    """按显示宽度换行（CJK 感知）。
+
+    Args:
+        text: 原始文本。
+        width: 每行最大显示宽度。
+
+    Returns:
+        换行后的字符串列表。
+    """
+    lines: list[str] = []
+    current: list[str] = []
+    current_width = 0
+
+    for ch in text:
+        if ch == "\n":
+            lines.append("".join(current))
+            current = []
+            current_width = 0
+            continue
+
+        eaw = unicodedata.east_asian_width(ch)
+        w = 2 if eaw in ("W", "F") else 1
+
+        if current_width + w > width:
+            lines.append("".join(current))
+            current = [ch]
+            current_width = w
+        else:
+            current.append(ch)
+            current_width += w
+
+    if current:
+        lines.append("".join(current))
+
+    return lines
 
 
 def format_status(status: str) -> str:
@@ -74,15 +145,15 @@ def format_status(status: str) -> str:
         Rich 可渲染的状态标签。
     """
     mapping = {
-        "active": "[active]● 活跃[/]",
-        "paused": "[warning]◈ 暂停[/]",
-        "completed": "[success]✓ 完成[/]",
-        "failed": "[error]✗ 失败[/]",
-        "disabled": "[inactive]○ 禁用[/]",
-        "running": "[active]◉ 运行中[/]",
-        "success": "[success]✓ 成功[/]",
-        "timeout": "[warning]⏱ 超时[/]",
-        "cancelled": "[inactive]○ 取消[/]",
+        "active": "[active]* 活跃[/]",
+        "paused": "[warning][H] 暂停[/]",
+        "completed": "[success][OK] 完成[/]",
+        "failed": "[error][X] 失败[/]",
+        "disabled": "[inactive]o 禁用[/]",
+        "running": "[active][R] 运行中[/]",
+        "success": "[success][OK] 成功[/]",
+        "timeout": "[warning][T] 超时[/]",
+        "cancelled": "[inactive]o 取消[/]",
     }
     return mapping.get(status, f"[muted]{status}[/]")
 
@@ -101,7 +172,7 @@ def format_count(count: int, label: str = "条") -> str:
 
 
 def format_table_row(
-    columns: list[str], widths: list[int], separator: str = " │ "
+    columns: list[str], widths: list[int], separator: str = " | "
 ) -> str:
     """格式化固定宽度表格行。
 
@@ -117,7 +188,7 @@ def format_table_row(
     for i, col in enumerate(columns):
         w = widths[i] if i < len(widths) else 20
         # 截断超宽内容
-        if len(col) > w:
-            col = col[: w - 3] + "..."
+        if display_width(col) > w:
+            col = truncate(col, max_len=w)
         parts.append(col.ljust(w))
     return separator.join(parts)

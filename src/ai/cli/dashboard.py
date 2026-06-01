@@ -1,11 +1,9 @@
-"""TUI 控制台 — Rich Layout + Live 渲染 + msvcrt 键盘输入。
+"""TUI 控制台 — Rich Layout + Live 渲染。
 
 采用 Rich Live 实时刷新 + Layout 分栏布局。
-Windows 下使用 msvcrt 实现方向键、翻页等原生键盘支持。
+使用 InputManager 统一处理平台键盘输入。
 """
 
-import collections
-import json
 import logging
 import threading
 import time
@@ -17,14 +15,22 @@ from rich.live import Live
 from rich.align import Align
 from rich.panel import Panel
 from rich.text import Text
+from rich.tree import Tree
 
+from src.ai.cli.chat_executor import ChatExecutor
+from src.ai.cli.command_router import CommandRouter
+from src.ai.cli.input_history import InputHistory
+from src.ai.cli.input_manager import InputManager
 from src.ai.cli.sessions import SessionManager
 from src.ai.cli.tabs import BaseTab
 from src.ai.cli.tabs.chat_tab import ChatTab
+from src.ai.cli.tabs.image_tab import ImageTab
 from src.ai.cli.tabs.memory_tab import MemoryTab
 from src.ai.cli.tabs.scheduler_tab import SchedulerTab
+from src.ai.cli.tabs.stats_tab import StatsTab
 from src.ai.cli.tabs.tools_tab import ToolsTab
-from src.ai.cli.utils.theme import THEME
+from src.ai.cli.tabs.tts_tab import TTSTab
+from src.ai.cli.utils.theme import THEME, next_theme, get_theme
 from src.ai.cli.widgets.confirm_dialog import ConfirmDialog
 from src.ai.cli.widgets.status_bar import StatusBar
 
@@ -41,12 +47,15 @@ DETAIL_RATIO = 1
 
 # ── Tab 名称到索引 ──────────────────────────────────────────
 
-_TAB_NAMES = ["chat", "tools", "memory", "scheduler"]
+_TAB_NAMES = ["chat", "tools", "memory", "scheduler", "stats", "image", "tts"]
 _TAB_LABELS = [
     ("1", "Chat", "对话管理"),
     ("2", "Tools", "工具管理"),
     ("3", "Memory", "记忆管理"),
     ("4", "Scheduler", "任务管理"),
+    ("5", "Stats", "系统统计"),
+    ("6", "Image", "图像管理"),
+    ("7", "TTS", "语音管理"),
 ]
 
 
@@ -79,6 +88,9 @@ class Dashboard:
             ToolsTab(),
             MemoryTab(),
             SchedulerTab(),
+            StatsTab(),
+            ImageTab(),
+            TTSTab(),
         ]
         self._active_tab_index: int = 0
         self._status_bar = StatusBar()
@@ -86,9 +98,10 @@ class Dashboard:
         self._last_message: str = ""
         self._message_time: float = 0.0
         self._scroll_offset: int = 0
-        self._input_queue: collections.deque[str] = collections.deque(maxlen=64)
         self._lock = threading.Lock()
-        self._input_thread: threading.Thread | None = None
+
+        # 输入管理器
+        self._input_manager = InputManager(lambda: self._running)
 
         # 文本输入模式（用于 n 新建会话、/ 搜索、聊天等）
         self._input_mode: bool = False
@@ -100,6 +113,9 @@ class Dashboard:
         self._chat_thinking: bool = False
         self._chat_error: str = ""
 
+        # 对话执行器（惰性初始化）
+        self._chat_executor: ChatExecutor | None = None
+
         # 确认对话框
         self._confirm_dialog = ConfirmDialog()
         self._pending_confirm_action: Callable[[], None] | None = None
@@ -107,6 +123,15 @@ class Dashboard:
         # 状态栏周期刷新
         self._status_refresh_time: float = 0.0
         self._status_refresh_interval: float = 10.0  # 10 秒刷新一次
+
+        # 命令路由器
+        self._command_router = self._build_command_router()
+
+        # 输入历史
+        self._input_history = InputHistory()
+
+        # 主题
+        self._current_theme: str = "dark"
 
     # ── 公共接口 ─────────────────────────────────────────────
 
@@ -120,9 +145,8 @@ class Dashboard:
         self._running = True
         self._init_status()
 
-        # 启动输入线程
-        self._input_thread = threading.Thread(target=self._input_loop, daemon=True)
-        self._input_thread.start()
+        # 启动输入管理器
+        self._input_manager.start()
 
         try:
             with Live(
@@ -139,179 +163,8 @@ class Dashboard:
             pass
         finally:
             self._running = False
+            self._input_manager.stop()
             self._console.print("\n[info]已退出控制台[/]")
-
-    # ── 输入线程 ─────────────────────────────────────────────
-
-    def _input_loop(self) -> None:
-        """输入线程：msvcrt 逐字符读取。"""
-        try:
-            import msvcrt
-        except ImportError:
-            # 非 Windows：回退到 select + stdin
-            self._input_loop_unix()
-            return
-
-        while self._running:
-            try:
-                if msvcrt.kbhit():
-                    ch = msvcrt.getwch()
-
-                    # 处理特殊键前缀
-                    if ch in ("\x00", "\xe0"):
-                        ch2 = msvcrt.getwch()
-                        key = self._translate_special(ch2)
-                        with self._lock:
-                            self._input_queue.append(key)
-                    elif ch == "\x1b":
-                        # Escape 或 VT 序列
-                        key = self._read_escape_seq()
-                        with self._lock:
-                            self._input_queue.append(key)
-                    elif ch in ("\r", "\n"):
-                        with self._lock:
-                            self._input_queue.append("enter")
-                    elif ch == "\x03":  # Ctrl+C
-                        with self._lock:
-                            self._input_queue.append("ctrl_c")
-                    elif ch == "\x08":  # Backspace
-                        with self._lock:
-                            self._input_queue.append("backspace")
-                    else:
-                        with self._lock:
-                            self._input_queue.append(f"char:{ch}")
-                else:
-                    time.sleep(0.02)
-            except Exception as e:
-                logger.debug("输入线程异常: %s", e)
-                time.sleep(0.1)
-
-    def _input_loop_unix(self) -> None:
-        """Unix 回退输入（非阻塞 stdin）。"""
-        import select
-        import sys
-        import termios
-        import tty
-
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setcbreak(fd)
-            while self._running:
-                if select.select([sys.stdin], [], [], 0.05)[0]:
-                    ch = sys.stdin.read(1)
-                    if ch == "\x1b":
-                        rest = ""
-                        if select.select([sys.stdin], [], [], 0.02)[0]:
-                            rest = sys.stdin.read(2)
-                        if rest == "[A":
-                            with self._lock:
-                                self._input_queue.append("up")
-                        elif rest == "[B":
-                            with self._lock:
-                                self._input_queue.append("down")
-                        elif rest == "[C":
-                            with self._lock:
-                                self._input_queue.append("right")
-                        elif rest == "[D":
-                            with self._lock:
-                                self._input_queue.append("left")
-                        elif rest == "[H":
-                            with self._lock:
-                                self._input_queue.append("home")
-                        elif rest == "[F":
-                            with self._lock:
-                                self._input_queue.append("end")
-                        elif (
-                            rest
-                            and len(rest) == 2
-                            and rest[0] == "["
-                            and rest[1] in "123456"
-                        ):
-                            # 长序列：读取 ~ 尾缀
-                            code = rest[1]
-                            if select.select([sys.stdin], [], [], 0.02)[0]:
-                                sys.stdin.read(1)  # 消耗 ~
-                            long_map = {
-                                "1": "home",
-                                "2": "insert",
-                                "3": "delete",
-                                "4": "end",
-                                "5": "page_up",
-                                "6": "page_down",
-                            }
-                            with self._lock:
-                                self._input_queue.append(
-                                    long_map.get(code, f"vt:{code}")
-                                )
-                        else:
-                            with self._lock:
-                                self._input_queue.append("escape")
-                    elif ch in ("\r", "\n"):
-                        with self._lock:
-                            self._input_queue.append("enter")
-                    elif ch == "\x03":
-                        with self._lock:
-                            self._input_queue.append("ctrl_c")
-                    elif ch == "\x7f":
-                        with self._lock:
-                            self._input_queue.append("backspace")
-                    else:
-                        with self._lock:
-                            self._input_queue.append(f"char:{ch}")
-                else:
-                    time.sleep(0.02)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-
-    def _translate_special(self, ch: str) -> str:
-        """翻译 msvcrt 特殊键码。"""
-        mapping = {
-            "H": "up",
-            "P": "down",
-            "K": "left",
-            "M": "right",
-            "G": "home",
-            "O": "end",
-            "I": "page_up",
-            "Q": "page_down",
-            "S": "delete",
-        }
-        return mapping.get(ch, f"special:{ch}")
-
-    def _read_escape_seq(self) -> str:
-        """读取 Escape 序列（VT 模式箭头键等）。"""
-        try:
-            import msvcrt
-
-            if msvcrt.kbhit():
-                ch = msvcrt.getwch()
-                if ch == "[":
-                    if msvcrt.kbhit():
-                        code = msvcrt.getwch()
-                        vt_map = {
-                            "A": "up",
-                            "B": "down",
-                            "C": "right",
-                            "D": "left",
-                            "H": "home",
-                            "F": "end",
-                            "1": "home",
-                            "2": "insert",
-                            "3": "delete",
-                            "4": "end",
-                            "5": "page_up",
-                            "6": "page_down",
-                        }
-                        result = vt_map.get(code, f"vt:{code}")
-                        # 对所有 1-6 的 code 统一消耗 ~ 尾缀
-                        if code in ("1", "2", "3", "4", "5", "6") and msvcrt.kbhit():
-                            msvcrt.getwch()
-                        return result
-                return f"esc_seq:{ch}"
-        except Exception:
-            pass
-        return "escape"
 
     # ── 输入处理 ─────────────────────────────────────────────
 
@@ -321,8 +174,7 @@ class Dashboard:
         for _ in range(max_batch):
             # 确认对话框优先
             if self._confirm_dialog.visible:
-                with self._lock:
-                    key = self._input_queue.popleft() if self._input_queue else ""
+                key = self._input_manager.poll()
                 if key:
                     self._confirm_dialog.handle_input(key)
                     if not self._confirm_dialog.visible:
@@ -333,8 +185,7 @@ class Dashboard:
                     break  # 队列空，退出循环
                 continue
 
-            with self._lock:
-                key = self._input_queue.popleft() if self._input_queue else ""
+            key = self._input_manager.poll()
 
             if not key:
                 break
@@ -370,7 +221,7 @@ class Dashboard:
                     tab.handle_input("down")
             elif key.startswith("char:"):
                 ch = key[5:]
-                if ch in ("1", "2", "3", "4"):
+                if ch in ("1", "2", "3", "4", "5", "6", "7"):
                     idx = int(ch) - 1
                     if idx != self._active_tab_index:
                         self._tabs[self._active_tab_index].on_deactivate()
@@ -379,6 +230,11 @@ class Dashboard:
                 elif ch == "q":
                     self._running = False
                     return
+                elif ch == "T":
+                    new_name = next_theme()
+                    self._current_theme = new_name
+                    self._console = Console(theme=get_theme())
+                    self._set_message(f"[info]主题已切换: {new_name}[/]")
                 else:
                     self._dispatch_tab_cmd(ch)
 
@@ -407,18 +263,32 @@ class Dashboard:
         """处理文本输入模式下的按键。"""
         if key == "enter":
             text = self._input_buffer.strip()
-            if text and self._input_callback:
-                self._input_callback(text)
+            if text:
+                self._input_history.add(text)
+                if self._input_callback:
+                    self._input_callback(text)
             self._exit_input_mode()
             return
 
         if key == "escape":
             self._exit_input_mode()
+            self._input_history.reset()
             self._set_message("[info]已取消[/]")
             return
 
         if key == "backspace":
             self._input_buffer = self._input_buffer[:-1]
+            return
+
+        if key == "up":
+            prev = self._input_history.prev()
+            if prev is not None:
+                self._input_buffer = prev
+            return
+
+        if key == "down":
+            nxt = self._input_history.next()
+            self._input_buffer = nxt if nxt is not None else ""
             return
 
         if key.startswith("char:"):
@@ -428,44 +298,183 @@ class Dashboard:
                 self._input_buffer += ch
             return
 
+    def _build_command_router(self) -> CommandRouter:
+        """构建命令路由器，注册所有 Tab 命令。"""
+        router = CommandRouter()
+
+        # Chat Tab (0)
+        router.register(
+            0, "n", lambda: self._enter_input_mode("新会话名: ", self._create_session)
+        )
+        router.register(0, "d", self._cmd_chat_delete)
+        router.register(0, "c", self._cmd_chat_send)
+
+        # Tools Tab (1)
+        router.register(1, "e", self._cmd_tools_toggle)
+        router.register(1, "a", self._cmd_tools_filter)
+        router.register(1, "t", self._cmd_tools_test)
+
+        # Memory Tab (2)
+        router.register(2, "d", self._cmd_memory_delete)
+        router.register(2, "r", self._cmd_memory_rebuild)
+        router.register(
+            2, "/", lambda: self._enter_input_mode("搜索关键词: ", self._search_memory)
+        )
+
+        # Scheduler Tab (3)
+        router.register(3, "p", self._cmd_scheduler_pause)
+        router.register(3, "d", self._cmd_scheduler_delete)
+        router.register(3, "l", self._cmd_scheduler_logs)
+        router.register(3, "s", self._cmd_scheduler_toggle)
+
+        # Stats Tab (4) — 子视图切换直接委托 handle_input
+        router.register(4, "1", lambda: self._tabs[4].handle_input("1"))
+        router.register(4, "2", lambda: self._tabs[4].handle_input("2"))
+        router.register(4, "3", lambda: self._tabs[4].handle_input("3"))
+
+        # Image Tab (5)
+        router.register(5, "p", lambda: self._tabs[5].handle_input("p"))
+        router.register(5, "d", self._cmd_image_delete)
+        router.register(5, "o", lambda: self._tabs[5].handle_input("o"))
+
+        # TTS Tab (6)
+        router.register(6, "p", lambda: self._tabs[6].handle_input("p"))
+        router.register(6, "s", lambda: self._tabs[6].handle_input("s"))
+        router.register(6, "d", self._cmd_tts_delete)
+
+        return router
+
     def _dispatch_tab_cmd(self, cmd: str) -> None:
-        """分发 Tab 特定命令。"""
-        idx = self._active_tab_index
-        tab = self._tabs[idx]
-
-        if idx == 0:  # Chat
-            self._dispatch_chat(cmd, tab)
-        elif idx == 1:  # Tools
-            self._dispatch_tools(cmd, tab)
-        elif idx == 2:  # Memory
-            self._dispatch_memory(cmd, tab)
-        elif idx == 3:  # Scheduler
-            self._dispatch_scheduler(cmd, tab)
-
-    def _dispatch_chat(self, cmd: str, tab: BaseTab) -> None:
-        """对话 Tab 命令。"""
-        if cmd == "n":
-            self._enter_input_mode("新会话名: ", self._create_session)
-        elif cmd == "d":
-            # 使用确认对话框
-            def _do_delete() -> None:
-                if tab.handle_input("d"):
-                    self._set_message("[success][OK] 已删除会话[/]")
-                else:
-                    self._set_message("[warning]无可删除的会话[/]")
-
-            self._confirm_dialog.show("确认删除当前会话？")
-            self._pending_confirm_action = _do_delete
-        elif cmd == "c":
-            # 进入聊天输入模式
-            if self._session_mgr.active_session is None:
-                self._set_message("[warning]请先创建或选择会话[/]")
-            elif self._chat_thinking:
-                self._set_message("[warning]正在等待回复...[/]")
-            else:
-                self._enter_input_mode("消息: ", self._send_chat_message)
-        else:
+        """分发 Tab 特定命令（通过 CommandRouter）。"""
+        if not self._command_router.dispatch(self._active_tab_index, cmd):
             self._set_message(f"[warning]未知命令: {cmd}[/]")
+
+    # ── Chat 命令处理器 ─────────────────────────────────────
+
+    def _cmd_chat_delete(self) -> None:
+        """删除当前会话。"""
+        tab = self._tabs[0]
+
+        def _do_delete() -> None:
+            if tab.handle_input("d"):
+                self._set_message("[success][OK] 已删除会话[/]")
+            else:
+                self._set_message("[warning]无可删除的会话[/]")
+
+        self._confirm_dialog.show("确认删除当前会话？")
+        self._pending_confirm_action = _do_delete
+
+    def _cmd_chat_send(self) -> None:
+        """进入聊天输入模式。"""
+        if self._session_mgr.active_session is None:
+            self._set_message("[warning]请先创建或选择会话[/]")
+        elif self._chat_thinking:
+            self._set_message("[warning]正在等待回复...[/]")
+        else:
+            self._enter_input_mode("消息: ", self._send_chat_message)
+
+    # ── Tools 命令处理器 ────────────────────────────────────
+
+    def _cmd_tools_toggle(self) -> None:
+        """切换工具启用/禁用。"""
+        if self._tabs[1].handle_input("e"):
+            self._set_message("[success][OK] 状态已切换[/]")
+        else:
+            self._set_message("[warning]无法切换（核心工具不可禁用）[/]")
+
+    def _cmd_tools_filter(self) -> None:
+        """切换工具筛选。"""
+        self._tabs[1].handle_input("a")
+        self._set_message("[info]筛选已切换[/]")
+
+    def _cmd_tools_test(self) -> None:
+        """测试执行工具。"""
+        if self._tabs[1].handle_input("t"):
+            self._set_message("[success][OK] 工具测试中...[/]")
+        else:
+            self._set_message("[warning]无法测试该工具[/]")
+
+    # ── Memory 命令处理器 ───────────────────────────────────
+
+    def _cmd_memory_delete(self) -> None:
+        """删除选中的记忆条目。"""
+        tab = self._tabs[2]
+
+        def _do_delete() -> None:
+            if tab.handle_input("d"):
+                self._set_message("[success][OK] 已删除记忆[/]")
+            else:
+                self._set_message("[warning]无可删除的记忆[/]")
+
+        self._confirm_dialog.show("确认删除选中的记忆条目？")
+        self._pending_confirm_action = _do_delete
+
+    def _cmd_memory_rebuild(self) -> None:
+        """重建记忆索引。"""
+        self._tabs[2].handle_input("r")
+        self._set_message("[success][OK] 索引已重建[/]")
+
+    # ── Scheduler 命令处理器 ────────────────────────────────
+
+    def _cmd_scheduler_pause(self) -> None:
+        """暂停/恢复任务。"""
+        if self._tabs[3].handle_input("p"):
+            self._set_message("[success][OK] 状态已切换[/]")
+        else:
+            self._set_message("[warning]无法切换[/]")
+
+    def _cmd_scheduler_delete(self) -> None:
+        """删除选中的任务。"""
+        tab = self._tabs[3]
+
+        def _do_delete() -> None:
+            if tab.handle_input("d"):
+                self._set_message("[success][OK] 已删除任务[/]")
+            else:
+                self._set_message("[warning]无可删除的任务[/]")
+
+        self._confirm_dialog.show("确认删除选中的任务？")
+        self._pending_confirm_action = _do_delete
+
+    def _cmd_scheduler_logs(self) -> None:
+        """查看任务日志。"""
+        self._tabs[3].handle_input("l")
+        self._set_message("[info]查看日志（Esc 返回）[/]")
+
+    def _cmd_scheduler_toggle(self) -> None:
+        """切换调度器状态。"""
+        self._tabs[3].handle_input("s")
+        self._set_message("[info]调度器状态已切换[/]")
+
+    # ── Image 命令处理器 ────────────────────────────────────
+
+    def _cmd_image_delete(self) -> None:
+        """删除选中的图像。"""
+        tab = self._tabs[5]
+
+        def _do_delete() -> None:
+            if tab.handle_input("d"):
+                self._set_message("[success][OK] 已删除图像[/]")
+            else:
+                self._set_message("[warning]无可删除的图像[/]")
+
+        self._confirm_dialog.show("确认删除选中的图像？")
+        self._pending_confirm_action = _do_delete
+
+    # ── TTS 命令处理器 ─────────────────────────────────────
+
+    def _cmd_tts_delete(self) -> None:
+        """删除选中的音频。"""
+        tab = self._tabs[6]
+
+        def _do_delete() -> None:
+            if tab.handle_input("d"):
+                self._set_message("[success][OK] 已删除音频[/]")
+            else:
+                self._set_message("[warning]无可删除的音频[/]")
+
+        self._confirm_dialog.show("确认删除选中的音频？")
+        self._pending_confirm_action = _do_delete
 
     def _create_session(self, name: str) -> None:
         """创建会话回调（由输入模式调用）。"""
@@ -511,157 +520,19 @@ class Dashboard:
 
     async def _do_chat(self, user_input: str, session_id: str) -> str:
         """执行单轮对话（LLM + 工具循环）。"""
-        from src.ai.core.container import container
+        if self._chat_executor is None:
+            from src.ai.core.container import container
 
-        memory_svc = container.memory_container.memory_service()
-        context_svc = container.context_container.context_service()
-        chat_llm = container.chat_llm()
-        chat_cfg = container.chat_model_config()
-        tool_mgr = container.tool_container.tool_manager()
+            self._chat_executor = ChatExecutor(container)
 
-        tools = tool_mgr.list_tools(enabled_only=True)
-
-        # 复用 main.py 的 _chat_once 逻辑
-        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
-        from src.ai.core.context import ContextBuildRequest
-
-        # 构建上下文
-        request = ContextBuildRequest(
-            messages=[HumanMessage(content=user_input)],
-            model_config=chat_cfg,
-            session_id=session_id,
-            enable_memory=True,
-            enable_tools=True,
-            enable_rag=False,
-        )
-        result = await context_svc.abuild(request)
-
-        # 绑定工具并调用 LLM
-        llm_with_tools = chat_llm.bind_tools(tools)
-        response: AIMessage = await llm_with_tools.ainvoke(result.messages)
-
-        # 工具调用循环
-        messages = list(result.messages)
-        new_messages: list[AIMessage | ToolMessage] = []  # 仅保存本轮新增消息
-        max_rounds = 10
-        round_count = 0
-        while response.tool_calls and round_count < max_rounds:
-            round_count += 1
-            messages.append(response)
-            new_messages.append(response)  # 保存含 tool_calls 的 AIMessage
-
-            for tc in response.tool_calls:
-                tool_name = tc["name"]
-                tool_args = tc["args"]
-                tool_id = tc["id"]
-
-                try:
-                    tool_result = await tool_mgr.execute(tool_name, tool_args)
-                    result_str = (
-                        tool_result
-                        if isinstance(tool_result, str)
-                        else json.dumps(tool_result, ensure_ascii=False, default=str)
-                    )
-                    if len(result_str) > 2000:
-                        result_str = result_str[:2000] + "\n...(已截断)"
-                except Exception as e:
-                    result_str = f"工具执行失败: {e}"
-
-                tool_msg = ToolMessage(content=result_str, tool_call_id=tool_id)
-                messages.append(tool_msg)
-                new_messages.append(tool_msg)
-
-            response = await llm_with_tools.ainvoke(messages)
-
-        # 保存历史（仅本轮新增消息，避免重复保存旧历史中的 ToolMessage）
-        history_mgr = container.context_container.chat_history_manager()
-        history_mgr.add_message(session_id, HumanMessage(content=user_input))
-        for msg in new_messages:
-            history_mgr.add_message(session_id, msg)
-        history_mgr.add_message(session_id, response)
-
-        # 提取记忆
-        try:
-            candidates = await memory_svc.aextract_from_conversation(
-                user_input, response.content
-            )
-            if candidates:
-                memory_svc.save_extracted(candidates, session_id=session_id)
-        except Exception:
-            pass
-
-        return response.content
+        result = await self._chat_executor.execute(user_input, session_id)
+        return result.content
 
     def _search_memory(self, query: str) -> None:
         """搜索记忆回调（由输入模式调用）。"""
         memory_tab: MemoryTab = self._tabs[2]  # type: ignore[assignment]
         memory_tab.set_search_query(query)
         self._set_message(f"[info]搜索: {query}[/]")
-
-    def _dispatch_tools(self, cmd: str, tab: BaseTab) -> None:
-        """工具 Tab 命令。"""
-        if cmd == "e":
-            if tab.handle_input("e"):
-                self._set_message("[success][OK] 状态已切换[/]")
-            else:
-                self._set_message("[warning]无法切换（核心工具不可禁用）[/]")
-        elif cmd == "a":
-            tab.handle_input("a")
-            self._set_message("[info]筛选已切换[/]")
-        elif cmd == "t":
-            if tab.handle_input("t"):
-                self._set_message("[success][OK] 工具测试中...[/]")
-            else:
-                self._set_message("[warning]无法测试该工具[/]")
-        else:
-            self._set_message(f"[warning]未知命令: {cmd}[/]")
-
-    def _dispatch_memory(self, cmd: str, tab: BaseTab) -> None:
-        """记忆 Tab 命令。"""
-        if cmd == "d":
-            # 使用确认对话框
-            def _do_delete() -> None:
-                if tab.handle_input("d"):
-                    self._set_message("[success][OK] 已删除记忆[/]")
-                else:
-                    self._set_message("[warning]无可删除的记忆[/]")
-
-            self._confirm_dialog.show("确认删除选中的记忆条目？")
-            self._pending_confirm_action = _do_delete
-        elif cmd == "r":
-            tab.handle_input("r")
-            self._set_message("[success][OK] 索引已重建[/]")
-        elif cmd == "/":
-            self._enter_input_mode("搜索关键词: ", self._search_memory)
-        else:
-            self._set_message(f"[warning]未知命令: {cmd}[/]")
-
-    def _dispatch_scheduler(self, cmd: str, tab: BaseTab) -> None:
-        """定时任务 Tab 命令。"""
-        if cmd == "p":
-            if tab.handle_input("p"):
-                self._set_message("[success][OK] 状态已切换[/]")
-            else:
-                self._set_message("[warning]无法切换[/]")
-        elif cmd == "d":
-            # 使用确认对话框
-            def _do_delete() -> None:
-                if tab.handle_input("d"):
-                    self._set_message("[success][OK] 已删除任务[/]")
-                else:
-                    self._set_message("[warning]无可删除的任务[/]")
-
-            self._confirm_dialog.show("确认删除选中的任务？")
-            self._pending_confirm_action = _do_delete
-        elif cmd == "l":
-            tab.handle_input("l")
-            self._set_message("[info]查看日志（Esc 返回）[/]")
-        elif cmd == "s":
-            tab.handle_input("s")
-            self._set_message("[info]调度器状态已切换[/]")
-        else:
-            self._set_message(f"[warning]未知命令: {cmd}[/]")
 
     # ── 渲染 ─────────────────────────────────────────────────
 
@@ -682,10 +553,11 @@ class Dashboard:
             self._status_refresh_time = now
             self._refresh_status()
 
-        # Header: 状态栏（实时更新会话名）
+        # Header: 状态栏（实时更新会话名和 Tab 名称）
         width = self._console.width or 100
         active_session = self._session_mgr.active_session
         self._status_bar.session_name = active_session.name if active_session else ""
+        self._status_bar.active_tab_name = self._tabs[self._active_tab_index].name
         layout["header"].update(self._status_bar.render(self._console, width))
 
         # Tab 标签行
@@ -729,9 +601,7 @@ class Dashboard:
         if self._confirm_dialog.visible:
             dialog_panel = self._confirm_dialog.render(self._console)
             if dialog_panel is not None:
-                layout["main"].update(
-                    Align.center(dialog_panel, vertical="middle")
-                )
+                layout["main"].update(Align.center(dialog_panel, vertical="middle"))
 
         return layout
 
@@ -748,49 +618,67 @@ class Dashboard:
         return text
 
     def _render_sidebar(self, width: int) -> Panel:
-        """渲染侧边栏（系统信息 + 快捷键）。"""
-        text = Text()
-
-        # 活跃会话
+        """渲染侧边栏（使用 Tree 组织信息）。"""
+        # 会话信息
+        tree = Tree("[subtitle]会话信息[/]")
         active = self._session_mgr.active_session
-        text.append("当前会话\n", style="subtitle")
         if active:
-            text.append(f"  {active.name}\n", style="active")
-            text.append(f"  {active.message_count} 条消息\n", style="muted")
+            tree.add(f"[active]{active.name}[/]")
+            tree.add(f"[muted]{active.message_count} 条消息[/]")
         else:
-            text.append("  无\n", style="muted")
+            tree.add("[muted]无活跃会话[/]")
 
         # 对话状态（加锁读取共享状态）
         with self._lock:
             thinking = self._chat_thinking
             error = self._chat_error
         if thinking:
-            text.append("\n")
-            dots = "." * (int(time.monotonic() * 2) % 4)
-            text.append(f"  [AI] 正在思考{dots}\n", style="warning")
+            frames = ["|", "/", "-", "\\"]
+            frame = frames[int(time.monotonic() * 4) % 4]
+            tree.add(f"[warning]{frame} AI 正在思考...[/]")
         if error:
-            text.append("\n")
-            text.append(f"  [错误] {error[:60]}\n", style="error")
+            tree.add(f"[error]错误: {error[:40]}[/]")
+
+        # 系统状态
+        status_tree = Tree("[subtitle]系统状态[/]")
+        # 实时统计摘要
+        chat_tab = self._tabs[0]
+        status_tree.add(f"[info]消息: {len(chat_tab._messages)}[/]")  # type: ignore[attr-defined]
+
+        # 工具数
+        try:
+            tools_tab = self._tabs[1]
+            tools_tab._ensure_cache()  # type: ignore[attr-defined]
+            status_tree.add(f"[info]工具: {len(tools_tab._tools)}[/]")  # type: ignore[attr-defined]
+        except Exception:
+            status_tree.add("[muted]工具: -[/]")
+
+        # 记忆数
+        status_tree.add(f"[info]记忆: {self._status_bar.memory_count}[/]")
 
         # 快捷键
-        text.append("\n")
-        text.append("快捷键\n", style="subtitle")
+        shortcuts_tree = Tree("[subtitle]快捷键[/]")
         shortcuts = [
-            ("1-4", "切换 Tab"),
+            ("1-7", "切换 Tab"),
             ("N", "新建会话"),
             ("C", "发送消息"),
             ("D", "删除"),
+            ("T", "切换主题"),
             ("Enter", "激活会话"),
             ("UP/DN", "导航"),
             ("Q", "退出"),
         ]
         for key, desc in shortcuts:
-            text.append(f"  {key}", style="key")
-            text.append(f" {desc}\n", style="muted")
+            shortcuts_tree.add(f"[key]{key}[/] [muted]{desc}[/]")
+
+        # 组合所有子树
+        root = Tree("[title]信息[/]")
+        root.add(tree)
+        root.add(status_tree)
+        root.add(shortcuts_tree)
 
         return Panel(
-            text,
-            title="[title]信息[/]",
+            root,
             border_style="border",
             width=min(width, 24),
         )
@@ -809,7 +697,7 @@ class Dashboard:
             return Panel(text, border_style="border")
 
         # 普通模式：显示命令提示
-        commands: list[tuple[str, str]] = [("1-4", "Tab"), ("q", "退出")]
+        commands: list[tuple[str, str]] = [("1-5", "Tab"), ("q", "退出")]
 
         # 使用 Tab 的 get_footer_commands 获取命令列表
         tab = self._tabs[self._active_tab_index]
@@ -841,7 +729,6 @@ class Dashboard:
             # 模型名称
             try:
                 model_svc = container.model_container.model_service()
-                # 尝试获取默认模型配置
                 self._status_bar.model_name = getattr(
                     model_svc, "default_model", "未配置"
                 )
@@ -863,10 +750,20 @@ class Dashboard:
             except Exception:
                 self._status_bar.memory_count = 0
 
+            # 工具数
+            try:
+                registry = container.tool_container.tool_registry()
+                self._status_bar.tool_count = len(registry.list(enabled_only=False))
+            except Exception:
+                self._status_bar.tool_count = 0
+
             # 会话
             self._session_mgr.discover_existing_sessions()
             if self._session_mgr.active_session:
                 self._status_bar.session_name = self._session_mgr.active_session.name
+
+            # 活跃 Tab 名称
+            self._status_bar.active_tab_name = self._tabs[self._active_tab_index].name
 
         except Exception as e:
             logger.debug("初始化状态失败: %s", e)
@@ -888,5 +785,15 @@ class Dashboard:
                 self._status_bar.memory_count = stats.get("total", 0)
             except Exception:
                 pass
+
+            try:
+                registry = container.tool_container.tool_registry()
+                self._status_bar.tool_count = len(registry.list(enabled_only=False))
+            except Exception:
+                pass
+
+            # 更新活跃 Tab 名称
+            self._status_bar.active_tab_name = self._tabs[self._active_tab_index].name
+
         except Exception:
             pass

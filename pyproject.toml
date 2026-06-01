@@ -44,6 +44,12 @@ dependencies = [
     "dependency-injector>=4.46.0",
     "croniter>=6.2.2",
     "rich>=13.0.0",
+    "edge-tts>=6.1.0",
+    # RAG 混合检索
+    "rank-bm25>=0.2.2",
+    "jieba>=0.42.1",
+    # 图像处理
+    "pillow>=10.0.0",
 ]
 
 [project.scripts]
@@ -71,3 +77,10 @@ pythonpath = [
     ".",
     "src",
 ]
+
+[tool.pylsp.plugins]
+ruff = { enabled = true }
+flake8 = { enabled = false }
+pycodestyle = { enabled = false }
+pyflakes = { enabled = false }
+mccabe = { enabled = false }

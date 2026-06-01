@@ -12,9 +12,10 @@ from src.ai.exception.tool_exception import (
     ToolPermissionError,
 )
 from src.ai.core.tools.manager import ToolManager
+from src.ai.core.tools.permissions import PermissionChecker, PermissionLevel
 from src.ai.core.tools.register import register_tool
 from src.ai.core.tools.registry import ToolRegistry
-from src.ai.core.tools.types import ToolSourceType
+from src.ai.core.tools.types import ToolPlugin, ToolSourceType
 
 
 # 惰性导入：DI 容器单例
@@ -27,6 +28,10 @@ def __getattr__(name: str):
         from src.ai.core.container import container
 
         return container.tool_container.tool_manager()
+    if name == "permission_checker":
+        from src.ai.core.container import container
+
+        return container.tool_container.permission_checker()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -38,7 +43,12 @@ __all__ = [
     # 管理器
     "ToolManager",
     "tool_manager",
+    # 权限
+    "PermissionChecker",
+    "PermissionLevel",
+    "permission_checker",
     # 类型
+    "ToolPlugin",
     "ToolSourceType",
     # 异常
     "ToolDisabledError",

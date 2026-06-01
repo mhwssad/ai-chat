@@ -12,10 +12,27 @@ def _create_model_registry():
         OllamaEmbeddingBuilder,
         OpenAIEmbeddingBuilder,
     )
+    from src.ai.core.models.image import (
+        ImageModelFactory,
+        LocalImageBuilder,
+        OpenAIImageBuilder,
+        StabilityAIImageBuilder,
+    )
     from src.ai.core.models.registry import ModelFactoryRegistry
+    from src.ai.core.models.tts import (
+        EdgeTTSBuilder,
+        LocalTTSBuilder,
+        OpenAITTSBuilder,
+        TTSModelFactory,
+    )
 
     chat_factory = ChatModelFactory()
     chat_factory.register(InitChatModelBuilder)
+
+    # 直连 SDK 构建器（减少中间层开销）
+    from src.ai.core.models.providers.anthropic_chat import AnthropicChatBuilder
+
+    chat_factory.register(AnthropicChatBuilder)
 
     emb_factory = EmbeddingModelFactory()
     emb_factory.register_all(
@@ -26,21 +43,48 @@ def _create_model_registry():
         ]
     )
 
+    image_factory = ImageModelFactory()
+    image_factory.register_all(
+        [
+            OpenAIImageBuilder,
+            StabilityAIImageBuilder,
+            LocalImageBuilder,
+        ]
+    )
+
+    tts_factory = TTSModelFactory()
+    tts_factory.register_all(
+        [
+            OpenAITTSBuilder,
+            EdgeTTSBuilder,
+            LocalTTSBuilder,
+        ]
+    )
+
     reg = ModelFactoryRegistry()
     reg.register_factory("chat", chat_factory)
     reg.register_factory("embedding", emb_factory)
+    reg.register_factory("image", image_factory)
+    reg.register_factory("tts", tts_factory)
     return reg
 
 
 def _create_model_service(registry):
     """构建 ModelService 门面。"""
-    from src.ai.config.model_settings import ChatModelConfig, EmbeddingModelConfig
+    from src.ai.config.model_settings import (
+        ChatModelConfig,
+        EmbeddingModelConfig,
+        ImageModelConfig,
+        TTSModelConfig,
+    )
     from src.ai.core.models.service import ModelService
 
     return ModelService(
         registry=registry,
         chat_config=ChatModelConfig(),
         embedding_config=EmbeddingModelConfig(),
+        image_config=ImageModelConfig(),
+        tts_config=TTSModelConfig(),
     )
 
 

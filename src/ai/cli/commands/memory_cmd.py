@@ -49,10 +49,10 @@ def search_memories(
     results = svc.search(query, limit=limit)
 
     if not results:
-        typer.echo(f"  未找到与「{query}」相关的记忆")
+        typer.echo(f'  未找到与 "{query}" 相关的记忆')
         return
 
-    typer.echo(f"\n  搜索「{query}」结果:\n")
+    typer.echo(f'\n  搜索 "{query}" 结果:\n')
     for r in results:
         typer.echo(
             f"  [{r.entry.memory_type}] {r.entry.name} (相关度: {r.score:.2f}, 匹配: {r.match_type})"
@@ -72,20 +72,20 @@ def delete_memory(
 
     entry = svc.get(name)
     if entry is None:
-        typer.echo(f"  ✗ 记忆不存在: {name}", err=True)
+        typer.echo(f"  [X] 记忆不存在: {name}", err=True)
         return
 
     if not force:
-        confirm = typer.confirm(f"确认删除记忆「{name}」?")
+        confirm = typer.confirm(f'确认删除记忆 "{name}"?')
         if not confirm:
             typer.echo("  已取消")
             return
 
     success = svc.delete(name)
     if success:
-        typer.echo(f"  ✓ 已删除记忆: {name}")
+        typer.echo(f"  [OK] 已删除记忆: {name}")
     else:
-        typer.echo(f"  ✗ 删除失败: {name}", err=True)
+        typer.echo(f"  [X] 删除失败: {name}", err=True)
 
 
 @memory_app.command("rebuild")
@@ -93,7 +93,7 @@ def rebuild_index() -> None:
     """重建记忆索引（MEMORY.md）。"""
     svc = _get_memory_service()
     svc.rebuild_index()
-    typer.echo("  ✓ 记忆索引已重建")
+    typer.echo("  [OK] 记忆索引已重建")
 
 
 @memory_app.command("stats")

@@ -15,7 +15,7 @@ Usage::
 import threading
 import time
 from collections import OrderedDict
-from typing import Generic, Optional, TypeVar, cast
+from typing import Generic, TypeVar, cast
 
 K = TypeVar("K")
 V = TypeVar("V")
@@ -29,13 +29,13 @@ class LRUCache(Generic[K, V]):
         ttl: 生存时间（秒），None 表示永不过期
     """
 
-    def __init__(self, maxsize: int = 128, ttl: Optional[float] = None) -> None:
+    def __init__(self, maxsize: int = 128, ttl: float | None = None) -> None:
         self._maxsize = maxsize
         self._ttl = ttl
         self._cache: OrderedDict[K, tuple[V, float]] = OrderedDict()
         self._lock = threading.Lock()
 
-    def get(self, key: K) -> Optional[V]:
+    def get(self, key: K) -> V | None:
         """获取缓存值，不存在或已过期返回 None。"""
         with self._lock:
             if key not in self._cache:

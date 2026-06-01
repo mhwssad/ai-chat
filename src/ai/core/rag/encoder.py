@@ -72,7 +72,9 @@ class RAGQueryEncoder:
 
         rag = self._rag_service
 
-        original_results = rag.search(query, session_id=session_id, top_k=config.top_k)
+        # 优先使用混合检索（向量 + BM25）
+        search_fn = getattr(rag, "hybrid_search", rag.search)
+        original_results = search_fn(query, session_id=session_id, top_k=config.top_k)
 
         optimized_query = ""
         optimized_results = []
@@ -80,7 +82,7 @@ class RAGQueryEncoder:
             try:
                 optimized_query = await self._optimize_chain.ainvoke({"query": query})
                 if optimized_query and optimized_query.strip() != query.strip():
-                    optimized_results = rag.search(
+                    optimized_results = search_fn(
                         optimized_query, session_id=session_id, top_k=config.top_k
                     )
             except Exception:

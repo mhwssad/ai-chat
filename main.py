@@ -72,6 +72,64 @@ async def _chat_loop(session_id: str) -> None:
     tool_mgr = container.tool_container.tool_manager()
     skill_svc = container.skill_container.skill_service()
 
+    typer.echo("=" * 50)
+    typer.echo("AI Chat — 交互式对话")
+    typer.echo("=" * 50)
+    typer.echo("输入消息开始对话，/help 查看命令列表，/quit 退出\n")
+
+    typer.echo(f"  模型: {chat_cfg.model_key} ({chat_cfg.backend})")
+
+    # 加载工具和技能
+    tools = tool_mgr.list_tools(enabled_only=True)
+    skills = skill_svc.list_user_invocable()
+    typer.echo(f"  工具: {len(tools)} 个可用")
+    typer.echo(f"  技能: {len(skills)} 个可用\n")
+
+    while True:
+        try:
+            user_input = input("你: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            typer.echo("\n再见！")
+            break
+
+        if not user_input:
+            continue
+
+        # 斜杠命令分发
+        if user_input.startswith("/"):
+            try:
+                skill_text = _dispatch_command(
+                    user_input, session_id, memory_svc, skill_svc
+                )
+            except _QuitSignal:
+                break
+            if skill_text is None:
+                continue
+            user_input = skill_text
+
+        # 对话（普通消息或技能渲染后的文本）
+        try:
+            reply = await _chat_once(
+                chat_llm,
+                user_input,
+                tools,
+                session_id,
+                context_svc,
+                chat_cfg,
+                tool_mgr,
+                memory_svc,
+            )
+            typer.echo(f"\n助手: {reply}\n")
+
+            # 提取记忆
+            candidates = await memory_svc.aextract_from_conversation(user_input, reply)
+            if candidates:
+                saved = memory_svc.save_extracted(candidates, session_id=session_id)
+                if saved > 0:
+                    typer.echo(f"  保存了 {saved} 条新记忆")
+        except Exception as e:
+            typer.echo(f"\n调用失败: {e}", err=True)
+
 
 async def _agent_run(task: str, session_id: str, max_iterations: int) -> None:
     """Agent 模式执行。"""
@@ -104,76 +162,15 @@ async def _agent_run(task: str, session_id: str, max_iterations: int) -> None:
         typer.echo(f"\n结果:\n{result.content}")
 
         if result.tool_calls:
-            typer.echo(f"\n工具调用记录:")
+            typer.echo("\n工具调用记录:")
             for tc in result.tool_calls:
-                status = "✓" if tc.error is None else "✗"
+                status = "[OK]" if tc.error is None else "[X]"
                 typer.echo(f"  {status} {tc.name} ({tc.duration_ms}ms)")
                 if tc.error:
                     typer.echo(f"    错误: {tc.error}")
 
     except Exception as e:
         typer.echo(f"\n执行失败: {e}", err=True)
-
-    typer.echo("=" * 50)
-    typer.echo("AI Chat — 交互式对话")
-    typer.echo("=" * 50)
-    typer.echo("输入消息开始对话，/help 查看命令列表，/quit 退出\n")
-
-    typer.echo(f"  模型: {chat_cfg.model_key} ({chat_cfg.backend})")
-
-    # 加载工具和技能
-    tools = tool_mgr.list_tools(enabled_only=True)
-    skills = skill_svc.list_user_invocable()
-    typer.echo(f"  工具: {len(tools)} 个可用")
-    typer.echo(f"  技能: {len(skills)} 个可用\n")
-
-    turn = 0
-
-    while True:
-        try:
-            user_input = input("你: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            typer.echo("\n再见！")
-            break
-
-        if not user_input:
-            continue
-
-        # 斜杠命令分发
-        if user_input.startswith("/"):
-            try:
-                skill_text = _dispatch_command(
-                    user_input, session_id, memory_svc, skill_svc
-                )
-            except _QuitSignal:
-                break
-            if skill_text is None:
-                continue
-            user_input = skill_text
-
-        # 对话（普通消息或技能渲染后的文本）
-        turn += 1
-        try:
-            reply = await _chat_once(
-                chat_llm,
-                user_input,
-                tools,
-                session_id,
-                context_svc,
-                chat_cfg,
-                tool_mgr,
-                memory_svc,
-            )
-            typer.echo(f"\n助手: {reply}\n")
-
-            # 提取记忆
-            candidates = await memory_svc.aextract_from_conversation(user_input, reply)
-            if candidates:
-                saved = memory_svc.save_extracted(candidates, session_id=session_id)
-                if saved > 0:
-                    typer.echo(f"  保存了 {saved} 条新记忆")
-        except Exception as e:
-            typer.echo(f"\n调用失败: {e}", err=True)
 
 
 # ── 斜杠命令分发 ────────────────────────────────────────────
@@ -243,7 +240,7 @@ def _dispatch_command(
         raw_parts = user_input.strip().split(None, 1)
         arguments = raw_parts[1] if len(raw_parts) > 1 else ""
         rendered = skill_svc.activate(matched.name, arguments=arguments)
-        typer.echo(f"  ▸ 技能: {matched.name}")
+        typer.echo(f"  > 技能: {matched.name}")
         return rendered
 
     # 未匹配任何命令
@@ -306,7 +303,7 @@ def _cmd_memory(args: str, memory_svc) -> None:
         query = sub_parts[1]
         results = memory_svc.search(query)
         if not results:
-            typer.echo(f"  未找到与「{query}」相关的记忆")
+            typer.echo(f"  未找到与 \"{query}\" 相关的记忆")
             return
         for r in results:
             typer.echo(

@@ -37,11 +37,11 @@ def list_tasks(
     typer.echo(f"\n  共 {len(tasks)} 个任务:\n")
     for task in tasks:
         status_icon = {
-            "active": "●",
-            "paused": "◈",
-            "completed": "✓",
-            "failed": "✗",
-            "disabled": "○",
+            "active": "*",
+            "paused": "[H]",
+            "completed": "[OK]",
+            "failed": "[X]",
+            "disabled": "o",
         }.get(task.status.value, "?")
         typer.echo(
             f"  {status_icon} {task.name:<24s} [{task.status.value}]"
@@ -60,9 +60,9 @@ def pause_task(
     svc = _get_scheduler_service()
     result = svc.pause_task(task_id)
     if result:
-        typer.echo(f"  ✓ 已暂停任务: {result.name}")
+        typer.echo(f"  [OK] 已暂停任务: {result.name}")
     else:
-        typer.echo("  ✗ 操作失败（任务不存在或状态不允许）", err=True)
+        typer.echo("  [X] 操作失败（任务不存在或状态不允许）", err=True)
 
 
 @scheduler_app.command("resume")
@@ -73,9 +73,9 @@ def resume_task(
     svc = _get_scheduler_service()
     result = svc.resume_task(task_id)
     if result:
-        typer.echo(f"  ✓ 已恢复任务: {result.name}")
+        typer.echo(f"  [OK] 已恢复任务: {result.name}")
     else:
-        typer.echo("  ✗ 操作失败（任务不存在或状态不允许）", err=True)
+        typer.echo("  [X] 操作失败（任务不存在或状态不允许）", err=True)
 
 
 @scheduler_app.command("delete")
@@ -88,20 +88,20 @@ def delete_task(
 
     task = svc.get_task(task_id)
     if task is None:
-        typer.echo(f"  ✗ 任务不存在: {task_id}", err=True)
+        typer.echo(f"  [X] 任务不存在: {task_id}", err=True)
         return
 
     if not force:
-        confirm = typer.confirm(f"确认删除任务「{task.name}」?")
+        confirm = typer.confirm(f'确认删除任务 "{task.name}"?')
         if not confirm:
             typer.echo("  已取消")
             return
 
     success = svc.delete_task(task_id)
     if success:
-        typer.echo(f"  ✓ 已删除任务: {task.name}")
+        typer.echo(f"  [OK] 已删除任务: {task.name}")
     else:
-        typer.echo("  ✗ 删除失败", err=True)
+        typer.echo("  [X] 删除失败", err=True)
 
 
 @scheduler_app.command("logs")
@@ -126,7 +126,9 @@ def task_logs(
         summary = log.get("result_summary", "")
         error = log.get("error_message", "")
 
-        status_icon = "✓" if status == "success" else "✗" if status == "failed" else "●"
+        status_icon = (
+            "[OK]" if status == "success" else "[X]" if status == "failed" else "*"
+        )
         typer.echo(f"  {status_icon} [{status}] {started} ({duration_str})")
         if summary:
             typer.echo(f"    {str(summary)[:80]}")

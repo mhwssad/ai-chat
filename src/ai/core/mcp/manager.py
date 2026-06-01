@@ -1,19 +1,27 @@
 """MCP 管理器 — 协调配置、客户端和健康检查。"""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.tools import BaseTool
+
+from src.ai.core.tools.types import ToolPlugin
+
+if TYPE_CHECKING:
+    from src.ai.core.tools.registry import ToolRegistry
 
 from .client import MCPClient
 from .config import MCPConfigRepository
 from .types import MCPHealthResult
 
 
-class MCPManager:
+class MCPManager(ToolPlugin):
     """MCP 子系统协调器。
 
     组合 MCPConfigRepository 和 MCPClient，
     提供健康检查等跨组件能力。
+    实现 ToolPlugin 接口，支持自动注册 MCP 内置工具。
     """
 
     def __init__(self, config_repo: MCPConfigRepository) -> None:
@@ -100,3 +108,20 @@ class MCPManager:
                     )
                 )
         return results
+
+    def register_tools(self, registry: ToolRegistry) -> None:
+        """将 MCP 内置工具注册到工具注册表。
+
+        实现 ToolPlugin 接口，由 ToolManager 在加载内置工具时调用。
+
+        Args:
+            registry: ToolRegistry 实例。
+        """
+        from src.ai.core.mcp.tools import create_mcp_tools
+        from src.ai.core.tools.registry import ToolMeta
+
+        for tool in create_mcp_tools(self):
+            registry.register(
+                tool,
+                meta=ToolMeta(source_type="mcp", permissions=["external_service"]),
+            )

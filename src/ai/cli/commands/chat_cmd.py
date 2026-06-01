@@ -29,7 +29,7 @@ def list_sessions() -> None:
 
     typer.echo(f"\n  共 {len(sessions)} 个会话:\n")
     for s in sessions:
-        active = "●" if s.is_active else "○"
+        active = "*" if s.is_active else "o"
         typer.echo(f"  {active} {s.session_id:<24s} 消息: {s.message_count}")
     typer.echo()
 
@@ -47,9 +47,9 @@ def create_session(
 
     try:
         info = mgr.create_session(session_id=session_id, name=name)
-        typer.echo(f"  ✓ 已创建会话: {info.session_id}")
+        typer.echo(f"  [OK] 已创建会话: {info.session_id}")
     except ValueError as e:
-        typer.echo(f"  ✗ {e}", err=True)
+        typer.echo(f"  [X] {e}", err=True)
 
 
 @chat_app.command("delete")
@@ -67,20 +67,20 @@ def delete_session(
     mgr.discover_existing_sessions()
 
     if mgr.get_session(session_id) is None:
-        typer.echo(f"  ✗ 会话不存在: {session_id}", err=True)
+        typer.echo(f"  [X] 会话不存在: {session_id}", err=True)
         return
 
     if not force:
-        confirm = typer.confirm(f"确认删除会话「{session_id}」及其历史?")
+        confirm = typer.confirm(f'确认删除会话 "{session_id}" 及其历史?')
         if not confirm:
             typer.echo("  已取消")
             return
 
     try:
         mgr.delete_session(session_id)
-        typer.echo(f"  ✓ 已删除会话: {session_id}")
+        typer.echo(f"  [OK] 已删除会话: {session_id}")
     except ValueError as e:
-        typer.echo(f"  ✗ {e}", err=True)
+        typer.echo(f"  [X] {e}", err=True)
 
 
 @chat_app.command("history")
@@ -94,7 +94,7 @@ def session_history(
     try:
         messages = history_mgr.get_messages(session_id)
     except Exception:
-        typer.echo(f"  ✗ 会话不存在或读取失败: {session_id}", err=True)
+        typer.echo(f"  [X] 会话不存在或读取失败: {session_id}", err=True)
         return
 
     if not messages:

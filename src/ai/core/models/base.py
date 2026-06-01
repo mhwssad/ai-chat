@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, List, Optional, TypeVar, Union
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from src.ai.exception.llm_exception import LLMException
 
@@ -16,7 +16,13 @@ if TYPE_CHECKING:
     from langchain_core.embeddings import Embeddings
     from langchain_core.language_models import BaseChatModel
 
-    from src.ai.config.model_settings import ChatModelConfig, EmbeddingModelConfig
+    from src.ai.config.model_settings import (
+        ChatModelConfig,
+        EmbeddingModelConfig,
+        ImageModelConfig,
+        TTSModelConfig,
+    )
+    from src.ai.core.models.types import AudioData, ImageData
 
 
 # ── 策略接口 ───────────────────────────────────────────
@@ -28,7 +34,7 @@ ReturnT = TypeVar("ReturnT")
 class ModelBuilder(ABC, Generic[ConfigT, ReturnT]):
     """模型构建策略基类。"""
 
-    backend: List[str]
+    backend: list[str]
 
     def is_backend(self, backend: str) -> bool:
         """判断后端是否匹配。"""
@@ -47,8 +53,8 @@ class ChatModelBuilder(ModelBuilder["ChatModelConfig", "BaseChatModel"]):
         self,
         config: ChatModelConfig,
         *,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         streaming: bool = False,
     ) -> BaseChatModel:
         """构建 Chat 模型实例。"""
@@ -60,6 +66,22 @@ class EmbeddingModelBuilder(ModelBuilder["EmbeddingModelConfig", "Embeddings"]):
     @abstractmethod
     def build(self, config: EmbeddingModelConfig) -> Embeddings:
         """构建 Embedding 模型实例。"""
+
+
+class ImageModelBuilder(ModelBuilder["ImageModelConfig", "ImageData"]):
+    """图像生成模型构建策略接口。"""
+
+    @abstractmethod
+    def build(self, config: ImageModelConfig) -> ImageData:
+        """构建图像生成器实例。"""
+
+
+class TTSModelBuilder(ModelBuilder["TTSModelConfig", "AudioData"]):
+    """TTS 语音合成模型构建策略接口。"""
+
+    @abstractmethod
+    def build(self, config: TTSModelConfig) -> AudioData:
+        """构建语音合成器实例。"""
 
 
 # ── 泛型抽象工厂 ───────────────────────────────────────
@@ -80,11 +102,11 @@ class ModelFactory(ABC, Generic[ModelBuilderT]):
 
     # ── 注册（对扩展开放） ──
 
-    def register(self, builder: Union[ModelBuilderT, type[ModelBuilderT], None] = None):
+    def register(self, builder: ModelBuilderT | type[ModelBuilderT] | None = None):
         """注册构建器 — 可作装饰器（不传参）或直接调用。"""
         if builder is None:
 
-            def decorator(cls_or_inst: Union[ModelBuilderT, type[ModelBuilderT]]):
+            def decorator(cls_or_inst: ModelBuilderT | type[ModelBuilderT]):
                 inst = cls_or_inst() if isinstance(cls_or_inst, type) else cls_or_inst
                 self._do_register(inst)
                 return cls_or_inst
@@ -98,9 +120,7 @@ class ModelFactory(ABC, Generic[ModelBuilderT]):
         for backend in builder.backend:
             self._registry[backend] = builder
 
-    def register_all(
-        self, builders: list[Union[ModelBuilderT, type[ModelBuilderT]]]
-    ) -> None:
+    def register_all(self, builders: list[ModelBuilderT | type[ModelBuilderT]]) -> None:
         """批量注册构建器。"""
         for b in builders:
             self.register(b)
@@ -113,7 +133,7 @@ class ModelFactory(ABC, Generic[ModelBuilderT]):
 
     # ── 查询 ──
 
-    def _find_builder(self, backend: str) -> Optional[ModelBuilderT]:
+    def _find_builder(self, backend: str) -> ModelBuilderT | None:
         """通过 is_backend 查找匹配的构建器。"""
         for builder in set(self._registry.values()):
             if builder.is_backend(backend):
@@ -128,7 +148,7 @@ class ModelFactory(ABC, Generic[ModelBuilderT]):
         """检查后端是否已注册。"""
         return self._find_builder(backend) is not None
 
-    def get(self, backend: str) -> Optional[ModelBuilderT]:
+    def get(self, backend: str) -> ModelBuilderT | None:
         """安全获取构建器，未注册返回 None。"""
         return self._find_builder(backend)
 

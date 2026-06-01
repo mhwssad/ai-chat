@@ -36,7 +36,7 @@ def list_tools(
     typer.echo(f"\n  共 {len(tools)} 个工具:\n")
     for tool in tools:
         meta = registry.get_meta(tool.name)
-        status = "●" if meta.enabled else "○"
+        status = "*" if meta.enabled else "o"
         source = meta.source_type
         desc = getattr(tool, "description", "") or ""
         typer.echo(f"  {status} {tool.name:<24s} [{source}] {desc[:50]}")
@@ -52,9 +52,9 @@ def enable_tool(name: str = typer.Argument(..., help="工具名称")) -> None:
         # ToolMeta 的 enabled 字段需要通过 registry 直接操作
         # 由于 ToolMeta 不是 frozen，可以直接修改
         meta.enabled = True
-        typer.echo(f"  ✓ 已启用工具: {name}")
+        typer.echo(f"  [OK] 已启用工具: {name}")
     except Exception as e:
-        typer.echo(f"  ✗ 操作失败: {e}", err=True)
+        typer.echo(f"  [X] 操作失败: {e}", err=True)
 
 
 @tools_app.command("disable")
@@ -65,12 +65,12 @@ def disable_tool(name: str = typer.Argument(..., help="工具名称")) -> None:
         tool = registry.get(name)
         meta = registry.get_meta(tool.name)
         if meta.essential:
-            typer.echo(f"  ✗ 不能禁用核心工具: {name}", err=True)
+            typer.echo(f"  [X] 不能禁用核心工具: {name}", err=True)
             return
         meta.enabled = False
-        typer.echo(f"  ✓ 已禁用工具: {name}")
+        typer.echo(f"  [OK] 已禁用工具: {name}")
     except Exception as e:
-        typer.echo(f"  ✗ 操作失败: {e}", err=True)
+        typer.echo(f"  [X] 操作失败: {e}", err=True)
 
 
 @tools_app.command("test")
@@ -86,7 +86,7 @@ def test_tool(
     try:
         arguments = json.loads(args_json)
     except json.JSONDecodeError:
-        typer.echo(f"  ✗ 参数 JSON 格式错误: {args_json}", err=True)
+        typer.echo(f"  [X] 参数 JSON 格式错误: {args_json}", err=True)
         return
 
     typer.echo(f"  执行工具: {name}")
@@ -100,6 +100,6 @@ def test_tool(
                 result_str = result_str[:500] + "\n...(已截断)"
             typer.echo(f"\n  结果:\n  {result_str}")
         except Exception as e:
-            typer.echo(f"\n  ✗ 执行失败: {e}", err=True)
+            typer.echo(f"\n  [X] 执行失败: {e}", err=True)
 
     asyncio.run(_run())

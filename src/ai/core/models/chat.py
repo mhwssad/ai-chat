@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from src.ai.core.models.base import ChatModelBuilder, ModelFactory
 
@@ -30,8 +30,8 @@ class InitChatModelBuilder(ChatModelBuilder):
         self,
         config: ChatModelConfig,
         *,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         streaming: bool = False,
     ) -> BaseChatModel:
         from langchain.chat_models import init_chat_model

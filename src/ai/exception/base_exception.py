@@ -5,7 +5,7 @@
 所有模块的自定义异常应继承自此类或其子类。
 """
 
-from typing import Any, Optional, Dict
+from typing import Any
 
 
 class BaseExceptions(Exception):
@@ -34,8 +34,8 @@ class BaseExceptions(Exception):
     def __init__(
         self,
         message: str,
-        context: Optional[Dict[str, Any]] = None,
-        error_code: Optional[str] = None,
+        context: dict[str, Any] | None = None,
+        error_code: str | None = None,
     ) -> None:
         """
         初始化基础异常
@@ -52,11 +52,11 @@ class BaseExceptions(Exception):
         """
         super().__init__(message)
         self._message = message
-        self._context: Dict[str, Any] = context or {}
+        self._context: dict[str, Any] = context or {}
         self._error_code = error_code
 
         # 保留原始异常（如果有）
-        self._original_exception: Optional[Exception] = None
+        self._original_exception: Exception | None = None
 
     @property
     def message(self) -> str:
@@ -69,7 +69,7 @@ class BaseExceptions(Exception):
         return self._message
 
     @property
-    def context(self) -> Dict[str, Any]:
+    def context(self) -> dict[str, Any]:
         """
         获取上下文信息
 
@@ -79,7 +79,7 @@ class BaseExceptions(Exception):
         return self._context.copy()
 
     @property
-    def error_code(self) -> Optional[str]:
+    def error_code(self) -> str | None:
         """
         获取错误代码
 
@@ -89,7 +89,7 @@ class BaseExceptions(Exception):
         return self._error_code
 
     @property
-    def original_exception(self) -> Optional[Exception]:
+    def original_exception(self) -> Exception | None:
         """
         获取原始异常
 
@@ -149,7 +149,7 @@ class BaseExceptions(Exception):
         """
         self._original_exception = exc
 
-    def get_details(self) -> Dict[str, Any]:
+    def get_details(self) -> dict[str, Any]:
         """
         获取异常的详细信息
 
@@ -162,7 +162,7 @@ class BaseExceptions(Exception):
             >>> print(details)
             {'error': '错误', 'error_code': 'ERR_001', 'context': {'key': 'value'}}
         """
-        details: Dict[str, Any] = {
+        details: dict[str, Any] = {
             "error": self._message,
             "context": self._context,
         }
