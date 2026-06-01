@@ -3,10 +3,10 @@
 import glob as glob_lib
 import json
 import re
-from pathlib import Path
 
 from langchain_core.tools import tool
 
+from src.ai.core.tools.path_validator import validate_dir_path
 from src.ai.core.tools.register import register_tool
 
 
@@ -18,7 +18,7 @@ async def glob_files(pattern: str, root: str = ".") -> str:
         pattern: glob 模式（如 "**/*.py"）。
         root: 搜索根目录。
     """
-    root_path = Path(root)
+    root_path = validate_dir_path(root)
     matches = glob_lib.glob(str(root_path / pattern), recursive=True)
     if not matches:
         return "未找到匹配文件"
@@ -35,7 +35,7 @@ async def grep(pattern: str, root: str = ".", glob: str = "**/*") -> str:
         glob: 文件过滤模式。
     """
     regex = re.compile(pattern)
-    root_path = Path(root)
+    root_path = validate_dir_path(root)
     matches: list[dict[str, str | int]] = []
     for path in root_path.glob(glob):
         if not path.is_file():
@@ -61,7 +61,7 @@ def create_tool_search_tool(registry):
 
         Args:
             query: 搜索关键词。
-            source_type: 按来源类型过滤（builtin / mcp）。
+            source_type: 按来源类型过滤（builtin / mcp / skill）。
         """
         all_tools = registry.list(enabled_only=True)
         if source_type:
@@ -133,6 +133,8 @@ def register(registry):
     register_tool(
         glob_files, source_type="builtin", permissions=["file_read"], essential=True
     )
-    register_tool(grep, source_type="builtin", permissions=["file_read"], essential=True)
+    register_tool(
+        grep, source_type="builtin", permissions=["file_read"], essential=True
+    )
     register_tool(tool_search_fn, source_type="builtin", essential=True)
     register_tool(tool_search_schema_fn, source_type="builtin", essential=True)

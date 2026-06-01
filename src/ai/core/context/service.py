@@ -10,7 +10,6 @@ from src.ai.core.context.sections import SystemPromptSections
 from src.ai.core.context.types import (
     ContextBuildRequest,
     ContextBuildResult,
-    ContextSection,
 )
 
 logger = logging.getLogger(__name__)
@@ -147,18 +146,14 @@ class ContextService:
 
     def _build_sync(self, request: ContextBuildRequest) -> ContextBuildResult:
         """纯同步构建（不使用 asyncio.gather）。"""
-        # 同步收集：逐个运行收集器
-        sections: list[ContextSection] = []
-        for collector in self._coordinator._collectors:
-            try:
-                import asyncio
+        import asyncio
 
-                result = asyncio.run(collector.collect(request))
-                sections.extend(result.sections)
-            except Exception:
-                logger.debug("收集器 %s 失败", collector.name, exc_info=True)
-
-        sections.sort(key=lambda s: s.priority)
+        # 使用单次 asyncio.run 调用 collect_all，内部使用 gather 并行执行
+        try:
+            sections = asyncio.run(self._coordinator.collect_all(request))
+        except Exception:
+            logger.debug("收集器执行失败", exc_info=True)
+            sections = []
 
         # token 预算裁剪
         system_prompt, budget_report, total_tokens = self._assembler.assemble(

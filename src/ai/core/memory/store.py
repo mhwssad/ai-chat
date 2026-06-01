@@ -89,12 +89,19 @@ class MemoryStore:
     每个会话对应一个文件：{memory_dir}/sessions/{session_id}.md
     文件内包含多条记忆条目，每个条目有自己的 frontmatter。
     索引管理委托给 MemoryIndex。
+
+    缓存策略：
+    - 使用文件修改时间检测缓存失效
+    - list_all() 结果被缓存，文件变更时自动刷新
     """
 
     def __init__(self, memory_dir: Path, *, index: MemoryIndex | None = None) -> None:
         self._dir = memory_dir
         self._sessions_dir = memory_dir / "sessions"
         self._index = index or MemoryIndex(memory_dir)
+        # 缓存：(entries, file_mtimes)
+        self._cache: list[MemoryEntry] | None = None
+        self._cache_mtimes: dict[Path, float] = {}
 
     @property
     def memory_dir(self) -> Path:
@@ -125,6 +132,7 @@ class MemoryStore:
             )
 
         self._index.append_entry(entry, file_path)
+        self._invalidate_cache()
         return file_path
 
     def read(self, file_path: Path) -> MemoryEntry | None:
@@ -146,16 +154,25 @@ class MemoryStore:
                     )
                 else:
                     file_path.unlink(missing_ok=True)
+                self._invalidate_cache()
                 self._index.rebuild(self.list_all())
                 return True
         return False
 
     def list_all(self) -> list[MemoryEntry]:
-        """列出所有记忆条目。"""
+        """列出所有记忆条目（带缓存）。"""
+        if self._is_cache_valid():
+            return self._cache  # type: ignore[return-value]
+
         entries: list[MemoryEntry] = []
+        new_mtimes: dict[Path, float] = {}
         for file_path in self._session_files():
             entries.extend(parse_session_file(file_path))
+            new_mtimes[file_path] = file_path.stat().st_mtime
+
         entries.sort(key=lambda e: e.created_at or datetime.min, reverse=True)
+        self._cache = entries
+        self._cache_mtimes = new_mtimes
         return entries
 
     def list_by_type(self, memory_type: MemoryType) -> list[MemoryEntry]:
@@ -168,6 +185,34 @@ class MemoryStore:
             if entry.name == name:
                 return entry
         return None
+
+    def _invalidate_cache(self) -> None:
+        """使缓存失效。"""
+        self._cache = None
+        self._cache_mtimes.clear()
+
+    def _is_cache_valid(self) -> bool:
+        """检查缓存是否有效（基于文件修改时间）。"""
+        if self._cache is None:
+            return False
+
+        current_files = set(self._session_files())
+        cached_files = set(self._cache_mtimes.keys())
+
+        # 文件集合变化
+        if current_files != cached_files:
+            return False
+
+        # 检查文件修改时间
+        for file_path in current_files:
+            try:
+                current_mtime = file_path.stat().st_mtime
+                if current_mtime != self._cache_mtimes.get(file_path):
+                    return False
+            except OSError:
+                return False
+
+        return True
 
     def _ensure_dirs(self) -> None:
         """确保记忆目录存在。"""

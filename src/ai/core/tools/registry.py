@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import logging
+
 from langchain_core.tools import BaseTool
 
 from src.ai.exception.tool_exception import ToolNotFoundError
+
+logger = logging.getLogger(__name__)
 
 
 class ToolMeta:
@@ -40,7 +44,16 @@ class ToolRegistry:
     # ── 存储 ────────────────────────────────────────────────
 
     def register(self, tool: BaseTool, *, meta: ToolMeta | None = None) -> BaseTool:
-        """注册工具。"""
+        """注册工具。同名工具覆盖时记录 warning 日志。"""
+        if tool.name in self._tools:
+            existing_source = self._meta.get(tool.name, ToolMeta()).source_type
+            new_source = meta.source_type if meta else "builtin"
+            logger.warning(
+                "工具名称冲突，覆盖已有工具: name=%s, existing_source=%s, new_source=%s",
+                tool.name,
+                existing_source,
+                new_source,
+            )
         self._tools[tool.name] = tool
         if meta is not None:
             self._meta[tool.name] = meta
@@ -91,4 +104,3 @@ class ToolRegistry:
             for t in self.list(enabled_only=enabled_only)
             if q in t.name.lower() or q in (t.description or "").lower()
         ]
-

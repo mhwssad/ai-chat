@@ -23,7 +23,7 @@ from src.ai.core.memory.types import (
 
 # 记忆异常
 from src.ai.exception.memory_exception import (
-    MemoryError,
+    MemoryException,
     MemoryPathError,
     MemoryScanError,
 )
@@ -83,7 +83,7 @@ __all__ = [
     "sanitize_path_name",
     "validate_memory_path",
     # 异常
-    "MemoryError",
+    "MemoryException",
     "MemoryPathError",
     "MemoryScanError",
     # 惰性导入

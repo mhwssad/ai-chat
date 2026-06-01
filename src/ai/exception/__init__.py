@@ -21,8 +21,15 @@ from src.ai.exception.mcp_exception import (
     MCPToolCallError,
     MCPToolDiscoveryError,
 )
+from src.ai.exception.media_exception import (
+    ImageGenerationException,
+    MediaGenerationException,
+    MediaNotFoundError,
+    TTSException,
+)
 from src.ai.exception.memory_exception import (
-    MemoryError,
+    MemoryException,
+    MemoryNotFoundError,
     MemoryPathError,
     MemoryScanError,
 )
@@ -32,6 +39,7 @@ from src.ai.exception.prompt_exception import (
     PromptRenderError,
 )
 from src.ai.exception.rag_exception import RagEmbeddingError, RagError, SplitterError
+from src.ai.exception.scheduler_exception import SchedulerError, SchedulerNotFoundError
 from src.ai.exception.skill_exception import (
     SkillError,
     SkillLoadError,
@@ -67,6 +75,11 @@ __all__ = [
     "MCPProtocolError",
     "MCPToolCallError",
     "MCPToolDiscoveryError",
+    # Media
+    "ImageGenerationException",
+    "MediaGenerationException",
+    "MediaNotFoundError",
+    "TTSException",
     # Loader
     "LoadPermissionError",
     "LoaderError",
@@ -81,13 +94,17 @@ __all__ = [
     "SkillNotFoundError",
     "SkillRenderError",
     # Memory
-    "MemoryError",
+    "MemoryException",
+    "MemoryNotFoundError",
     "MemoryPathError",
     "MemoryScanError",
     # RAG
     "RagEmbeddingError",
     "RagError",
     "SplitterError",
+    # Scheduler
+    "SchedulerError",
+    "SchedulerNotFoundError",
     # HTTP
     "ConverterError",
     "HttpError",

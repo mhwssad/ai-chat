@@ -52,10 +52,8 @@ def encrypt_secret(plaintext: str) -> str:
     """加密敏感字符串。
 
     返回值带有 ``fernet:`` 前缀，便于后续区分是否已加密。
+    空字符串也会被加密，防止绕过加密检查。
     """
-    if not plaintext:
-        return plaintext
-
     if plaintext.startswith(_TOKEN_PREFIX):
         return plaintext
 

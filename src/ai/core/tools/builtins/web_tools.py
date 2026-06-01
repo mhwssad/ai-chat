@@ -1,12 +1,15 @@
 """网络工具 — 网页获取和搜索。"""
 
 import json
+import logging
 import re
 from html.parser import HTMLParser
 
 from langchain_core.tools import tool
 
 from src.ai.core.tools.register import register_tool
+
+logger = logging.getLogger(__name__)
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -74,8 +77,12 @@ def create_web_fetch_tool(http_aclient):
     return web_fetch
 
 
-def create_web_search_tool(mcp_manager):
-    """工厂函数：创建绑定了 mcp_manager 的 web_search 工具。"""
+def create_web_search_tool():
+    """工厂函数：创建 web_search 工具。"""
+
+    # 缓存搜索工具引用，避免每次调用都重新发现
+    _cached_search_tool: object | None = None
+    _cache_valid = False
 
     @tool
     async def web_search(query: str, num_results: int = 5) -> str:
@@ -87,21 +94,28 @@ def create_web_search_tool(mcp_manager):
             query: 搜索关键词。
             num_results: 返回结果数量。
         """
-        # 尝试从 MCP 发现可用的搜索工具
-        try:
-            tools = await mcp_manager.discover_tools()
-            search_tool = None
-            for t in tools:
-                name_lower = t.name.lower()
-                if any(
-                    kw in name_lower
-                    for kw in ("search", "brave", "tavily", "google", "bing")
-                ):
-                    search_tool = t
-                    break
+        nonlocal _cached_search_tool, _cache_valid
 
-            if search_tool is not None:
-                result = await search_tool.ainvoke(
+        # 惰性获取 MCP 管理器单例
+        from src.ai.core.mcp import mcp_manager
+
+        # 尝试从 MCP 发现可用的搜索工具（带缓存）
+        try:
+            if not _cache_valid or _cached_search_tool is None:
+                tools = await mcp_manager.discover_tools()
+                _cached_search_tool = None
+                for t in tools:
+                    name_lower = t.name.lower()
+                    if any(
+                        kw in name_lower
+                        for kw in ("search", "brave", "tavily", "google", "bing")
+                    ):
+                        _cached_search_tool = t
+                        break
+                _cache_valid = True
+
+            if _cached_search_tool is not None:
+                result = await _cached_search_tool.ainvoke(
                     {"query": query, "num_results": num_results}
                 )
                 return (
@@ -109,8 +123,11 @@ def create_web_search_tool(mcp_manager):
                     if isinstance(result, str)
                     else json.dumps(result, ensure_ascii=False, indent=2)
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("MCP 搜索工具调用失败: %s", e)
+            # 失败时重置缓存，下次重新发现
+            _cache_valid = False
+            _cached_search_tool = None
 
         return json.dumps(
             {
@@ -125,9 +142,9 @@ def create_web_search_tool(mcp_manager):
     return web_search
 
 
-def register(http_aclient, mcp_manager):
+def register(http_aclient):
     """注册网络工具。"""
     web_fetch_tool = create_web_fetch_tool(http_aclient)
-    web_search_tool = create_web_search_tool(mcp_manager)
+    web_search_tool = create_web_search_tool()
     register_tool(web_fetch_tool, source_type="builtin", permissions=["external_service"])
     register_tool(web_search_tool, source_type="builtin", permissions=["external_service"])

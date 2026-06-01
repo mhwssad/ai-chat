@@ -49,29 +49,34 @@ def shutdown_container() -> None:
 
 
 def _register_dependent_tools() -> None:
-    """注册有依赖的工具（内置 + Skills）。"""
+    """注册所有工具和插件。"""
     from src.ai.core.tools.builtins import register_dependent_tools
 
     registry = container.tool_container.tool_registry()
+    mgr = container.tool_container.tool_manager()
 
-    # 获取定时任务服务（可选）
+    # 1. 注册插件（必须在 load_builtin_tools 之前）
+    mcp_mgr = container.mcp_container.mcp_manager()
+    mgr.register_plugin(mcp_mgr)
+
+    skill_svc = container.skill_container.skill_service()
+    mgr.register_plugin(skill_svc)
+
+    # 2. 加载内置工具 + 执行插件注册
+    mgr.load_builtin_tools()
+
+    # 3. 注册有依赖的内置工具
     scheduler_service = None
     try:
         scheduler_service = container.scheduler_container.scheduler_service()
     except Exception as e:
         logger.debug("定时任务服务未初始化，跳过注册调度器工具: %s", str(e))
 
-    # 内置工具（web_tools、search_tools、scheduler_tools）
     register_dependent_tools(
         http_aclient=container.http_container.http_aclient(),
-        mcp_manager=container.mcp_container.mcp_manager(),
         registry=registry,
         scheduler_service=scheduler_service,
     )
-
-    # Skills 模块自行注册技能工具
-    skill_svc = container.skill_container.skill_service()
-    skill_svc.register_tools(registry)
 
 
 def _start_scheduler() -> None:
@@ -79,11 +84,15 @@ def _start_scheduler() -> None:
     try:
         scheduler_svc = container.scheduler_container.scheduler_service()
         # 在事件循环中启动调度器
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
             asyncio.ensure_future(scheduler_svc.start())
         else:
-            loop.run_until_complete(scheduler_svc.start())
+            asyncio.run(scheduler_svc.start())
         logger.info("定时任务调度器已启动")
     except Exception as e:
         logger.warning("定时任务调度器启动失败: %s", str(e))
@@ -93,11 +102,15 @@ def _stop_scheduler() -> None:
     """停止定时任务调度器。"""
     try:
         scheduler_svc = container.scheduler_container.scheduler_service()
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
             asyncio.ensure_future(scheduler_svc.stop())
         else:
-            loop.run_until_complete(scheduler_svc.stop())
+            asyncio.run(scheduler_svc.stop())
         logger.info("定时任务调度器已停止")
     except Exception as e:
         logger.debug("停止调度器时出错: %s", str(e))

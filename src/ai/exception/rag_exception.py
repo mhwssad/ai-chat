@@ -7,11 +7,11 @@ class RagError(BaseExceptions):
     """RAG 操作失败。"""
 
 
-class RagEmbeddingError(BaseExceptions):
+class RagEmbeddingError(RagError):
     """RAG embedding 失败。"""
 
 
-class SplitterError(BaseExceptions):
+class SplitterError(RagError):
     """文本切割失败。"""
 
     def __init__(

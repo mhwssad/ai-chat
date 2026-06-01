@@ -1,22 +1,30 @@
 """Skill 服务 — 技能发现、激活、匹配的核心协调器（纯文件系统驱动）。"""
 
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from src.ai.core.skills.loader import SkillLoader
 from src.ai.core.skills.matcher import SkillMatcher
 from src.ai.core.skills.renderer import SkillRenderer
 from src.ai.core.skills.resolver import SkillResolver
 from src.ai.core.skills.types import SkillDefinition, SkillMetadata
+from src.ai.core.tools.types import ToolPlugin
 from src.ai.exception.skill_exception import SkillNotFoundError
+
+if TYPE_CHECKING:
+    from src.ai.core.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
 
-class SkillService:
+class SkillService(ToolPlugin):
     """技能上下文注入服务。
 
     作为协调器，组合 Loader、Renderer、Resolver、Matcher 四个组件，
     提供缓存管理和渐进式披露（3-level）的统一入口。
+    实现 ToolPlugin 接口，支持自动注册技能工具。
     """
 
     def __init__(
@@ -45,7 +53,8 @@ class SkillService:
     def get(self, name: str) -> SkillDefinition | None:
         """按 name 获取单个技能定义。"""
         self.discover()
-        assert self._cache is not None
+        if self._cache is None:
+            return None
         return self._cache.get(name)
 
     def list_skills(self) -> list[SkillDefinition]:
@@ -58,11 +67,13 @@ class SkillService:
 
     # ── 工具注册 ──────────────────────────────────────────────
 
-    def register_tools(self, registry) -> None:
+    def register_tools(self, registry: ToolRegistry) -> None:
         """将技能工具注册到工具注册表。
 
+        实现 ToolPlugin 接口，由 ToolManager 在加载内置工具时调用。
+
         Args:
-            registry: 工具注册表实例。
+            registry: ToolRegistry 实例。
         """
         from src.ai.core.skills.tools import register_skill_tools
 
@@ -128,25 +139,29 @@ class SkillService:
     def match_slash_command(self, user_message: str) -> SkillDefinition | None:
         """匹配用户消息中的斜杠命令。"""
         self.discover()
-        assert self._cache is not None
+        if self._cache is None:
+            return None
         return self._matcher.match_slash_command(user_message, self._cache)
 
     def get_slash_commands(self) -> list[dict[str, str]]:
         """列出所有用户可调用的斜杠命令。"""
         self.discover()
-        assert self._cache is not None
+        if self._cache is None:
+            return []
         return self._matcher.get_slash_commands(self._cache)
 
     def list_user_invocable(self) -> list[SkillDefinition]:
         """列出所有用户可调用的技能（user_invocable=True）。"""
         self.discover()
-        assert self._cache is not None
+        if self._cache is None:
+            return []
         return self._matcher.list_user_invocable(self._cache)
 
     def list_auto_triggerable(self) -> list[SkillDefinition]:
         """列出所有可自动触发的技能（disable_model_invocation=False）。"""
         self.discover()
-        assert self._cache is not None
+        if self._cache is None:
+            return []
         return self._matcher.list_auto_triggerable(self._cache)
 
     # ── 内部辅助 ────────────────────────────────────────────
