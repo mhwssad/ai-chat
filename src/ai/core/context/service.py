@@ -1,12 +1,16 @@
 """上下文服务 — 整合收集、组装、压缩的门面。"""
 
+from __future__ import annotations
+
 import logging
 from typing import Any
 
 from src.ai.core.context.assembler import ContextAssembler
 from src.ai.core.context.collector import ContextCoordinator
 from src.ai.core.context.compact import MicroCompact
+from src.ai.core.context.restore import ContextRestorer
 from src.ai.core.context.sections import SystemPromptSections
+from src.ai.core.context.strategies.base import BaseMemoryStrategy
 from src.ai.core.context.types import (
     ContextBuildRequest,
     ContextBuildResult,
@@ -27,6 +31,7 @@ class ContextService:
         sections: 段缓存管理器。
         strategy: 记忆策略（负责消息历史管理）。
         micro_compact: 微压缩器（可选）。
+        restorer: 上下文恢复器（可选）。
     """
 
     def __init__(
@@ -34,9 +39,9 @@ class ContextService:
         coordinator: ContextCoordinator,
         assembler: ContextAssembler,
         sections: SystemPromptSections,
-        strategy: Any,
+        strategy: BaseMemoryStrategy,
         micro_compact: MicroCompact,
-        restorer: Any = None,
+        restorer: ContextRestorer | None = None,
     ) -> None:
         self._coordinator = coordinator
         self._assembler = assembler
@@ -46,12 +51,12 @@ class ContextService:
         self._restorer = restorer
 
     @property
-    def strategy(self) -> Any:
+    def strategy(self) -> BaseMemoryStrategy:
         """当前使用的记忆策略。"""
         return self._strategy
 
     @strategy.setter
-    def strategy(self, value: Any) -> None:
+    def strategy(self, value: BaseMemoryStrategy) -> None:
         self._strategy = value
 
     async def abuild(self, request: ContextBuildRequest) -> ContextBuildResult:

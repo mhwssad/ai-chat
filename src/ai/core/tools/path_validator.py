@@ -63,9 +63,7 @@ def validate_path(path: str | Path, *, must_exist: bool = False) -> Path:
 
     # 检查路径是否在允许的根目录下
     allowed_roots = get_allowed_roots()
-    is_allowed = any(
-        _is_path_under(real_path, root) for root in allowed_roots
-    )
+    is_allowed = any(_is_path_under(real_path, root) for root in allowed_roots)
 
     if not is_allowed:
         raise ValueError(

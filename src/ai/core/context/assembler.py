@@ -9,6 +9,7 @@ from src.ai.core.context.types import (
 )
 from src.ai.utils.token_utils import token_counter
 from src.ai.config.model_settings import ChatModelConfig
+
 logger = logging.getLogger(__name__)
 
 # 缓存边界标记
@@ -60,7 +61,8 @@ class ContextAssembler:
             total = sum(token_counter.count_text_tokens(s.content) for s in sections)
             report = [
                 ContextSourceBudget(
-                    source=s.name, actual_tokens=token_counter.count_text_tokens(s.content)
+                    source=s.name,
+                    actual_tokens=token_counter.count_text_tokens(s.content),
                 )
                 for s in sections
             ]
@@ -195,7 +197,10 @@ class ContextAssembler:
         truncated = text[:estimated_chars]
 
         # 微调：确保 token 数不超限
-        while token_counter.count_text_tokens(truncated) > max_tokens and estimated_chars > 0:
+        while (
+            token_counter.count_text_tokens(truncated) > max_tokens
+            and estimated_chars > 0
+        ):
             estimated_chars -= max(1, estimated_chars // 20)  # 每次缩减 5%
             truncated = text[:estimated_chars]
 

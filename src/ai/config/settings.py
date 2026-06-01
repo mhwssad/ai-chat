@@ -78,12 +78,8 @@ class SchedulerSettings(BaseSettingsConfig):
     """定时任务调度器配置。"""
 
     scheduler_enabled: bool = Field(default=True, description="是否启用定时任务调度器")
-    scheduler_max_concurrent: int = Field(
-        default=5, description="最大并发执行任务数"
-    )
-    scheduler_check_interval: int = Field(
-        default=30, description="任务检查间隔（秒）"
-    )
+    scheduler_max_concurrent: int = Field(default=5, description="最大并发执行任务数")
+    scheduler_check_interval: int = Field(default=30, description="任务检查间隔（秒）")
     scheduler_default_max_retries: int = Field(
         default=3, description="默认最大重试次数"
     )

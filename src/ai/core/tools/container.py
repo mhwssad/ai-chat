@@ -10,16 +10,25 @@ def _create_tool_registry():
     return ToolRegistry()
 
 
-def _create_tool_manager(registry, http_aclient, mcp_manager):
-    """构建 ToolManager 并加载内置工具。"""
+def _create_permission_checker(registry):
+    """权限校验器。"""
+    from src.ai.core.tools.permissions import PermissionChecker
+
+    return PermissionChecker(registry=registry)
+
+
+def _create_tool_manager(
+    registry, http_aclient, model_service=None, permission_checker=None
+):
+    """构建 ToolManager。不加载内置工具，由 container_wiring 统一调度。"""
     from src.ai.core.tools.manager import ToolManager
 
     mgr = ToolManager(
         registry=registry,
         http_aclient=http_aclient,
-        mcp_manager=mcp_manager,
+        model_service=model_service,
+        permission_checker=permission_checker,
     )
-    mgr.load_builtin_tools()
     return mgr
 
 
@@ -28,12 +37,17 @@ class ToolContainer(containers.DeclarativeContainer):
 
     # 外部依赖
     http_aclient = providers.Dependency()
-    mcp_manager = providers.Dependency()
+    model_service = providers.Dependency()
 
     tool_registry = providers.Singleton(_create_tool_registry)
+    permission_checker = providers.Singleton(
+        _create_permission_checker,
+        registry=tool_registry,
+    )
     tool_manager = providers.Singleton(
         _create_tool_manager,
         registry=tool_registry,
         http_aclient=http_aclient,
-        mcp_manager=mcp_manager,
+        model_service=model_service,
+        permission_checker=permission_checker,
     )

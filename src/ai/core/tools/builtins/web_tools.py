@@ -1,15 +1,30 @@
 """网络工具 — 网页获取和搜索。"""
 
+import ipaddress
 import json
 import logging
 import re
+import socket
 from html.parser import HTMLParser
+from urllib.parse import urlparse
 
 from langchain_core.tools import tool
 
 from src.ai.core.tools.register import register_tool
 
 logger = logging.getLogger(__name__)
+
+# 内网 IP 范围 — 阻止 SSRF 攻击
+_PRIVATE_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+    ipaddress.ip_network("fe80::/10"),
+]
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -47,6 +62,43 @@ def _html_to_text(html: str) -> str:
     return text
 
 
+def _validate_url(url: str) -> None:
+    """验证 URL 安全性，防止 SSRF 攻击。
+
+    Args:
+        url: 待验证的 URL。
+
+    Raises:
+        ValueError: URL 不安全或无效。
+    """
+    parsed = urlparse(url)
+
+    # 只允许 http/https 协议
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError(f"不支持的协议: {parsed.scheme}")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL 缺少主机名")
+
+    # 解析主机名到 IP 地址
+    try:
+        addrinfos = socket.getaddrinfo(
+            hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM
+        )
+    except socket.gaierror as exc:
+        raise ValueError(f"无法解析主机名: {hostname}") from exc
+
+    for family, _, _, _, sockaddr in addrinfos:
+        ip_str = sockaddr[0]
+        ip = ipaddress.ip_address(ip_str)
+
+        # 检查是否为内网 IP
+        for network in _PRIVATE_NETWORKS:
+            if ip in network:
+                raise ValueError(f"禁止访问内网地址: {ip} ({hostname})")
+
+
 def create_web_fetch_tool(http_aclient):
     """工厂函数：创建绑定了 http_aclient 的 web_fetch 工具。"""
 
@@ -58,6 +110,9 @@ def create_web_fetch_tool(http_aclient):
             url: 目标 URL。
             max_length: 返回文本最大字符数。
         """
+        # SSRF 防护
+        _validate_url(url)
+
         try:
             response = await http_aclient.get(url, follow_redirects=True, timeout=30)
             content_type = response.headers.get("content-type", "")
@@ -146,5 +201,9 @@ def register(http_aclient):
     """注册网络工具。"""
     web_fetch_tool = create_web_fetch_tool(http_aclient)
     web_search_tool = create_web_search_tool()
-    register_tool(web_fetch_tool, source_type="builtin", permissions=["external_service"])
-    register_tool(web_search_tool, source_type="builtin", permissions=["external_service"])
+    register_tool(
+        web_fetch_tool, source_type="builtin", permissions=["external_service"]
+    )
+    register_tool(
+        web_search_tool, source_type="builtin", permissions=["external_service"]
+    )

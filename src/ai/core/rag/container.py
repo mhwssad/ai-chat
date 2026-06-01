@@ -89,8 +89,32 @@ def _create_splitter_registry():
     return SplitterRegistry.discover(modules)
 
 
+def _create_index_meta_store(settings):
+    """创建 IndexMetaStore。"""
+    from src.ai.config.base_config import project_root
+    from src.ai.core.rag.index_meta import IndexMetaStore
+
+    rag = settings.rag
+    return IndexMetaStore(
+        persist_path=project_root / rag.rag_persist_dir / "index_meta.json"
+    )
+
+
+def _create_bm25_retriever():
+    """创建 BM25Retriever。"""
+    from src.ai.core.rag.bm25_retriever import BM25Retriever
+
+    return BM25Retriever()
+
+
 def _create_rag_service(
-    model_service, loader_registry, splitter_registry, settings, prompt_service
+    model_service,
+    loader_registry,
+    splitter_registry,
+    settings,
+    prompt_service,
+    meta_store=None,
+    bm25_retriever=None,
 ):
     """构建 RagService，通过 ModelService 获取 Embedding。"""
     from src.ai.config.base_config import project_root
@@ -119,6 +143,8 @@ def _create_rag_service(
         top_k=rag.rag_top_k,
         settings=settings,
         prompt_service=prompt_service,
+        meta_store=meta_store,
+        bm25_retriever=bm25_retriever,
     )
 
 
@@ -137,6 +163,15 @@ class RagContainer(containers.DeclarativeContainer):
     )
     splitter_registry = providers.Singleton(_create_splitter_registry)
 
+    # 增量索引元数据
+    index_meta_store = providers.Singleton(
+        _create_index_meta_store,
+        settings=settings,
+    )
+
+    # BM25 检索器
+    bm25_retriever = providers.Singleton(_create_bm25_retriever)
+
     # RAG 服务
     rag_service = providers.Singleton(
         _create_rag_service,
@@ -145,4 +180,6 @@ class RagContainer(containers.DeclarativeContainer):
         splitter_registry=splitter_registry,
         settings=settings,
         prompt_service=prompt_service,
+        meta_store=index_meta_store,
+        bm25_retriever=bm25_retriever,
     )

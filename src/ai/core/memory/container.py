@@ -43,8 +43,20 @@ def _create_prompt_builder(prompt_service: Any) -> Any:
     return MemoryPromptBuilder(prompt_service=prompt_service)
 
 
+def _create_memory_vector_store(settings: Any) -> Any:
+    """创建 MemoryVectorStore。"""
+    from src.ai.config.base_config import project_root
+    from src.ai.core.memory.vector_store import MemoryVectorStore
+
+    memory_dir = project_root / settings.memory.memory_dir
+    return MemoryVectorStore(
+        persist_directory=str(memory_dir / "vectors"),
+        collection_name="memory_vectors",
+    )
+
+
 def _create_memory_searcher(
-    store: Any, llm: Any, prompt_service: Any, settings: Any
+    store: Any, llm: Any, prompt_service: Any, settings: Any, vector_store: Any = None
 ) -> Any:
     """创建 MemorySearcher。"""
     from src.ai.core.memory.searcher import MemorySearcher
@@ -54,6 +66,7 @@ def _create_memory_searcher(
         llm=llm,
         prompt_service=prompt_service,
         max_results=settings.memory.relevance_max_results,
+        vector_store=vector_store,
     )
 
 
@@ -62,6 +75,7 @@ def _create_memory_service(
     extractor: Any,
     prompt_builder: Any,
     searcher: Any,
+    vector_store: Any = None,
 ) -> Any:
     """创建 MemoryService。"""
     from src.ai.core.memory.service import MemoryService
@@ -71,6 +85,7 @@ def _create_memory_service(
         extractor=extractor,
         prompt_builder=prompt_builder,
         searcher=searcher,
+        vector_store=vector_store,
     )
 
 
@@ -84,6 +99,7 @@ class MemoryContainer(containers.DeclarativeContainer):
     # Layer 1: 基础依赖
     file_store = providers.Singleton(_create_file_store, settings=settings)
     memory_store = providers.Singleton(_create_memory_store, settings=settings)
+    vector_store = providers.Singleton(_create_memory_vector_store, settings=settings)
 
     # Layer 2: 依赖 Layer 1
     memory_extractor = providers.Singleton(
@@ -98,6 +114,7 @@ class MemoryContainer(containers.DeclarativeContainer):
         llm=llm,
         prompt_service=prompt_service,
         settings=settings,
+        vector_store=vector_store,
     )
 
     # Layer 3: 顶层服务
@@ -107,4 +124,5 @@ class MemoryContainer(containers.DeclarativeContainer):
         extractor=memory_extractor,
         prompt_builder=prompt_builder,
         searcher=memory_searcher,
+        vector_store=vector_store,
     )

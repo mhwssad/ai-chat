@@ -27,7 +27,9 @@ class RAGCollector(ContextCollector):
         rag_encoder: RAG 查询优化器实例。
     """
 
-    def __init__(self, rag_encoder: "RAGQueryEncoder | None", settings: "Settings") -> None:
+    def __init__(
+        self, rag_encoder: "RAGQueryEncoder | None", settings: "Settings"
+    ) -> None:
         self._rag_encoder = rag_encoder
         self._settings = settings
 

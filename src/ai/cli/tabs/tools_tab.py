@@ -1,18 +1,25 @@
 """工具管理面板 — 工具列表、筛选、启用/禁用、测试执行。"""
 
+import asyncio
+import json
+import logging
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
 from src.ai.cli.tabs import BaseTab
 from src.ai.cli.utils.theme import Icons
-from src.ai.cli.utils.formatting import truncate
+from src.ai.cli.utils.formatting import truncate, wrap_text
+from src.ai.cli.utils.rich_components import create_styled_table
+
+logger = logging.getLogger(__name__)
 
 
 class ToolsTab(BaseTab):
     """工具管理面板。
 
-    展示已注册工具列表，支持启用/禁用操作。
+    展示已注册工具列表，支持启用/禁用和测试执行。
     """
 
     name = "工具"
@@ -20,10 +27,13 @@ class ToolsTab(BaseTab):
 
     def __init__(self) -> None:
         super().__init__()
+        self._cache_ttl = 5.0
         self._tools: list[dict[str, object]] = []
         self._show_all: bool = True
+        self._test_result: str = ""
+        self._test_running: bool = False
 
-    def _load_tools(self) -> None:
+    def _load_data(self) -> None:
         """加载工具列表。"""
         try:
             from src.ai.core.container import container
@@ -31,71 +41,119 @@ class ToolsTab(BaseTab):
             registry = container.tool_container.tool_registry()
             tools = registry.list(enabled_only=not self._show_all)
             self._tools = []
+            query = self._search_query.lower()
             for tool in tools:
-                meta = registry.get_meta(tool.name)
+                name = tool.name
+                desc = getattr(tool, "description", "") or ""
+                # 搜索过滤：按名称或描述匹配
+                if query and query not in name.lower() and query not in desc.lower():
+                    continue
+                meta = registry.get_meta(name)
                 self._tools.append(
                     {
-                        "name": tool.name,
-                        "description": getattr(tool, "description", "") or "",
+                        "name": name,
+                        "description": desc,
                         "source_type": meta.source_type,
                         "enabled": meta.enabled,
                         "essential": meta.essential,
                     }
                 )
-        except Exception:
+        except Exception as e:
+            logger.debug("加载工具列表失败: %s", e)
             self._tools = []
 
     def render_content(self, console: Console, width: int, height: int) -> Panel:
-        self._load_tools()
+        self._ensure_cache()
         self._clamp_selection(len(self._tools))
 
-        text = Text()
-
-        # 标题行
+        # 标题信息
         filter_label = "全部" if self._show_all else "仅启用"
-        text.append(
-            f"工具列表 ({len(self._tools)} 个, {filter_label})\n", style="subtitle"
-        )
-        text.append(Icons.LINE * (width - 4) + "\n", style="muted")
-
-        # 表头
-        text.append("  状态  名称                    来源      描述\n", style="muted")
-        text.append("  " + Icons.LINE * (width - 6) + "\n", style="muted")
+        if self._search_query:
+            title_info = (
+                f'搜索 "{self._search_query}" ({len(self._tools)} 个, {filter_label})'
+            )
+        else:
+            title_info = f"工具列表 ({len(self._tools)} 个, {filter_label})"
 
         if not self._tools:
+            text = Text()
+            text.append(f"\n  {title_info}\n", style="subtitle")
+            text.append(Icons.LINE * (width - 4) + "\n", style="muted")
             text.append("  没有已注册的工具\n", style="muted")
-        else:
-            for i, tool in enumerate(self._tools):
-                prefix = Icons.POINTER if i == self._selected_index else " "
-                enabled = tool["enabled"]
-                essential = tool["essential"]
-                status_icon = Icons.ACTIVE if enabled else Icons.INACTIVE
-                status_style = "active" if enabled else "inactive"
 
-                name = str(tool["name"])
-                source = str(tool["source_type"])
-                desc = truncate(str(tool["description"]), max_len=width - 50)
+            # 测试进行中
+            if self._test_running:
+                text.append("\n  测试中...\n", style="warning")
+            if self._test_result:
+                text.append("\n测试结果:\n", style="subtitle")
+                for line in self._test_result.split("\n")[:8]:
+                    text.append(f"  {line}\n", style="value")
 
-                line_style = "selected" if i == self._selected_index else ""
-                text.append(f" {prefix} ", style=line_style)
-                text.append(f"{status_icon}", style=status_style)
-                text.append(f"  {name:<24s}", style=line_style)
-                text.append(f" {source:<10s}", style="muted")
-                text.append(f" {desc}\n", style=line_style)
+            text.append("\n")
+            text.append(Icons.LINE * (width - 4) + "\n", style="muted")
+            text.append(
+                "  UP/DN 浏览 | E 启用/禁用 | A 切换筛选 | T 测试执行\n", style="muted"
+            )
+            return Panel(
+                text, title=f"[title]{Icons.TAB_TOOLS} 工具[/]", border_style="border"
+            )
 
-                if essential:
-                    # 在下一行显示核心标记
-                    pass
-
-        # 底部操作提示
-        text.append("\n", style="")
-        text.append(Icons.LINE * (width - 4) + "\n", style="muted")
-        text.append(
-            "  ↑↓ 浏览 │ E 启用/禁用 │ A 切换筛选 │ T 测试执行\n", style="muted"
+        # 使用 Rich Table
+        table = create_styled_table(
+            title_info,
+            [
+                ("", "", 2),  # 指针
+                ("状态", "center", 4),  # 状态图标
+                ("名称", "bold", 20),
+                ("来源", "muted", 10),
+                ("描述", "", 30),
+            ],
         )
 
+        # 滚动支持
+        visible_count = max(1, height - 10)
+        scroll = self._get_scroll_offset(visible_count, len(self._tools))
+
+        for i in range(scroll, min(scroll + visible_count, len(self._tools))):
+            tool = self._tools[i]
+            pointer = Icons.POINTER if i == self._selected_index else " "
+            enabled = tool["enabled"]
+            essential = tool["essential"]
+            status_icon = Icons.ACTIVE if enabled else Icons.INACTIVE
+            name = str(tool["name"])
+            source = str(tool["source_type"])
+            desc = truncate(str(tool["description"]), max_len=width - 50)
+
+            # essential 标记
+            if essential:
+                desc_display = f"{desc} [warning][core][/]"
+            else:
+                desc_display = desc
+
+            row_style = "reverse" if i == self._selected_index else ""
+            table.add_row(
+                Text(pointer, style="bold green" if i == self._selected_index else ""),
+                Text(status_icon, style="active" if enabled else "inactive"),
+                Text(name, style=row_style),
+                Text(source),
+                Text.from_markup(desc_display),
+                style=row_style,
+            )
+
+        # 测试进行中
+        if self._test_running:
+            table.add_row("", "", Text("测试中...", style="warning"), "", "")
+
+        # 测试结果
+        if self._test_result:
+            result_lines = self._test_result.split("\n")[:4]
+            for line in result_lines:
+                table.add_row("", "", Text(line, style="value"), "", "")
+
         return Panel(
-            text, title=f"[title]{Icons.TAB_TOOLS} 工具[/]", border_style="border"
+            table,
+            title=f"[title]{Icons.TAB_TOOLS} 工具[/]",
+            border_style="border",
         )
 
     def handle_input(self, key: str) -> bool:
@@ -108,20 +166,26 @@ class ToolsTab(BaseTab):
         elif key == "a":
             self._show_all = not self._show_all
             self._selected_index = 0
+            self._invalidate_cache()
             return True
         elif key == "e":
-            self._toggle_selected()
-            return True
+            return self._toggle_selected()
+        elif key == "t":
+            return self._test_selected()
+        elif key == "escape":
+            if self.is_searching:
+                self.clear_search()
+                return True
         return False
 
-    def _toggle_selected(self) -> None:
+    def _toggle_selected(self) -> bool:
         """切换选中工具的启用/禁用状态。"""
         if not self._tools or self._selected_index >= len(self._tools):
-            return
+            return False
 
         tool = self._tools[self._selected_index]
         if tool["essential"]:
-            return  # 核心工具不可禁用
+            return False
 
         try:
             from src.ai.core.container import container
@@ -129,8 +193,51 @@ class ToolsTab(BaseTab):
             registry = container.tool_container.tool_registry()
             meta = registry.get_meta(str(tool["name"]))
             meta.enabled = not meta.enabled
-        except Exception:
-            pass
+            self._invalidate_cache()
+            return True
+        except Exception as e:
+            logger.debug("切换工具状态失败: %s", e)
+            return False
+
+    def _test_selected(self) -> bool:
+        """测试执行选中的工具（后台线程）。"""
+        if not self._tools or self._selected_index >= len(self._tools):
+            return False
+        if self._test_running:
+            return False
+
+        tool = self._tools[self._selected_index]
+        tool_name = str(tool["name"])
+        self._test_running = True
+        self._test_result = ""
+
+        import threading
+
+        def _run() -> None:
+            try:
+                from src.ai.core.container import container
+
+                manager = container.tool_container.tool_manager()
+
+                async def _do():
+                    return await manager.execute(tool_name, {})
+
+                result = asyncio.run(_do())
+                result_str = str(result)
+                if len(result_str) > 500:
+                    result_str = result_str[:500] + "\n...(已截断)"
+                self._test_result = result_str
+            except Exception as e:
+                self._test_result = f"执行失败: {e}"
+            finally:
+                self._test_running = False
+
+        threading.Thread(target=_run, daemon=True).start()
+        return True
+
+    def get_footer_commands(self) -> list[tuple[str, str]]:
+        """返回 Tools Tab 底部命令列表。"""
+        return [("e", "启用/禁用"), ("a", "筛选"), ("t", "测试")]
 
     def get_detail_panel(self, console: Console, width: int, height: int) -> Panel:
         text = Text()
@@ -152,10 +259,8 @@ class ToolsTab(BaseTab):
             text.append("\n  描述:\n", style="subtitle")
 
             desc = str(tool["description"])
-            # 自动换行
-            line_width = width - 8
-            for i in range(0, len(desc), line_width):
-                text.append(f"  {desc[i : i + line_width]}\n", style="value")
+            for line in wrap_text(desc, max(10, width - 8)):
+                text.append(f"  {line}\n", style="value")
 
             # JSON Schema 信息
             text.append("\n  参数 Schema:\n", style="subtitle")
@@ -166,8 +271,6 @@ class ToolsTab(BaseTab):
                 base_tool = registry.get(str(tool["name"]))
                 schema = base_tool.args_schema
                 if schema:
-                    import json
-
                     schema_dict = (
                         schema.model_json_schema()
                         if hasattr(schema, "model_json_schema")

@@ -1,12 +1,17 @@
 """记忆管理面板 — 记忆列表、搜索、删除。"""
 
+import logging
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
 from src.ai.cli.tabs import BaseTab
 from src.ai.cli.utils.theme import Icons
-from src.ai.cli.utils.formatting import truncate
+from src.ai.cli.utils.formatting import truncate, wrap_text
+from src.ai.cli.utils.rich_components import create_styled_table
+
+logger = logging.getLogger(__name__)
 
 
 class MemoryTab(BaseTab):
@@ -21,10 +26,8 @@ class MemoryTab(BaseTab):
     def __init__(self) -> None:
         super().__init__()
         self._entries: list[dict[str, object]] = []
-        self._search_query: str = ""
-        self._is_searching: bool = False
 
-    def _load_entries(self) -> None:
+    def _load_data(self) -> None:
         """加载记忆条目。"""
         try:
             from src.ai.core.container import container
@@ -63,70 +66,85 @@ class MemoryTab(BaseTab):
             self._entries = []
 
     def render_content(self, console: Console, width: int, height: int) -> Panel:
-        self._load_entries()
+        self._ensure_cache()
         self._clamp_selection(len(self._entries))
-
-        text = Text()
 
         # 标题
         if self._search_query:
-            text.append(
-                f"搜索「{self._search_query}」({len(self._entries)} 条结果)\n",
-                style="subtitle",
-            )
+            title_info = f'搜索 "{self._search_query}" ({len(self._entries)} 条结果)'
         else:
-            text.append(f"记忆列表 ({len(self._entries)} 条)\n", style="subtitle")
-        text.append(Icons.LINE * (width - 4) + "\n", style="muted")
-
-        # 表头
-        text.append("  类型       名称                    描述\n", style="muted")
-        text.append("  " + Icons.LINE * (width - 6) + "\n", style="muted")
+            title_info = f"记忆列表 ({len(self._entries)} 条)"
 
         if not self._entries:
+            text = Text()
+            text.append(f"\n  {title_info}\n", style="subtitle")
+            text.append(Icons.LINE * (width - 4) + "\n", style="muted")
             if self._search_query:
                 text.append(
-                    f"  未找到与「{self._search_query}」相关的记忆\n", style="muted"
+                    f'  未找到与 "{self._search_query}" 相关的记忆\n', style="muted"
                 )
             else:
                 text.append("  暂无记忆条目\n", style="muted")
-        else:
-            for i, entry in enumerate(self._entries):
-                prefix = Icons.POINTER if i == self._selected_index else " "
-                mt = str(entry["memory_type"])
-                name = str(entry["name"])
-                desc = truncate(str(entry["description"]), max_len=width - 45)
+            text.append("\n")
+            text.append(Icons.LINE * (width - 4) + "\n", style="muted")
+            text.append(
+                "  UP/DN 浏览 | / 搜索 | D 删除 | R 重建索引 | Esc 清除搜索\n",
+                style="muted",
+            )
+            return Panel(
+                text, title=f"[title]{Icons.TAB_MEMORY} 记忆[/]", border_style="border"
+            )
 
-                line_style = "selected" if i == self._selected_index else ""
-
-                # 类型颜色
-                type_styles = {
-                    "user": "info",
-                    "feedback": "warning",
-                    "project": "active",
-                    "reference": "highlight",
-                }
-                type_style = type_styles.get(mt, "muted")
-
-                text.append(f" {prefix} ", style=line_style)
-                text.append(f"[{mt}]", style=type_style)
-                text.append(f" {name:<24s}", style=line_style)
-                text.append(f" {desc}\n", style="muted")
-
-                if entry.get("score") and entry["score"] > 0:
-                    text.append(
-                        f"      相关度: {entry['score']:.2f} ({entry['match_type']})\n",
-                        style="muted",
-                    )
-
-        # 底部操作
-        text.append("\n", style="")
-        text.append(Icons.LINE * (width - 4) + "\n", style="muted")
-        text.append(
-            "  ↑↓ 浏览 │ / 搜索 │ D 删除 │ R 重建索引 │ Esc 清除搜索\n", style="muted"
+        # 使用 Rich Table
+        table = create_styled_table(
+            title_info,
+            [
+                ("", "", 2),  # 指针
+                ("类型", "center", 8),  # 类型标签
+                ("名称", "bold", 20),
+                ("描述", "", 25),
+                ("相关度", "right", 8),
+            ],
         )
 
+        # 类型颜色映射
+        type_styles = {
+            "user": "info",
+            "feedback": "warning",
+            "project": "active",
+            "reference": "highlight",
+        }
+
+        # 滚动支持
+        visible_count = max(1, height - 8)
+        scroll = self._get_scroll_offset(visible_count, len(self._entries))
+
+        for i in range(scroll, min(scroll + visible_count, len(self._entries))):
+            entry = self._entries[i]
+            pointer = Icons.POINTER if i == self._selected_index else " "
+            mt = str(entry["memory_type"])
+            name = str(entry["name"])
+            desc = truncate(str(entry["description"]), max_len=width - 45)
+            type_style = type_styles.get(mt, "muted")
+
+            score_text = ""
+            if entry.get("score") and entry["score"] > 0:
+                score_text = f"{entry['score']:.2f}"
+
+            row_style = "reverse" if i == self._selected_index else ""
+            table.add_row(
+                Text(pointer, style="bold green" if i == self._selected_index else ""),
+                Text(f"[{mt}]", style=type_style),
+                Text(name, style=row_style),
+                Text(desc),
+                Text(score_text, style="muted"),
+                style=row_style,
+            )
+
         return Panel(
-            text, title=f"[title]{Icons.TAB_MEMORY} 记忆[/]", border_style="border"
+            table,
+            title=f"[title]{Icons.TAB_MEMORY} 记忆[/]",
+            border_style="border",
         )
 
     def handle_input(self, key: str) -> bool:
@@ -137,26 +155,19 @@ class MemoryTab(BaseTab):
             self._move_selection(1, len(self._entries))
             return True
         elif key == "d":
-            self._delete_selected()
-            return True
+            return self._delete_selected()
         elif key == "r":
-            self._rebuild_index()
-            return True
+            return self._rebuild_index()
         elif key == "escape":
             self._search_query = ""
             self._selected_index = 0
             return True
         return False
 
-    def set_search_query(self, query: str) -> None:
-        """设置搜索关键词（由 Dashboard 调用）。"""
-        self._search_query = query
-        self._selected_index = 0
-
-    def _delete_selected(self) -> None:
+    def _delete_selected(self) -> bool:
         """删除选中的记忆条目。"""
         if not self._entries or self._selected_index >= len(self._entries):
-            return
+            return False
 
         entry = self._entries[self._selected_index]
         try:
@@ -165,18 +176,28 @@ class MemoryTab(BaseTab):
             svc = container.memory_container.memory_service()
             svc.delete(str(entry["name"]))
             self._selected_index = max(0, self._selected_index - 1)
-        except Exception:
-            pass
+            self._invalidate_cache()
+            return True
+        except Exception as e:
+            logger.debug("删除记忆失败: %s", e)
+            return False
 
-    def _rebuild_index(self) -> None:
+    def _rebuild_index(self) -> bool:
         """重建记忆索引。"""
         try:
             from src.ai.core.container import container
 
             svc = container.memory_container.memory_service()
             svc.rebuild_index()
-        except Exception:
-            pass
+            self._invalidate_cache()
+            return True
+        except Exception as e:
+            logger.debug("重建索引失败: %s", e)
+            return False
+
+    def get_footer_commands(self) -> list[tuple[str, str]]:
+        """返回 Memory Tab 底部命令列表。"""
+        return [("/", "搜索"), ("d", "删除"), ("r", "重建")]
 
     def get_detail_panel(self, console: Console, width: int, height: int) -> Panel:
         text = Text()
@@ -192,9 +213,8 @@ class MemoryTab(BaseTab):
             text.append("\n  内容:\n", style="subtitle")
 
             content = str(entry["content"])
-            line_width = width - 8
-            for i in range(0, len(content), line_width):
-                text.append(f"  {content[i : i + line_width]}\n", style="value")
+            for line in wrap_text(content, width - 8):
+                text.append(f"  {line}\n", style="value")
 
             if entry.get("score") and entry["score"] > 0:
                 text.append(f"\n  相关度: {entry['score']:.2f}\n", style="info")

@@ -471,9 +471,7 @@ class SchedulerService:
 
     # ── 日志查询 ──────────────────────────────────────────────
 
-    def get_task_logs(
-        self, task_id: str, *, limit: int = 50
-    ) -> list[dict]:
+    def get_task_logs(self, task_id: str, *, limit: int = 50) -> list[dict]:
         """获取任务执行日志。"""
         logs = self._store.get_task_logs(task_id, limit=limit)
         return [
@@ -514,7 +512,9 @@ class SchedulerService:
 
         parts = cron_expr.strip().split()
         if len(parts) != 5:
-            raise ValueError(f"无效的 Cron 表达式: {cron_expr}，需要 5 位（分 时 日 月 周）")
+            raise ValueError(
+                f"无效的 Cron 表达式: {cron_expr}，需要 5 位（分 时 日 月 周）"
+            )
 
         # 验证 croniter 能否解析
         try:
@@ -625,7 +625,9 @@ class SchedulerService:
                 cron = croniter(task.cron_expr, now)
                 return cron.get_next(datetime)
             except Exception as e:
-                logger.error("Cron 表达式解析失败: %s, error=%s", task.cron_expr, str(e))
+                logger.error(
+                    "Cron 表达式解析失败: %s, error=%s", task.cron_expr, str(e)
+                )
                 return None
 
         elif task.interval_seconds:

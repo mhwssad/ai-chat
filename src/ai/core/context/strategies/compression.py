@@ -68,9 +68,7 @@ class CompressionContextBuilder:
 
         return result
 
-    def _inject_summary(
-        self, result: list[BaseMessage], session_id: str
-    ) -> None:
+    def _inject_summary(self, result: list[BaseMessage], session_id: str) -> None:
         """读取摘要并注入为系统消息。"""
         from langchain_core.messages import SystemMessage
 
@@ -81,9 +79,7 @@ class CompressionContextBuilder:
         ref_text = MemoryPromptBuilder.format_file_references(
             summary_data.get("file_references", [])
         )
-        summary_content = (
-            f"## 之前的对话摘要\n\n{summary_data.get('summary', '')}"
-        )
+        summary_content = f"## 之前的对话摘要\n\n{summary_data.get('summary', '')}"
         if ref_text:
             summary_content += f"\n\n{ref_text}"
         result.append(SystemMessage(content=summary_content))

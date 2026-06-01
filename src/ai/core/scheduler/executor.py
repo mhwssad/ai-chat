@@ -163,7 +163,9 @@ class TaskExecutor:
         if not task_config.tool_name:
             raise ValueError("工具调用任务必须指定 tool_name")
 
-        logger.debug("执行工具调用: %s, args=%s", task_config.tool_name, task_config.tool_args)
+        logger.debug(
+            "执行工具调用: %s, args=%s", task_config.tool_name, task_config.tool_args
+        )
 
         result = await self._tool_manager.execute(
             task_config.tool_name,

@@ -139,7 +139,7 @@ DEFAULT_TEMPLATES: dict[str, tuple[str, str, str, str]] = {
             "\n"
             "- 使用中文输出\n"
             "- 每个标注必须是实际存在的消息编号\n"
-            "- 如果信息不足以分类，放入\"重要上下文\"\n"
+            '- 如果信息不足以分类，放入"重要上下文"\n'
             "- 不要添加任何开场白或结束语\n"
             "- 直接输出结构化内容"
         ),
@@ -185,7 +185,7 @@ DEFAULT_TEMPLATES: dict[str, tuple[str, str, str, str]] = {
             "- 使用中文输出\n"
             "- 必须包含上述全部 9 个章节，即使某些章节内容为空也要保留标题\n"
             "- 每个标注必须是实际存在的消息编号\n"
-            "- 如果信息不足以分类，放入\"Important User Messages\"或\"Current Work\"\n"
+            '- 如果信息不足以分类，放入"Important User Messages"或"Current Work"\n'
             "- 不要添加任何开场白或结束语\n"
             "- 直接输出结构化内容"
         ),
@@ -281,7 +281,12 @@ def seed_default_prompts(store: PromptStore) -> int:
         新写入的模板数量。
     """
     created = 0
-    for key, (display_name, description, category, template) in DEFAULT_TEMPLATES.items():
+    for key, (
+        display_name,
+        description,
+        category,
+        template,
+    ) in DEFAULT_TEMPLATES.items():
         try:
             existing = store.get_by_key(key, enabled_only=False)
             if existing is not None:

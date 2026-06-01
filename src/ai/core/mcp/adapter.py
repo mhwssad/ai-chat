@@ -5,7 +5,9 @@ from typing import Any
 from .types import MCPServerConfig
 
 
-def to_langchain_connections(configs: list[MCPServerConfig]) -> dict[str, dict[str, Any]]:
+def to_langchain_connections(
+    configs: list[MCPServerConfig],
+) -> dict[str, dict[str, Any]]:
     """将 MCPServerConfig 列表转为 langchain-mcp-adapters 的 Connection 格式。
 
     Args:

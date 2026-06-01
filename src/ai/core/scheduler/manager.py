@@ -211,7 +211,9 @@ class SchedulerManager:
                 cron = croniter(task.cron_expr, now)
                 return cron.get_next(datetime)
             except Exception as e:
-                logger.error("Cron 表达式解析失败: %s, error=%s", task.cron_expr, str(e))
+                logger.error(
+                    "Cron 表达式解析失败: %s, error=%s", task.cron_expr, str(e)
+                )
                 return None
 
         elif task.interval_seconds:

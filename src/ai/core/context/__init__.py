@@ -27,15 +27,33 @@ _LAZY_IMPORTS: dict[str, tuple[str, str]] = {
     "ContextCoordinator": ("src.ai.core.context.collector", "ContextCoordinator"),
     "FullCompact": ("src.ai.core.context.compact", "FullCompact"),
     "MicroCompact": ("src.ai.core.context.compact", "MicroCompact"),
-    "extract_message_content": ("src.ai.core.context.compact", "extract_message_content"),
-    "format_messages_to_text": ("src.ai.core.context.compact", "format_messages_to_text"),
-    "validate_summary_sections": ("src.ai.core.context.compact", "validate_summary_sections"),
+    "extract_message_content": (
+        "src.ai.core.context.compact",
+        "extract_message_content",
+    ),
+    "format_messages_to_text": (
+        "src.ai.core.context.compact",
+        "format_messages_to_text",
+    ),
+    "validate_summary_sections": (
+        "src.ai.core.context.compact",
+        "validate_summary_sections",
+    ),
     "SystemPromptSections": ("src.ai.core.context.sections", "SystemPromptSections"),
     "ContextService": ("src.ai.core.context.service", "ContextService"),
     "BaseMemoryStrategy": ("src.ai.core.context.strategies.base", "BaseMemoryStrategy"),
-    "CompressionStrategy": ("src.ai.core.context.strategies.compression", "CompressionStrategy"),
-    "CompressionContextBuilder": ("src.ai.core.context.strategies.compression", "CompressionContextBuilder"),
-    "create_memory_strategy": ("src.ai.core.context.strategies", "create_memory_strategy"),
+    "CompressionStrategy": (
+        "src.ai.core.context.strategies.compression",
+        "CompressionStrategy",
+    ),
+    "CompressionContextBuilder": (
+        "src.ai.core.context.strategies.compression",
+        "CompressionContextBuilder",
+    ),
+    "create_memory_strategy": (
+        "src.ai.core.context.strategies",
+        "create_memory_strategy",
+    ),
 }
 
 
