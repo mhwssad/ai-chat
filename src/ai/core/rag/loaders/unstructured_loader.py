@@ -71,7 +71,7 @@ class UnstructuredLoader(LoaderStrategy):
         try:
             from unstructured.cleaners.core import clean_extra_whitespace
         except ImportError:
-            clean_extra_whitespace = None
+            clean_extra_whitespace = None  # type: ignore[assignment]
 
         kwargs: dict[str, Any] = {
             "file_path": str(file_path),

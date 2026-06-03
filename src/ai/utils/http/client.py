@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 # ── 基础设施 ─────────────────────────────────────────────
 
 _DEFAULT_TIMEOUT = float(
-    getattr(settings, "llm", None) and settings.llm.request_timeout or 60
+    getattr(settings, "llm", None) and settings.llm.request_timeout or 60  # type: ignore[attr-defined]
 )
 
 

@@ -24,14 +24,14 @@ async def get_model_config(model_service: ModelServiceDep):
     return ModelConfigResponse(
         chat=ChatModelConfigResponse(
             backend=chat_config.backend,
-            model_name=chat_config.model_name,
-            temperature=chat_config.temperature,
-            max_tokens=chat_config.max_tokens,
-            timeout=chat_config.timeout,
+            model_name=getattr(chat_config, "model_name", ""),
+            temperature=getattr(chat_config, "temperature", None),  # type: ignore[arg-type]
+            max_tokens=getattr(chat_config, "max_tokens", None),  # type: ignore[arg-type]
+            timeout=getattr(chat_config, "timeout", None),  # type: ignore[arg-type]
         ),
         embedding=EmbeddingModelConfigResponse(
             backend=embedding_config.backend,
-            model_name=embedding_config.model_name,
-            dimensions=embedding_config.dimensions,
+            model_name=getattr(embedding_config, "model_name", ""),
+            dimensions=getattr(embedding_config, "dimensions", None),
         ),
     )

@@ -7,6 +7,7 @@ import logging
 import threading
 import time
 from abc import ABC, abstractmethod
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -112,9 +113,9 @@ class UnixBackend(InputBackend):
         import termios
         import tty
 
-        self._fd = sys.stdin.fileno()
-        self._old_settings = termios.tcgetattr(self._fd)
-        tty.setcbreak(self._fd)
+        self._fd = sys.stdin.fileno()  # type: ignore[assignment]
+        self._old_settings = termios.tcgetattr(self._fd)  # type: ignore[attr-defined]
+        tty.setcbreak(self._fd)  # type: ignore[attr-defined]
 
     def restore(self) -> None:
         """恢复终端设置。"""
@@ -182,7 +183,7 @@ class InputManager:
         running_ref: 运行标志引用（callable 返回 bool）。
     """
 
-    def __init__(self, running_ref: callable) -> None:
+    def __init__(self, running_ref: Callable[[], bool]) -> None:
         self._running_ref = running_ref
         self._queue: collections.deque[str] = collections.deque(maxlen=64)
         self._lock = threading.Lock()

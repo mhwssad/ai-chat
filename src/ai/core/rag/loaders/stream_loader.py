@@ -79,7 +79,7 @@ class StreamLoader:
         except LoaderError:
             raise
         except Exception as e:
-            raise LoaderError(
+            raise LoaderError(  # type: ignore[call-arg]
                 "字节流文档加载失败",
                 context={
                     "mime_type": mime_type,

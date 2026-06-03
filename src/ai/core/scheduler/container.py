@@ -54,10 +54,10 @@ def _create_scheduler_service(
 class SchedulerContainer(containers.DeclarativeContainer):
     """定时任务调度器子系统容器。"""
 
-    settings = providers.Dependency()
-    session_factory = providers.Dependency()
-    tool_manager = providers.Dependency()
-    llm = providers.Dependency()
+    settings: Any = providers.Dependency()
+    session_factory: Any = providers.Dependency()
+    tool_manager: Any = providers.Dependency()
+    llm: Any = providers.Dependency()
 
     # Layer 1: 存储层
     scheduler_store = providers.Singleton(

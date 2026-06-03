@@ -54,9 +54,10 @@ async def list_memories(
 async def get_memory_stats(service: MemoryServiceDep):
     """获取记忆统计。"""
     stats = service.get_stats()
+    by_type_val: dict[str, int] | int = stats.get("by_type", {})
     return MemoryStatsResponse(
         total=stats.get("total", 0),
-        by_type=stats.get("by_type", {}),
+        by_type=by_type_val if isinstance(by_type_val, dict) else {},
     )
 
 
@@ -88,7 +89,7 @@ async def create_memory(
     """
     write_request = MemoryWriteRequest(
         content=request.content,
-        memory_type=request.memory_type,
+        memory_type=request.memory_type,  # type: ignore[arg-type]
         name=request.name,
         description=request.description,
         metadata=request.metadata,

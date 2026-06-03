@@ -36,7 +36,7 @@ class TimeoutToolNode(ToolNode):
         super().__init__(tools, handle_tool_errors=handle_tool_errors, **kwargs)
         self._default_timeout = default_timeout
 
-    async def _arun_one(
+    async def _arun_one(  # type: ignore[override]
         self,
         call: dict[str, Any],
         input_type: str,
@@ -58,10 +58,10 @@ class TimeoutToolNode(ToolNode):
         try:
             # 调用父类的单工具执行方法，带超时
             result = await asyncio.wait_for(
-                super()._arun_one(call, input_type, config),
+                super()._arun_one(call, input_type, config),  # type: ignore[arg-type]
                 timeout=self._default_timeout,
             )
-            return result
+            return result  # type: ignore[return-value]
         except TimeoutError:
             logger.warning("工具 %s 执行超时 (%.1fs)", name, self._default_timeout)
             return ToolMessage(
@@ -71,7 +71,7 @@ class TimeoutToolNode(ToolNode):
             )
         except Exception as e:
             # 其他异常由父类 handle_tool_errors 处理
-            if not self.handle_tool_errors:
+            if not self.handle_tool_errors:  # type: ignore[attr-defined]
                 raise
             logger.error("工具 %s 执行异常: %s", name, str(e), exc_info=True)
             return ToolMessage(
@@ -105,7 +105,8 @@ class TimeoutToolNode(ToolNode):
 
         # 并行执行所有工具调用
         tasks = [
-            self._arun_one(call, input_type, config) for call in message.tool_calls
+            self._arun_one(call, input_type, config)  # type: ignore[arg-type]
+            for call in message.tool_calls
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -125,6 +126,6 @@ class TimeoutToolNode(ToolNode):
                     )
                 )
             else:
-                messages.append(result)
+                messages.append(result)  # type: ignore[arg-type]
 
         return {"messages": messages}

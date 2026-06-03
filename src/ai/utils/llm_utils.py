@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
@@ -31,7 +31,8 @@ def build_llm_chain(
     from langchain_core.output_parsers import StrOutputParser
     from langchain_core.prompts import ChatPromptTemplate
 
-    return (
+    return cast(
+        "RunnableSequence",
         ChatPromptTemplate.from_messages(
             [
                 ("system", system_prompt),
@@ -39,5 +40,5 @@ def build_llm_chain(
             ]
         )
         | llm
-        | StrOutputParser()
+        | StrOutputParser(),
     )

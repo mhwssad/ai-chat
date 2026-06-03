@@ -5,7 +5,7 @@ import logging
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.group import Group
+from rich.console import Group
 
 from src.ai.cli.tabs import BaseTab
 from src.ai.cli.utils.theme import Icons
@@ -154,7 +154,7 @@ class SchedulerTab(BaseTab):
             total = task["total_runs"]
             success = task["success_runs"]
             failed = task["failed_runs"]
-            last_run = format_timestamp(task["last_run_at"])
+            last_run = format_timestamp(task["last_run_at"])  # type: ignore[arg-type]
 
             stats_text = f"{total}次 [OK]{success} [X]{failed}"
 
@@ -371,13 +371,16 @@ class SchedulerTab(BaseTab):
             text.append(f"  成功: {task['success_runs']}\n", style="active")
             text.append(f"  失败: {task['failed_runs']}\n", style="error")
             text.append(
-                f"  上次: {format_timestamp(task['last_run_at'])}\n", style="value"
+                f"  上次: {format_timestamp(task['last_run_at'])}\n",  # type: ignore[arg-type]
+                style="value",
             )
             text.append(
-                f"  下次: {format_timestamp(task['next_run_at'])}\n", style="value"
+                f"  下次: {format_timestamp(task['next_run_at'])}\n",  # type: ignore[arg-type]
+                style="value",
             )
             text.append(
-                f"  创建: {format_timestamp(task['created_at'])}\n", style="muted"
+                f"  创建: {format_timestamp(task['created_at'])}\n",  # type: ignore[arg-type]
+                style="muted",
             )
 
         return Panel(text, title="[title]任务详情[/]", border_style="border")

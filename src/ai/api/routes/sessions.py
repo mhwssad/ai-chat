@@ -15,7 +15,7 @@ async def list_sessions(context_service: ContextServiceDep):
     strategy = context_service.strategy
 
     # 获取会话列表
-    sessions = strategy.list_sessions()
+    sessions = strategy.list_sessions()  # type: ignore[attr-defined]
 
     return [
         SessionInfo(
@@ -41,7 +41,7 @@ async def get_session_history(
     strategy = context_service.strategy
 
     # 获取消息历史
-    messages = await strategy.aget_history(session_id)
+    messages = await strategy.aget_history(session_id)  # type: ignore[attr-defined]
 
     return SessionHistoryResponse(
         session_id=session_id,
@@ -68,6 +68,6 @@ async def clear_session(
     strategy = context_service.strategy
 
     # 清空会话历史
-    await strategy.aclear(session_id)
+    await strategy.aclear(session_id)  # type: ignore[attr-defined]
 
     return MessageResponse(message=f"会话 {session_id} 已清空")

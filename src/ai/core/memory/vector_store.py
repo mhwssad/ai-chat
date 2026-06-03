@@ -33,8 +33,8 @@ class MemoryVectorStore:
         self._persist_dir = persist_directory
         self._collection_name = collection_name
         self._embedding_fn = embedding_fn
-        self._client = None
-        self._collection = None
+        self._client: Any = None
+        self._collection: Any = None
 
     def _ensure_initialized(self) -> None:
         """惰性初始化 Chroma 客户端。"""

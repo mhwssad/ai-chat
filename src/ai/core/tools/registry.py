@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import logging
 
 from langchain_core.tools import BaseTool
@@ -96,11 +97,14 @@ class ToolRegistry:
             key=lambda t: (self._meta.get(t.name, ToolMeta()).source_type, t.name),
         )
 
-    def search(self, query: str, *, enabled_only: bool = True) -> list[BaseTool]:
+    def search(
+        self, query: str, *, enabled_only: bool = True
+    ) -> builtins.list[BaseTool]:
         """按关键词搜索工具（匹配 name 或 description）。"""
         q = query.lower()
+        registered = self.list(enabled_only=enabled_only)
         return [
             t
-            for t in self.list(enabled_only=enabled_only)
+            for t in registered
             if q in t.name.lower() or q in (t.description or "").lower()
         ]

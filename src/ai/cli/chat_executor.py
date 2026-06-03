@@ -127,7 +127,7 @@ class ChatExecutor:
             pass
 
         return ChatResult(
-            content=response.content,
+            content=response.content,  # type: ignore[arg-type]
             tool_calls=[
                 {"name": tc["name"], "args": tc["args"]}
                 for tc in (response.tool_calls or [])

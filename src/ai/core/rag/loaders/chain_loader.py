@@ -42,7 +42,7 @@ class ChainLoader(LoaderStrategy):
     def _load_single(self, file_path: Path) -> list[Document]:
         """按优先级遍历加载器链，首个成功的返回结果。"""
         for loader_cls in self._registry.all():
-            settings = loader_cls.settings_factory()
+            settings = loader_cls.settings_factory()  # type: ignore[attr-defined]
             loader = loader_cls(settings, **self._kwargs)
             if not loader.can_handle(file_path):
                 continue
@@ -50,7 +50,9 @@ class ChainLoader(LoaderStrategy):
                 docs = loader._load_single(file_path)
                 if docs:
                     logger.debug(
-                        "加载器 %s 成功加载 %d 个文档", loader_cls.name, len(docs)
+                        "加载器 %s 成功加载 %d 个文档",
+                        loader_cls.name,  # type: ignore[attr-defined]
+                        len(docs),
                     )
                     return docs
             except LoaderError:
@@ -58,7 +60,7 @@ class ChainLoader(LoaderStrategy):
             except Exception as e:
                 logger.debug(
                     "加载器 %s 失败 (%s: %s)，尝试下一个",
-                    loader_cls.name,
+                    loader_cls.name,  # type: ignore[attr-defined]
                     type(e).__name__,
                     e,
                 )

@@ -46,7 +46,7 @@ class MCPClient:
                     logger.debug("替换 MCP 客户端，旧配置哈希: %s", self._config_hash)
                 except Exception:
                     logger.debug("清理旧 MCP 客户端失败", exc_info=True)
-            self._client = MultiServerMCPClient(connections, tool_name_prefix=True)
+            self._client = MultiServerMCPClient(connections, tool_name_prefix=True)  # type: ignore[arg-type]
             self._config_hash = config_hash
         return self._client
 

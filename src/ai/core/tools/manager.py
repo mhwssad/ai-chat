@@ -65,8 +65,14 @@ class ToolManager:
 
     # ── 生命周期 ────────────────────────────────────────────
 
-    def load_builtin_tools(self) -> None:
-        """导入 builtins/ 包触发自注册（仅首次）。"""
+    def load_builtin_tools(
+        self, *, scheduler_service: object | None = None
+    ) -> None:
+        """导入 builtins/ 包触发自注册（仅首次）。
+
+        Args:
+            scheduler_service: 定时任务服务实例（可选）。
+        """
         if self._builtin_loaded:
             return
         _set_active_registry(self._registry)
@@ -76,6 +82,7 @@ class ToolManager:
             http_aclient=self._http_aclient,
             registry=self._registry,
             model_service=self._model_service,
+            scheduler_service=scheduler_service,
         )
 
         # 执行所有插件的注册
@@ -133,7 +140,7 @@ class ToolManager:
         effective_timeout = timeout if timeout is not None else 120.0
         try:
             return await asyncio.wait_for(
-                tool.ainvoke(arguments, config=config),
+                tool.ainvoke(arguments, config=config),  # type: ignore[arg-type]
                 timeout=effective_timeout,
             )
         except TimeoutError:
@@ -218,7 +225,7 @@ class ToolManager:
         schemas: list[dict[str, Any]] = []
         for t in tools:
             params = (
-                t.args_schema.model_json_schema()
+                t.args_schema.model_json_schema()  # type: ignore[union-attr]
                 if t.args_schema
                 else {"type": "object", "properties": {}}
             )

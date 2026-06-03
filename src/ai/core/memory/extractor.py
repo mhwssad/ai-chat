@@ -91,7 +91,7 @@ class MemoryExtractor:
 
     def _get_template_content(self, prompt_key: str) -> str:
         """从 prompt_service 获取模板原始内容。"""
-        template = self._prompt_service.get_template(prompt_key)
+        template = self._prompt_service.get_template(prompt_key)  # type: ignore[attr-defined]
         if template is None:
             logger.warning("DB 中未找到 %s 模板", prompt_key)
             return ""
@@ -132,7 +132,7 @@ class MemoryExtractor:
         candidates.sort(key=lambda c: c[0], reverse=True)
         for _, req in candidates:
             if req.name not in seen_names:
-                seen_names.add(req.name)
+                seen_names.add(req.name)  # type: ignore[arg-type]
                 unique.append(req)
 
         return unique[:10]

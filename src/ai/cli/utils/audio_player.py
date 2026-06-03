@@ -58,7 +58,7 @@ class AudioPlayer:
 
         # 尝试 playsound
         try:
-            import playsound  # noqa: F401
+            import playsound  # type: ignore[import-not-found]  # noqa: F401
 
             return "playsound"
         except ImportError:
@@ -66,7 +66,7 @@ class AudioPlayer:
 
         # 尝试 pygame
         try:
-            import pygame  # noqa: F401
+            import pygame  # type: ignore[import-not-found]  # noqa: F401
 
             return "pygame"
         except ImportError:
@@ -172,14 +172,14 @@ class AudioPlayer:
     @staticmethod
     def _play_playsound(file_path: str) -> None:
         """使用 playsound 库播放。"""
-        from playsound import playsound
+        from playsound import playsound  # type: ignore[import-not-found]
 
         playsound(file_path)
 
     @staticmethod
     def _play_pygame(file_path: str) -> None:
         """使用 pygame 播放。"""
-        import pygame
+        import pygame  # type: ignore[import-not-found]
 
         pygame.mixer.init()
         pygame.mixer.music.load(file_path)

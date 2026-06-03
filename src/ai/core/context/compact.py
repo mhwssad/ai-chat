@@ -351,7 +351,7 @@ class FullCompact:
     @staticmethod
     def _get_template(prompt_service: object, prompt_key: str) -> str:
         """从 prompt_service 获取模板原始内容。"""
-        template = prompt_service.get_template(prompt_key)
+        template = prompt_service.get_template(prompt_key)  # type: ignore[attr-defined]
         if template is None:
             return ""
         return template.template

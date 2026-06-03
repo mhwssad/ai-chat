@@ -92,9 +92,9 @@ def _create_memory_service(
 class MemoryContainer(containers.DeclarativeContainer):
     """记忆子系统容器。"""
 
-    settings = providers.Dependency()
-    llm = providers.Dependency()
-    prompt_service = providers.Dependency()
+    settings: Any = providers.Dependency()
+    llm: Any = providers.Dependency()
+    prompt_service: Any = providers.Dependency()
 
     # Layer 1: 基础依赖
     file_store = providers.Singleton(_create_file_store, settings=settings)

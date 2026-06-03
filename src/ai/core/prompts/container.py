@@ -1,5 +1,7 @@
 """提示词子系统 DI 容器。"""
 
+from typing import Any
+
 from dependency_injector import containers, providers
 
 
@@ -15,6 +17,6 @@ class PromptContainer(containers.DeclarativeContainer):
     """提示词子系统容器。"""
 
     # 外部依赖
-    store = providers.Dependency()
+    store: Any = providers.Dependency()
 
     prompt_service = providers.Singleton(_create_prompt_service, store=store)

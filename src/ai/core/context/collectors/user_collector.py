@@ -1,6 +1,7 @@
 """用户上下文收集器 — 从 DB 模板收集系统提示词。"""
 
 import logging
+from typing import Any
 
 from src.ai.core.context.collector import ContextCollector
 from src.ai.core.context.types import (
@@ -19,7 +20,7 @@ class UserCollector(ContextCollector):
     可缓存（会话内不变）。
     """
 
-    def __init__(self, prompt_service: object) -> None:
+    def __init__(self, prompt_service: Any) -> None:
         self._prompt_service = prompt_service
 
     @property

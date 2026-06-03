@@ -25,7 +25,7 @@ class OpenAIEmbeddingBuilder(EmbeddingModelBuilder):
 
     backend = ["openai"]
 
-    def build(self, config: EmbeddingModelConfig) -> Embeddings:
+    def build(self, config: EmbeddingModelConfig) -> Embeddings:  # type: ignore[override]
         from langchain_openai import OpenAIEmbeddings
 
         kwargs: dict = {"model": config.model_key}
@@ -41,7 +41,7 @@ class GoogleGenAIEmbeddingBuilder(EmbeddingModelBuilder):
 
     backend = ["google_genai"]
 
-    def build(self, config: EmbeddingModelConfig) -> Embeddings:
+    def build(self, config: EmbeddingModelConfig) -> Embeddings:  # type: ignore[override]
         from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
         kwargs: dict = {"model": config.model_key}
@@ -55,7 +55,7 @@ class OllamaEmbeddingBuilder(EmbeddingModelBuilder):
 
     backend = ["ollama"]
 
-    def build(self, config: EmbeddingModelConfig) -> Embeddings:
+    def build(self, config: EmbeddingModelConfig) -> Embeddings:  # type: ignore[override]
         from langchain_ollama import OllamaEmbeddings
 
         kwargs: dict = {"model": config.model_key}

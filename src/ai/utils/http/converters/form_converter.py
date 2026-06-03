@@ -49,6 +49,6 @@ class FormConverter(EntityConverter):
         elif isinstance(data, dict):
             plain = data
         else:
-            plain = dict(data)  # type: ignore[arg-type]
+            plain = dict(data)  # type: ignore[call-overload]
         body = urlencode(plain, doseq=True).encode("utf-8")
         return "application/x-www-form-urlencoded", body

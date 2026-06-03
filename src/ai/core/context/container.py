@@ -1,5 +1,7 @@
 """上下文子系统 DI 容器。"""
 
+from typing import Any
+
 from dependency_injector import containers, providers
 
 
@@ -157,15 +159,15 @@ class ContextContainer(containers.DeclarativeContainer):
     """上下文子系统容器。"""
 
     # 外部依赖
-    settings = providers.Dependency()
-    memory_service = providers.Dependency()
-    tool_registry = providers.Dependency()
-    prompt_service = providers.Dependency()
-    llm = providers.Dependency()
-    rag_service = providers.Dependency()
-    file_store = providers.Dependency()
-    mcp_manager = providers.Dependency()
-    skill_service = providers.Dependency()
+    settings: Any = providers.Dependency()
+    memory_service: Any = providers.Dependency()
+    tool_registry: Any = providers.Dependency()
+    prompt_service: Any = providers.Dependency()
+    llm: Any = providers.Dependency()
+    rag_service: Any = providers.Dependency()
+    file_store: Any = providers.Dependency()
+    mcp_manager: Any = providers.Dependency()
+    skill_service: Any = providers.Dependency()
 
     # 内部组件：系统收集器
     system_collector = providers.Singleton(_create_system_collector)

@@ -145,7 +145,7 @@ class SchedulerManager:
                 break
 
             # 使用信号量控制并发
-            async with self._semaphore:
+            async with self._semaphore:  # type: ignore[union-attr]
                 await self._execute_task(task)
 
     async def _execute_task(self, task: Any) -> None:

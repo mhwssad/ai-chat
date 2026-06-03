@@ -19,6 +19,17 @@ class PromptData:
 
 
 @dataclass(frozen=True)
+class PromptVersionData:
+    """提示词版本历史数据，替代直接依赖 ORM PromptVersion。"""
+
+    id: int
+    prompt_id: int
+    version: int
+    template: str
+    change_note: str | None = None
+
+
+@dataclass(frozen=True)
 class PromptRenderRequest:
     """提示词渲染请求。"""
 

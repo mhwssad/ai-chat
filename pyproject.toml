@@ -78,6 +78,31 @@ pythonpath = [
     "src",
 ]
 
+[tool.mypy]
+python_version = "3.13"
+explicit_package_bases = true
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+check_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = [
+    "rank_bm25.*",
+    "jieba.*",
+    "yaml.*",
+    "playsound.*",
+    "pygame.*",
+    "magika.*",
+    "edge_tts.*",
+    "rapidocr_onnxruntime.*",
+    "unstructured.*",
+    "langchain_unstructured.*",
+    "croniter.*",
+    "dependency_injector.*",
+]
+ignore_missing_imports = true
+
 [tool.pylsp.plugins]
 ruff = { enabled = true }
 flake8 = { enabled = false }

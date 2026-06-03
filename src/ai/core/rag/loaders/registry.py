@@ -45,14 +45,14 @@ class LoaderRegistry:
             cls._registry.append(loader_cls)
             logger.debug(
                 "已注册加载器: %s (优先级 %d)",
-                loader_cls.name,
-                loader_cls.priority,
+                loader_cls.name,  # type: ignore[attr-defined]
+                loader_cls.priority,  # type: ignore[attr-defined]
             )
 
     @classmethod
     def all(cls) -> list[type]:
         """返回按优先级排序的所有已注册加载器类。"""
-        return sorted(cls._registry, key=lambda c: c.priority)
+        return sorted(cls._registry, key=lambda c: c.priority)  # type: ignore[attr-defined]
 
     @classmethod
     def clear(cls) -> None:

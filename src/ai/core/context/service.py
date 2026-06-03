@@ -206,7 +206,7 @@ class ContextService:
             if not summary_data or not summary_data.get("summary"):
                 return None
 
-            return await self._restorer.restore(summary_data["summary"])
+            return await self._restorer.restore(summary_data["summary"])  # type: ignore[union-attr]
         except Exception:
             logger.debug("上下文恢复失败", exc_info=True)
             return None

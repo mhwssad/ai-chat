@@ -43,11 +43,11 @@ def singleton(cls: F) -> F:
 
     @functools.wraps(cls)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if not hasattr(wrapper, "_instance"):
-            wrapper._instance = cls(*args, **kwargs)
-        return wrapper._instance
+        if not hasattr(wrapper, "_instance"):  # type: ignore[attr-defined]
+            wrapper._instance = cls(*args, **kwargs)  # type: ignore[attr-defined]
+        return wrapper._instance  # type: ignore[attr-defined]
 
-    return wrapper
+    return wrapper  # type: ignore[return-value]
 
 
 class Obj:
@@ -120,7 +120,7 @@ class Obj:
         for part in key.split(sep):
             if not isinstance(current, dict):
                 return default
-            current = current.get(part)
+            current = current.get(part)  # type: ignore[assignment]
             if current is None:
                 return default
         return current

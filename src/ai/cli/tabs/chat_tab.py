@@ -3,7 +3,7 @@
 import logging
 
 from rich.console import Console
-from rich.group import Group
+from rich.console import Group
 from rich.panel import Panel
 from rich.text import Text
 

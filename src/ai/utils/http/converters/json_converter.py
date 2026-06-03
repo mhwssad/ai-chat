@@ -33,7 +33,7 @@ def _to_plain_dict(data: object) -> Any:
     if isinstance(data, BaseModel):
         return data.model_dump(by_alias=True)
     if _is_dataclass(data):
-        return dataclasses.asdict(data)  # type: ignore[arg-type]
+        return dataclasses.asdict(data)  # type: ignore[call-overload]
     return data
 
 

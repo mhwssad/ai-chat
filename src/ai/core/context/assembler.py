@@ -104,7 +104,7 @@ class ContextAssembler:
         if total <= budget:
             static_sections = [s for s in sections if s.cacheable and s.content]
             dynamic_sections = [s for s in sections if not s.cacheable and s.content]
-            parts = []
+            parts: list[str] = []
             if static_sections:
                 parts.extend(s.content for s in static_sections)
                 parts.append(CACHE_BOUNDARY_STATIC)

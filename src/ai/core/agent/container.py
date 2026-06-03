@@ -1,5 +1,7 @@
 """Agent 子系统 DI 容器。"""
 
+from typing import Any
+
 from dependency_injector import containers, providers
 
 
@@ -21,7 +23,7 @@ def _create_agent_orchestrator(
 def _create_checkpointer():
     """创建 AsyncSqliteSaver（复用项目 SQLite）。"""
     try:
-        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
+        from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver  # type: ignore[import-not-found]
 
         return AsyncSqliteSaver()
     except ImportError:
@@ -33,10 +35,10 @@ class AgentContainer(containers.DeclarativeContainer):
     """Agent 子系统容器。"""
 
     # 外部依赖
-    model_service = providers.Dependency()
-    tool_manager = providers.Dependency()
-    context_service = providers.Dependency()
-    tool_registry = providers.Dependency()
+    model_service: Any = providers.Dependency()
+    tool_manager: Any = providers.Dependency()
+    context_service: Any = providers.Dependency()
+    tool_registry: Any = providers.Dependency()
 
     # Checkpointer（可选）
     checkpointer = providers.Singleton(_create_checkpointer)

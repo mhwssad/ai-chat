@@ -128,7 +128,7 @@ class MemoryTab(BaseTab):
             type_style = type_styles.get(mt, "muted")
 
             score_text = ""
-            if entry.get("score") and entry["score"] > 0:
+            if entry.get("score") and entry["score"] > 0:  # type: ignore[operator]
                 score_text = f"{entry['score']:.2f}"
 
             row_style = "reverse" if i == self._selected_index else ""
@@ -216,7 +216,7 @@ class MemoryTab(BaseTab):
             for line in wrap_text(content, width - 8):
                 text.append(f"  {line}\n", style="value")
 
-            if entry.get("score") and entry["score"] > 0:
+            if entry.get("score") and entry["score"] > 0:  # type: ignore[operator]
                 text.append(f"\n  相关度: {entry['score']:.2f}\n", style="info")
                 text.append(f"  匹配类型: {entry['match_type']}\n", style="info")
 

@@ -7,6 +7,7 @@ import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from src.ai.exception.media_exception import MediaNotFoundError
 
@@ -35,7 +36,7 @@ class ImageService:
     3. 列出、获取、删除图像
     """
 
-    def __init__(self, *, model_service: object) -> None:
+    def __init__(self, *, model_service: Any) -> None:
         self._model_service = model_service
 
     def _get_output_dir(self) -> Path:

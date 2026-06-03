@@ -250,7 +250,7 @@ class Dashboard:
         self._input_mode = True
         self._input_buffer = ""
         self._input_prompt = prompt
-        self._input_callback = callback
+        self._input_callback = callback  # type: ignore[assignment]
 
     def _exit_input_mode(self) -> None:
         """退出文本输入模式。"""

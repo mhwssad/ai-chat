@@ -20,13 +20,45 @@ if TYPE_CHECKING:
 
 # ── 内置构建器 ─────────────────────────────────────────
 
+class AnthropicChatBuilder(ChatModelBuilder):
+    """Anthropic Chat 构建策略。
+
+    使用 langchain_anthropic.ChatAnthropic 直接构建模型，
+    绕过 init_chat_model 通用层，减少中间开销。
+    """
+
+    backend = ["anthropic"]
+
+    def build(
+        self,
+        config: ChatModelConfig,
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        streaming: bool = False,
+    ) -> BaseChatModel:
+        from langchain_anthropic import ChatAnthropic
+
+        kwargs: dict = {
+            "model": config.model_key,
+            "streaming": streaming,
+        }
+        if config.api_key:
+            kwargs["api_key"] = config.api_key
+        if config.base_url:
+            kwargs["base_url"] = config.base_url
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        return ChatAnthropic(**kwargs)
 
 class InitChatModelBuilder(ChatModelBuilder):
     """通用 Chat 构建策略，使用 langchain ``init_chat_model``。"""
 
     backend = ["openai", "google_genai", "ollama"]
 
-    def build(
+    def build(  
         self,
         config: ChatModelConfig,
         *,

@@ -1,5 +1,7 @@
 """存储子系统 DI 容器。"""
 
+from typing import Any
+
 from dependency_injector import containers, providers
 
 
@@ -36,7 +38,7 @@ def _create_db_prompt_store():
 class StorageContainer(containers.DeclarativeContainer):
     """存储子系统容器。"""
 
-    bootstrap_settings = providers.Dependency()
+    bootstrap_settings: Any = providers.Dependency()
 
     engine = providers.Singleton(_create_engine, bootstrap_settings=bootstrap_settings)
     session_factory = providers.Singleton(_create_session_factory, engine=engine)

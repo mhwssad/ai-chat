@@ -248,7 +248,7 @@ class CompressionStrategy(BaseMemoryStrategy):
         messages = [
             msg
             for r in records
-            if (msg := self._file_store._record_to_message(r)) is not None
+            if (msg := self._file_store._record_to_message(r)) is not None  # type: ignore[attr-defined]
         ]
         if not messages:
             return

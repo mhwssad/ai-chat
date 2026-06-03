@@ -17,7 +17,7 @@ class AgentService:
     3. 返回结构化结果
     """
 
-    def __init__(self, *, orchestrator: object) -> None:
+    def __init__(self, *, orchestrator: Any) -> None:
         self._orchestrator = orchestrator
 
     async def run(

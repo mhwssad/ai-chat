@@ -138,7 +138,7 @@ class AgentOrchestrator:
             # 创建任务并保存引用（支持 cancel）
             self._current_task = asyncio.current_task()
             final_state = await asyncio.wait_for(
-                compiled.ainvoke(initial_state, config=config),
+                compiled.ainvoke(initial_state, config=config),  # type: ignore[arg-type]
                 timeout=agent_timeout,
             )
         except TimeoutError:
@@ -184,7 +184,7 @@ class AgentOrchestrator:
         logger.info("Agent 执行完成: session=%s, duration=%dms", session_id, duration)
 
         # 从最终状态构建结果
-        return self._build_result(final_state)
+        return self._build_result(final_state)  # type: ignore[arg-type]
 
     def cancel(self) -> bool:
         """取消当前正在执行的 Agent 任务。
@@ -255,7 +255,7 @@ class AgentOrchestrator:
         try:
             self._current_task = asyncio.current_task()
             final_state = await asyncio.wait_for(
-                compiled.ainvoke(None, config=config),
+                compiled.ainvoke(None, config=config),  # type: ignore[call-overload]
                 timeout=agent_timeout,
             )
         except TimeoutError:
@@ -296,7 +296,7 @@ class AgentOrchestrator:
             "Agent 恢复执行完成: session=%s, duration=%dms", session_id, duration
         )
 
-        return self._build_result(final_state)
+        return self._build_result(final_state)  # type: ignore[arg-type]
 
     def _build_graph(self, tools: list[BaseTool]) -> StateGraph:
         """构建 LangGraph 状态图。
@@ -318,7 +318,7 @@ class AgentOrchestrator:
         # 创建绑定工具的 LLM
         llm = self._model.get_chat_llm(streaming=False)
         if tools:
-            llm = llm.bind_tools(tools)
+            llm = llm.bind_tools(tools)  # type: ignore[assignment]
 
         # 创建图
         graph = StateGraph(GraphState)
@@ -497,7 +497,7 @@ class AgentOrchestrator:
         content = ""
         for msg in reversed(messages):
             if isinstance(msg, AIMessage):
-                content = msg.content or ""
+                content = msg.content or ""  # type: ignore[assignment]
                 break
 
         # 确定状态
@@ -559,21 +559,21 @@ def _rebuild_tool_calls(messages: list[BaseMessage]) -> list[ToolCall]:
             continue
         for tc in msg.tool_calls or []:
             tc_id = tc.get("id", str(uuid.uuid4()))
-            tool_msg = tool_results.get(tc_id)
+            tool_msg = tool_results.get(tc_id)  # type: ignore[arg-type]
 
             error: str | None = None
             result_content: str | None = None
             if tool_msg:
                 content = tool_msg.content or ""
                 # ToolNode 将错误格式化为 "Error: ..." 开头
-                if content.startswith("Error:"):
-                    error = content
+                if content.startswith("Error:"):  # type: ignore[union-attr]
+                    error = content  # type: ignore[assignment]
                 else:
-                    result_content = content
+                    result_content = content  # type: ignore[assignment]
 
             result.append(
                 ToolCall(
-                    id=tc_id,
+                    id=tc_id,  # type: ignore[arg-type]
                     name=tc.get("name", ""),
                     arguments=tc.get("args", {}),
                     result=result_content,

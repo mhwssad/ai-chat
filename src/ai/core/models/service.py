@@ -109,7 +109,7 @@ class ModelService:
 
             raise LLMException("图像生成未配置，请设置 IMAGE_MODEL_* 环境变量")
         builder = self._registry.get_builder("image", self._image_config.backend)
-        return builder.build(self._image_config)
+        return builder.build(self._image_config)  # type: ignore[return-value]
 
     def get_speech_synthesizer(self) -> SpeechSynthesizer:
         """获取语音合成器实例。
@@ -127,7 +127,7 @@ class ModelService:
 
             raise LLMException("TTS 语音合成未配置，请设置 TTS_MODEL_* 环境变量")
         builder = self._registry.get_builder("tts", self._tts_config.backend)
-        return builder.build(self._tts_config)
+        return builder.build(self._tts_config)  # type: ignore[return-value]
 
     @property
     def registry(self) -> ModelFactoryRegistry:

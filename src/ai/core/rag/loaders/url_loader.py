@@ -73,7 +73,7 @@ class UrlLoader:
         except LoaderError:
             raise
         except Exception as e:
-            raise LoaderError(
+            raise LoaderError(  # type: ignore[call-arg]
                 f"URL 文档加载失败: {url}",
                 path=url,
                 context={"error": str(e)},
@@ -135,7 +135,7 @@ class UrlLoader:
         # 尝试通过路径推断 MIME 类型
         mime_type, _ = mimetypes.guess_type(path)
         if mime_type:
-            ext = mimetypes.guess_extension(mime_type)
+            ext = mimetypes.guess_extension(mime_type)  # type: ignore[assignment]
             if ext:
                 return ext
 

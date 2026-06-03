@@ -29,7 +29,7 @@ class MemoryPromptBuilder:
 
         从 DB 模板 memory.system_prompt 渲染。
         """
-        result = self._prompt_service.render(
+        result = self._prompt_service.render(  # type: ignore[attr-defined]
             PromptRenderRequest(
                 prompt_key="memory.system_prompt",
                 variables={

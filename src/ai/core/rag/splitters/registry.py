@@ -116,7 +116,11 @@ class SplitterRegistry:
             priority: 优先级，数值越小越先执行。
             name: 切割器名称，默认取类名。
         """
-        entry = SplitterEntry(splitter_cls=splitter_cls, priority=priority, name=name)
+        entry = SplitterEntry(
+            splitter_cls=splitter_cls,
+            priority=priority,
+            name=name or splitter_cls.__name__,
+        )
         self._entries.append(entry)
         self._sorted = False
         logger.debug("已注册切割器: %s (优先级 %d)", entry.name, priority)

@@ -64,7 +64,7 @@ class TTSTab(BaseTab):
                     )
 
             # 按修改时间倒序
-            audios.sort(key=lambda x: x["created_at"], reverse=True)  # type: ignore[arg-type]
+            audios.sort(key=lambda x: x["created_at"], reverse=True)  # type: ignore[return-value, arg-type]
 
             # 搜索过滤
             query = self._search_query.lower()
@@ -135,8 +135,8 @@ class TTSTab(BaseTab):
 
             fmt = str(audio["format"])
             name = str(audio["name"])
-            size = _format_size(int(audio["size_bytes"]))  # type: ignore[arg-type]
-            created = audio["created_at"].strftime("%Y-%m-%d %H:%M")  # type: ignore[union-attr]
+            size = _format_size(int(audio["size_bytes"]))  # type: ignore[call-overload]
+            created = audio["created_at"].strftime("%Y-%m-%d %H:%M")  # type: ignore[attr-defined]
 
             row_style = "reverse" if i == self._selected_index else ""
             table.add_row(
@@ -219,9 +219,10 @@ class TTSTab(BaseTab):
             text.append(f"  文件名: {audio['name']}\n", style="value")
             text.append(f"  格式: {audio['format']}\n", style="value")
             text.append(
-                f"  大小: {_format_size(int(audio['size_bytes']))}\n", style="value"
-            )  # type: ignore[arg-type]
-            text.append(f"  创建时间: {audio['created_at']}\n", style="value")  # type: ignore[union-attr]
+                f"  大小: {_format_size(int(audio['size_bytes']))}\n",  # type: ignore[call-overload]
+                style="value",
+            )
+            text.append(f"  创建时间: {audio['created_at']}\n", style="value")  # type: ignore[attr-defined]
 
             # 播放状态
             text.append("\n  播放状态:\n", style="subtitle")

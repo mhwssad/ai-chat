@@ -58,11 +58,13 @@ class BaseRepository(Generic[T]):
 
     def _pk_columns(self) -> list[Any]:
         """通过 SQLAlchemy inspect 获取主键列，避免 dir() 遍历。"""
-        return list(inspect(self.model).primary_key)
+        mapper = inspect(self.model)
+        return list(mapper.primary_key)  # type: ignore[union-attr]
 
     def _column_names(self) -> set[str]:
         """获取模型所有列名集合，用于字段合法性校验。"""
-        return {col.name for col in inspect(self.model).columns}
+        mapper = inspect(self.model)
+        return {col.name for col in mapper.columns}  # type: ignore[union-attr]
 
     def _apply_filters(self, stmt: Any, **filters: Any) -> Any:
         """向查询语句追加等值过滤条件，自动忽略无效字段名。"""

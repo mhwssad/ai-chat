@@ -63,6 +63,9 @@ def agent(
 async def _chat_loop(session_id: str) -> None:
     """异步交互式对话主循环。"""
     from src.ai.core.container import container
+    from src.ai.core.container_wiring import initialize_container
+
+    initialize_container()
 
     # 从 DI 容器获取服务
     memory_svc = container.memory_container.memory_service()
@@ -134,6 +137,9 @@ async def _chat_loop(session_id: str) -> None:
 async def _agent_run(task: str, session_id: str, max_iterations: int) -> None:
     """Agent 模式执行。"""
     from src.ai.core.container import container
+    from src.ai.core.container_wiring import initialize_container
+
+    initialize_container()
 
     # 从 DI 容器获取 Agent 编排器
     agent_orchestrator = container.agent_container.agent_orchestrator()
@@ -425,6 +431,9 @@ def dashboard() -> None:
     from src.ai.cli.dashboard import Dashboard
     from src.ai.cli.sessions import SessionManager
     from src.ai.core.container import container
+    from src.ai.core.container_wiring import initialize_container
+
+    initialize_container()
 
     history_mgr = container.context_container.chat_history_manager()
     session_mgr = SessionManager(history_mgr)

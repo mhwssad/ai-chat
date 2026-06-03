@@ -1,5 +1,7 @@
 """工具子系统 DI 容器。"""
 
+from typing import Any
+
 from dependency_injector import containers, providers
 
 
@@ -36,8 +38,8 @@ class ToolContainer(containers.DeclarativeContainer):
     """工具子系统容器。"""
 
     # 外部依赖
-    http_aclient = providers.Dependency()
-    model_service = providers.Dependency()
+    http_aclient: Any = providers.Dependency()
+    model_service: Any = providers.Dependency()
 
     tool_registry = providers.Singleton(_create_tool_registry)
     permission_checker = providers.Singleton(

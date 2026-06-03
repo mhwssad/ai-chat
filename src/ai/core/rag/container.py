@@ -3,6 +3,8 @@
 整合 Loader、Splitter 注册表和 RagService 的创建。
 """
 
+from typing import Any
+
 from dependency_injector import containers, providers
 
 
@@ -151,9 +153,9 @@ def _create_rag_service(
 class RagContainer(containers.DeclarativeContainer):
     """RAG 子系统容器。"""
 
-    model_service = providers.Dependency()
-    settings = providers.Dependency()
-    prompt_service = providers.Dependency()
+    model_service: Any = providers.Dependency()
+    settings: Any = providers.Dependency()
+    prompt_service: Any = providers.Dependency()
 
     # 子注册表（从 LoaderContainer/SplitterContainer 吸收）
     loader_settings = providers.Singleton(_create_loader_settings)

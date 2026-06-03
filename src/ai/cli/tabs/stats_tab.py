@@ -88,18 +88,18 @@ class StatsTab(BaseTab):
                     "total_duration_ms": 0,
                 }
             entry = stats[name]
-            entry["calls"] = int(entry["calls"]) + 1  # type: ignore[operator]
+            entry["calls"] = int(entry["calls"]) + 1  # type: ignore[call-overload]
             if call.status == "success":
-                entry["success"] = int(entry["success"]) + 1  # type: ignore[operator]
+                entry["success"] = int(entry["success"]) + 1  # type: ignore[call-overload]
             else:
-                entry["errors"] = int(entry["errors"]) + 1  # type: ignore[operator]
+                entry["errors"] = int(entry["errors"]) + 1  # type: ignore[call-overload]
             if call.duration_ms:
                 entry["total_duration_ms"] = (
-                    int(entry["total_duration_ms"]) + call.duration_ms
-                )  # type: ignore[operator]
+                    int(entry["total_duration_ms"]) + call.duration_ms  # type: ignore[call-overload]
+                )
 
         # 按调用次数排序
-        return sorted(stats.values(), key=lambda x: int(x["calls"]), reverse=True)
+        return sorted(stats.values(), key=lambda x: int(x["calls"]), reverse=True)  # type: ignore[call-overload]
 
     def render_content(self, console: Console, width: int, height: int) -> Panel:
         self._ensure_cache()
@@ -151,16 +151,16 @@ class StatsTab(BaseTab):
 
         text.append("\n\n")
         text.append(" Token 统计\n", style="subtitle")
-        total_tokens = int(stats.get("total_tokens", 0))
-        input_tokens = int(stats.get("total_input_tokens", 0))
-        output_tokens = int(stats.get("total_output_tokens", 0))
+        total_tokens = int(stats.get("total_tokens", 0))  # type: ignore[call-overload]
+        input_tokens = int(stats.get("total_input_tokens", 0))  # type: ignore[call-overload]
+        output_tokens = int(stats.get("total_output_tokens", 0))  # type: ignore[call-overload]
         text.append(f"  总计: {self._format_number(total_tokens)}", style="value")
         text.append(f"  输入: {self._format_number(input_tokens)}", style="info")
         text.append(f"  输出: {self._format_number(output_tokens)}", style="active")
         text.append("\n")
 
         text.append("\n 费用与耗时\n", style="subtitle")
-        total_cost = float(stats.get("total_cost", 0))
+        total_cost = float(stats.get("total_cost", 0))  # type: ignore[arg-type]
         avg_duration = stats.get("avg_duration_ms")
         text.append(f"  总费用: {total_cost:.4f}", style="value")
         if avg_duration:
@@ -190,8 +190,8 @@ class StatsTab(BaseTab):
                 table.add_row(
                     str(item["model"]),
                     str(item["calls"]),
-                    self._format_number(int(item["total_tokens"])),
-                    f"{float(item['total_cost']):.4f}",
+                    self._format_number(int(item["total_tokens"])),  # type: ignore[call-overload]
+                    f"{float(item['total_cost']):.4f}",  # type: ignore[arg-type]
                 )
             # 用 console.print 渲染 table 到 text 不方便，改用文本方式
             # 直接用 Text 渲染表格内容
@@ -205,8 +205,8 @@ class StatsTab(BaseTab):
                 if len(model) > 22:
                     model = model[:19] + "..."
                 calls = str(item["calls"])
-                tokens = self._format_number(int(item["total_tokens"]))
-                cost = f"{float(item['total_cost']):.4f}"
+                tokens = self._format_number(int(item["total_tokens"]))  # type: ignore[call-overload]
+                cost = f"{float(item['total_cost']):.4f}"  # type: ignore[arg-type]
                 text.append(f"  {model:<24s}", style="value")
                 text.append(f"{calls:>6s}", style="info")
                 text.append(f"{tokens:>10s}", style="value")
@@ -221,9 +221,9 @@ class StatsTab(BaseTab):
         text.append("\n 模型详情\n\n", style="subtitle")
         for item in self._model_breakdown:
             model = str(item["model"])
-            calls = int(item["calls"])
-            tokens = int(item["total_tokens"])
-            cost = float(item["total_cost"])
+            calls = int(item["calls"])  # type: ignore[call-overload]
+            tokens = int(item["total_tokens"])  # type: ignore[call-overload]
+            cost = float(item["total_cost"])  # type: ignore[arg-type]
 
             text.append(f"  {model}\n", style="active")
             text.append(f"    调用: {calls}", style="value")
@@ -246,10 +246,10 @@ class StatsTab(BaseTab):
             name = str(item["tool_name"])
             if len(name) > 20:
                 name = name[:17] + "..."
-            calls = int(item["calls"])
-            success = int(item["success"])
-            errors = int(item["errors"])
-            total_dur = int(item["total_duration_ms"])
+            calls = int(item["calls"])  # type: ignore[call-overload]
+            success = int(item["success"])  # type: ignore[call-overload]
+            errors = int(item["errors"])  # type: ignore[call-overload]
+            total_dur = int(item["total_duration_ms"])  # type: ignore[call-overload]
             avg_dur = f"{total_dur // calls}ms" if calls > 0 else "-"
 
             text.append(f"  {name:<22s}", style="value")
@@ -285,10 +285,10 @@ class StatsTab(BaseTab):
         text.append("详细统计\n\n", style="subtitle")
 
         # 成功率
-        total = int(stats.get("total_calls", 0))
-        success = int(stats.get("success_calls", 0))
-        errors = int(stats.get("error_calls", 0))
-        error_rate = float(stats.get("error_rate", 0))
+        total = int(stats.get("total_calls", 0))  # type: ignore[call-overload]
+        success = int(stats.get("success_calls", 0))  # type: ignore[call-overload]
+        errors = int(stats.get("error_calls", 0))  # type: ignore[call-overload]
+        error_rate = float(stats.get("error_rate", 0))  # type: ignore[arg-type]
 
         text.append("  调用统计\n", style="subtitle")
         text.append(f"  总调用: {total}\n", style="value")
@@ -299,21 +299,21 @@ class StatsTab(BaseTab):
         # Token 详情
         text.append("\n  Token 详情\n", style="subtitle")
         text.append(
-            f"  输入: {self._format_number(int(stats.get('total_input_tokens', 0)))}\n",
+            f"  输入: {self._format_number(int(stats.get('total_input_tokens', 0)))}\n",  # type: ignore[call-overload]
             style="info",
         )
         text.append(
-            f"  输出: {self._format_number(int(stats.get('total_output_tokens', 0)))}\n",
+            f"  输出: {self._format_number(int(stats.get('total_output_tokens', 0)))}\n",  # type: ignore[call-overload]
             style="active",
         )
         text.append(
-            f"  总计: {self._format_number(int(stats.get('total_tokens', 0)))}\n",
+            f"  总计: {self._format_number(int(stats.get('total_tokens', 0)))}\n",  # type: ignore[call-overload]
             style="value",
         )
 
         # 费用
         text.append("\n  费用\n", style="subtitle")
-        total_cost = float(stats.get("total_cost", 0))
+        total_cost = float(stats.get("total_cost", 0))  # type: ignore[arg-type]
         text.append(f"  总费用: {total_cost:.6f}\n", style="value")
         if total > 0:
             text.append(f"  平均: {total_cost / total:.6f}/次\n", style="muted")

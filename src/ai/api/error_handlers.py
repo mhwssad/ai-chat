@@ -23,7 +23,7 @@ from src.ai.exception.media_exception import (
     MediaNotFoundError,
     TTSException,
 )
-from src.ai.exception.memory_exception import MemoryError, MemoryNotFoundError
+from src.ai.exception.memory_exception import MemoryNotFoundError
 from src.ai.exception.prompt_exception import (
     PromptError,
     PromptNotFoundError,
@@ -103,7 +103,7 @@ def register_error_handlers(app: FastAPI) -> None:
                 status_code = 400
             elif isinstance(exc, SkillError):
                 status_code = 400
-            elif isinstance(exc, MemoryError):
+            elif isinstance(exc, MemoryNotFoundError):
                 status_code = 400
             elif isinstance(exc, RagError):
                 status_code = 400

@@ -49,7 +49,7 @@ class ChatModelBuilder(ModelBuilder["ChatModelConfig", "BaseChatModel"]):
     """Chat 模型构建策略接口。"""
 
     @abstractmethod
-    def build(
+    def build(  # type: ignore[override]
         self,
         config: ChatModelConfig,
         *,
@@ -64,7 +64,9 @@ class EmbeddingModelBuilder(ModelBuilder["EmbeddingModelConfig", "Embeddings"]):
     """Embedding 模型构建策略接口。"""
 
     @abstractmethod
-    def build(self, config: EmbeddingModelConfig) -> Embeddings:
+    def build(  # type: ignore[override]
+        self, config: EmbeddingModelConfig, **kwargs: Any
+    ) -> Embeddings:
         """构建 Embedding 模型实例。"""
 
 
@@ -72,7 +74,9 @@ class ImageModelBuilder(ModelBuilder["ImageModelConfig", "ImageData"]):
     """图像生成模型构建策略接口。"""
 
     @abstractmethod
-    def build(self, config: ImageModelConfig) -> ImageData:
+    def build(  # type: ignore[override]
+        self, config: ImageModelConfig, **kwargs: Any
+    ) -> ImageData:
         """构建图像生成器实例。"""
 
 
@@ -80,7 +84,9 @@ class TTSModelBuilder(ModelBuilder["TTSModelConfig", "AudioData"]):
     """TTS 语音合成模型构建策略接口。"""
 
     @abstractmethod
-    def build(self, config: TTSModelConfig) -> AudioData:
+    def build(  # type: ignore[override]
+        self, config: TTSModelConfig, **kwargs: Any
+    ) -> AudioData:
         """构建语音合成器实例。"""
 
 

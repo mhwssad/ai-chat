@@ -26,9 +26,9 @@ class ChatService:
     def __init__(
         self,
         *,
-        model_service: object,
-        context_service: object,
-        tool_manager: object,
+        model_service: Any,
+        context_service: Any,
+        tool_manager: Any,
     ) -> None:
         self._model = model_service
         self._context = context_service
@@ -104,7 +104,7 @@ class ChatService:
             session_id, HumanMessage(content=last_text)
         )
         await self._context.strategy.aadd_message(
-            session_id, AIMessage(content=content)
+            session_id, AIMessage(content=str(content))
         )
 
         return {
@@ -166,7 +166,7 @@ class ChatService:
         async for chunk in llm.astream(context_result.messages):
             if isinstance(chunk, AIMessage):
                 if chunk.content:
-                    full_content += chunk.content
+                    full_content += str(chunk.content)
                     yield {
                         "event": "token",
                         "data": {"content": chunk.content},
@@ -209,7 +209,7 @@ class ChatService:
         Returns:
             LangChain 消息列表。
         """
-        lc_messages = []
+        lc_messages: list[Any] = []
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")

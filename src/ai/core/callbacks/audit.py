@@ -149,7 +149,7 @@ class AuditCallbackHandler(BaseCallbackHandler):
         """模型调用完成，写入 model_calls + audit_logs。"""
         for generation in response.generations:
             for gen in generation:
-                message = gen.message
+                message = gen.message  # type: ignore[union-attr]
                 if not isinstance(message, AIMessage):
                     continue
 

@@ -26,20 +26,15 @@ async def lifespan(app: FastAPI):
 
     启动时初始化服务，关闭时清理资源。
     """
-    from src.ai.core.container import container
+    from src.ai.core.container_wiring import initialize_container, shutdown_container
 
-    # 启动时加载内置工具
-    tool_manager = container.tool_container.tool_manager()
-    tool_manager.load_builtin_tools()
-
-    # 启动调度器
-    scheduler_service = container.scheduler_container.scheduler_service()
-    await scheduler_service.start()
+    # 初始化：建表、种子模板、技能发现、工具注册、调度器启动
+    initialize_container()
 
     yield
 
     # 关闭时停止调度器
-    await scheduler_service.stop()
+    shutdown_container()
 
 
 def create_app() -> FastAPI:

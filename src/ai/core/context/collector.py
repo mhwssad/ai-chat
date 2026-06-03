@@ -65,7 +65,7 @@ class ContextCoordinator:
 
         sections: list[ContextSection] = []
         for collector, result in zip(self._collectors, results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.warning(
                     "收集器 %s 失败: %s", collector.name, result, exc_info=result
                 )

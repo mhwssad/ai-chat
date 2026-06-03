@@ -50,7 +50,7 @@ async def notebook_edit(
                 "source": source.splitlines(keepends=True),
             }
             if cell_type == "code":
-                new_cell["execution_count"] = None
+                new_cell["execution_count"] = None  # type: ignore[assignment]
                 new_cell["outputs"] = []
             cells.insert(cell_index, new_cell)
             msg = f"已在索引 {cell_index} 插入 {cell_type} 单元格"

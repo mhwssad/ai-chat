@@ -38,21 +38,21 @@ class ModelCallRepository(BaseRepository[ModelCall]):
 
     def get_aggregated_stats(self, *, since: datetime | None = None) -> dict[str, Any]:
         """聚合统计：总调用数、成功数、失败数、总 token、总费用、平均耗时。"""
-        base = select(
-            func.count(ModelCall.id),
-            func.sum(ModelCall.input_tokens),
-            func.sum(ModelCall.output_tokens),
-            func.sum(ModelCall.total_tokens),
-            func.sum(ModelCall.total_cost),
-            func.avg(ModelCall.duration_ms),
+        base = select(  # type: ignore[call-overload]
+            func.count(ModelCall.id),  # type: ignore[arg-type]
+            func.sum(ModelCall.input_tokens),  # type: ignore[arg-type]
+            func.sum(ModelCall.output_tokens),  # type: ignore[arg-type]
+            func.sum(ModelCall.total_tokens),  # type: ignore[arg-type]
+            func.sum(ModelCall.total_cost),  # type: ignore[arg-type]
+            func.avg(ModelCall.duration_ms),  # type: ignore[arg-type]
         )
         if since:
             base = base.where(ModelCall.created_at >= since)
         row = self.session.exec(base).one()
 
         total = row[0] or 0
-        err_base = select(func.count(ModelCall.id)).where(
-            ModelCall.status.in_(["error", "failed"])
+        err_base = select(func.count(ModelCall.id)).where(  # type: ignore[arg-type]
+            ModelCall.status.in_(["error", "failed"])  # type: ignore[attr-defined]
         )
         if since:
             err_base = err_base.where(ModelCall.created_at >= since)
@@ -75,10 +75,10 @@ class ModelCallRepository(BaseRepository[ModelCall]):
     ) -> list[dict[str, Any]]:
         """按 model 分组聚合。"""
         stmt = select(
-            ModelCall.model,
-            func.count(ModelCall.id),
-            func.sum(ModelCall.total_tokens),
-            func.sum(ModelCall.total_cost),
+            ModelCall.model,  # type: ignore[arg-type]
+            func.count(ModelCall.id),  # type: ignore[arg-type]
+            func.sum(ModelCall.total_tokens),  # type: ignore[arg-type]
+            func.sum(ModelCall.total_cost),  # type: ignore[arg-type]
         ).group_by(ModelCall.model)
         if since:
             stmt = stmt.where(ModelCall.created_at >= since)
@@ -111,7 +111,7 @@ class MemoryEntryRepository(BaseRepository[MemoryEntry]):
         filters = {"status": "active"}
         if scope:
             filters["scope"] = scope
-        return self.list(limit=limit, order_by="updated_at", descending=True, **filters)
+        return self.list(limit=limit, order_by="updated_at", descending=True, **filters)  # type: ignore[arg-type]
 
     def get_by_type(self, memory_type: str, *, limit: int = 50) -> list[MemoryEntry]:
         """按记忆类型查询活跃条目。"""

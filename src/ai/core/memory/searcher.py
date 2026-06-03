@@ -210,7 +210,7 @@ class MemorySearcher:
                 ]
             )
 
-            selected_names = self._parse_response(response.content)
+            selected_names = self._parse_response(response.content)  # type: ignore[arg-type]
             if not selected_names:
                 return []
 
@@ -327,7 +327,7 @@ class MemorySearcher:
         """从 prompt_service 渲染系统提示词。"""
         from src.ai.core.prompts import PromptRenderRequest
 
-        result = self._prompt_service.render(
+        result = self._prompt_service.render(  # type: ignore[attr-defined]
             PromptRenderRequest(
                 prompt_key="memory.relevance_select",
                 variables={"max_results": self._max_results},

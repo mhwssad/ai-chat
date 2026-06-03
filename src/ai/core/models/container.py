@@ -5,7 +5,7 @@ from dependency_injector import containers, providers
 
 def _create_model_registry():
     """构建 ModelFactoryRegistry 并注册所有构建器。"""
-    from src.ai.core.models.chat import ChatModelFactory, InitChatModelBuilder
+    from src.ai.core.models.chat import ChatModelFactory, InitChatModelBuilder, AnthropicChatBuilder
     from src.ai.core.models.embedding import (
         EmbeddingModelFactory,
         GoogleGenAIEmbeddingBuilder,
@@ -28,9 +28,6 @@ def _create_model_registry():
 
     chat_factory = ChatModelFactory()
     chat_factory.register(InitChatModelBuilder)
-
-    # 直连 SDK 构建器（减少中间层开销）
-    from src.ai.core.models.providers.anthropic_chat import AnthropicChatBuilder
 
     chat_factory.register(AnthropicChatBuilder)
 

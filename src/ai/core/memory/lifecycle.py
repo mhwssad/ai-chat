@@ -227,14 +227,14 @@ class MemoryLifecycleManager:
             "合并结果（只输出合并后的内容）："
         )
 
-        response = await self._llm.ainvoke(
+        response = await self._llm.ainvoke(  # type: ignore[union-attr]
             [
                 SystemMessage(content="你是一个记忆整理助手。"),
                 HumanMessage(content=prompt),
             ]
         )
 
-        merged_content = response.content.strip()
+        merged_content = response.content.strip()  # type: ignore[union-attr]
         if not merged_content:
             return
 

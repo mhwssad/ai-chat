@@ -150,9 +150,11 @@ def format_session_file(session_id: str, entries: list[MemoryEntry]) -> str:
     ]
 
     for entry in entries:
-        created = entry.created_at or now
-        if isinstance(created, datetime):
-            created = created.isoformat()
+        created: str = (
+            entry.created_at.isoformat()
+            if isinstance(entry.created_at, datetime)
+            else (entry.created_at or now)
+        )
         lines.extend(
             [
                 "---",
@@ -172,15 +174,16 @@ def format_session_file(session_id: str, entries: list[MemoryEntry]) -> str:
 
 def format_entry_append(entry: MemoryEntry) -> str:
     """格式化单个条目（用于追加到已有文件）。"""
-    created = entry.created_at or datetime.now()
-    if isinstance(created, datetime):
-        created = created.isoformat()
+    created_dt = entry.created_at or datetime.now()
+    created_str: str = (
+        created_dt.isoformat() if isinstance(created_dt, datetime) else created_dt
+    )
     return (
         "---\n"
         f"name: {entry.name}\n"
         f"type: {entry.memory_type}\n"
         f"description: {entry.description}\n"
-        f"created_at: {created}\n"
+        f"created_at: {created_str}\n"
         "---\n\n"
         f"{entry.content.strip()}\n"
     )

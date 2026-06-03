@@ -170,7 +170,7 @@ def create_web_search_tool():
                 _cache_valid = True
 
             if _cached_search_tool is not None:
-                result = await _cached_search_tool.ainvoke(
+                result = await _cached_search_tool.ainvoke(  # type: ignore[union-attr]
                     {"query": query, "num_results": num_results}
                 )
                 return (

@@ -26,8 +26,8 @@ class ScheduledTaskRepository(BaseRepository[ScheduledTask]):
             select(ScheduledTask)
             .where(ScheduledTask.status == "active")
             .where(ScheduledTask.enabled == True)  # noqa: E712
-            .where(ScheduledTask.next_run_at <= now)
-            .order_by(ScheduledTask.next_run_at.asc())
+            .where(ScheduledTask.next_run_at <= now)  # type: ignore[operator]
+            .order_by(ScheduledTask.next_run_at.asc())  # type: ignore[union-attr]
         )
         return list(self.session.exec(stmt).all())
 
