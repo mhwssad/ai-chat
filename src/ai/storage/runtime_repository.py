@@ -9,10 +9,74 @@ from sqlmodel import select
 from src.ai.storage.base_repository import BaseRepository
 from src.ai.storage.runtime_models import (
     AuditLog,
+    ChatMessageStore,
+    ChatSession,
     MemoryEntry,
     ModelCall,
+    RagDocument,
     ToolCall,
 )
+
+
+class ChatSessionRepository(BaseRepository[ChatSession]):
+    """会话摘要仓库。"""
+
+    model = ChatSession
+
+    def get_by_session_id(self, session_id: str) -> ChatSession | None:
+        """按会话 ID 获取摘要。"""
+        return self.get_by_id(session_id)
+
+    def touch(
+        self,
+        session_id: str,
+        *,
+        title: str | None = None,
+        current_model: str | None = None,
+        message_count: int | None = None,
+    ) -> ChatSession:
+        """创建或更新会话活动摘要。"""
+        obj = self.get_by_session_id(session_id)
+        updates: dict[str, Any] = {}
+        if title is not None:
+            updates["title"] = title
+        if current_model is not None:
+            updates["current_model"] = current_model
+        if message_count is not None:
+            updates["message_count"] = message_count
+        updates["last_active_at"] = datetime.now()
+        if obj is None:
+            return self.create(
+                session_id=session_id,
+                title=title,
+                current_model=current_model,
+                message_count=message_count or 0,
+                last_active_at=updates["last_active_at"],
+            )
+        return self.update(obj, **updates)
+
+    def list_active(self, *, limit: int = 100) -> list[ChatSession]:
+        """列出活跃会话。"""
+        return self.list(
+            status="active",
+            limit=limit,
+            order_by="last_active_at",
+            descending=True,
+        )
+
+
+class ChatMessageStoreRepository(BaseRepository[ChatMessageStore]):
+    """LangChain 消息表仓库。"""
+
+    model = ChatMessageStore
+
+    def get_by_session(self, session_id: str) -> list[ChatMessageStore]:
+        """获取指定会话的原始消息记录。"""
+        return self.list(session_id=session_id, order_by="id", descending=False)
+
+    def count_by_session(self, session_id: str) -> int:
+        """统计指定会话消息数量。"""
+        return self.count(session_id=session_id)
 
 
 class ModelCallRepository(BaseRepository[ModelCall]):
@@ -105,6 +169,10 @@ class MemoryEntryRepository(BaseRepository[MemoryEntry]):
 
     model = MemoryEntry
 
+    def get_by_source_id(self, source_id: str) -> MemoryEntry | None:
+        """按来源 ID 获取记忆控制面记录。"""
+        return self.get_by_field("source_id", source_id)
+
     def get_active(
         self, *, scope: str | None = None, limit: int = 100
     ) -> list[MemoryEntry]:
@@ -132,6 +200,28 @@ class MemoryEntryRepository(BaseRepository[MemoryEntry]):
             for e in all_entries
             if e.content_summary and keyword_lower in e.content_summary.lower()
         ][:limit]
+
+
+class RagDocumentRepository(BaseRepository[RagDocument]):
+    """RAG 文档元信息仓库。"""
+
+    model = RagDocument
+
+    def get_by_source(
+        self, source_path: str, *, session_id: str | None = None
+    ) -> RagDocument | None:
+        """按来源和作用域获取文档记录。"""
+        stmt = select(RagDocument).where(RagDocument.source_path == source_path)
+        if session_id is None:
+            stmt = stmt.where(RagDocument.session_id.is_(None))  # type: ignore[attr-defined]
+        else:
+            stmt = stmt.where(RagDocument.session_id == session_id)
+        return self.session.exec(stmt).first()
+
+    def list_by_scope(self, *, session_id: str | None = None) -> list[RagDocument]:
+        """按全局或会话作用域列出文档。"""
+        filters: dict[str, Any] = {"status": "active", "session_id": session_id}
+        return self.list(order_by="updated_at", descending=True, **filters)
 
 
 class AuditLogRepository(BaseRepository[AuditLog]):

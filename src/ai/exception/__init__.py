@@ -46,6 +46,11 @@ from src.ai.exception.skill_exception import (
     SkillNotFoundError,
     SkillRenderError,
 )
+from src.ai.exception.pool_exception import (
+    ThreadPoolError,
+    ThreadPoolShutdownError,
+    ThreadPoolTimeoutError,
+)
 from src.ai.exception.tool_exception import (
     ToolDisabledError,
     ToolError,
@@ -105,6 +110,10 @@ __all__ = [
     # Scheduler
     "SchedulerError",
     "SchedulerNotFoundError",
+    # ThreadPool
+    "ThreadPoolError",
+    "ThreadPoolShutdownError",
+    "ThreadPoolTimeoutError",
     # HTTP
     "ConverterError",
     "HttpError",

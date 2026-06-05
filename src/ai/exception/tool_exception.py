@@ -21,3 +21,7 @@ class ToolExecutionError(ToolError):
 
 class ToolPermissionError(ToolError):
     """工具权限检查失败。"""
+
+
+class ToolConfirmationRequiredError(ToolPermissionError):
+    """工具需要用户确认后才能继续。"""

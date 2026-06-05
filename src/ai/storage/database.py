@@ -112,8 +112,10 @@ def init_database() -> None:
     应在应用启动时调用一次。
     """
     # 导入所有模型以触发 SQLModel 的表注册
+    from src.ai.storage import config_models  # noqa: F401
     from src.ai.storage import prompt_models  # noqa: F401
     from src.ai.storage import runtime_models  # noqa: F401
+    from src.ai.storage import scheduler_models  # noqa: F401
 
     engine = get_engine()
     SQLModel.metadata.create_all(engine)

@@ -9,6 +9,35 @@ from sqlmodel import Field, SQLModel
 from src.ai.storage.utils import dt_now as _dt_now
 
 
+class ChatSession(SQLModel, table=True):
+    """会话摘要表。"""
+
+    __tablename__ = "chat_sessions"
+
+    session_id: str = Field(primary_key=True, description="会话 ID")
+    title: str | None = Field(default=None, description="会话标题")
+    current_model: str | None = Field(default=None, description="当前模型")
+    status: str = Field(default="active", description="会话状态")
+    message_count: int = Field(default=0, description="消息数量")
+    created_at: datetime = Field(default_factory=_dt_now, description="创建时间")
+    last_active_at: datetime = Field(default_factory=_dt_now, description="最后活动时间")
+    extra: str = Field(
+        default="{}",
+        sa_column=Column("metadata", String, nullable=False, server_default="{}"),
+        description="JSON 扩展字段",
+    )
+
+
+class ChatMessageStore(SQLModel, table=True):
+    """LangChain SQLChatMessageHistory 兼容消息表。"""
+
+    __tablename__ = "chat_message_store"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: str = Field(description="会话 ID")
+    message: str = Field(description="LangChain 消息 JSON")
+
+
 class ModelCall(SQLModel, table=True):
     """模型调用记录表。"""
 
@@ -98,6 +127,30 @@ class MemoryEntry(SQLModel, table=True):
     extra: str = Field(
         default="{}",
         sa_column=Column("metadata", String, nullable=False, server_default="{}"),
+    )
+
+
+class RagDocument(SQLModel, table=True):
+    """RAG 文档索引元信息。"""
+
+    __tablename__ = "rag_documents"
+
+    id: int | None = Field(default=None, primary_key=True)
+    session_id: str | None = Field(default=None, description="会话 ID，空表示全局")
+    scope: str = Field(default="global", description="索引作用域")
+    collection_name: str = Field(description="Chroma collection 名称")
+    source_path: str = Field(description="文档来源路径或引用")
+    title: str | None = Field(default=None, description="文档标题")
+    mime_type: str | None = Field(default=None, description="MIME 类型")
+    content_hash: str | None = Field(default=None, description="内容哈希")
+    chunk_count: int = Field(default=0, description="分块数量")
+    status: str = Field(default="active", description="文档状态")
+    indexed_at: datetime = Field(default_factory=_dt_now, description="索引时间")
+    updated_at: datetime = Field(default_factory=_dt_now, description="更新时间")
+    extra: str = Field(
+        default="{}",
+        sa_column=Column("metadata", String, nullable=False, server_default="{}"),
+        description="JSON 扩展字段",
     )
 
 

@@ -91,6 +91,15 @@ class SchedulerSettings(BaseSettingsConfig):
     )
 
 
+class ThreadPoolSettings(BaseSettingsConfig):
+    """统一线程池配置。"""
+
+    io_size: int = Field(default=16, description="IO 密集型线程池大小")
+    cpu_size: int = Field(default=4, description="CPU 密集型线程池大小")
+    bg_size: int = Field(default=4, description="后台任务线程池大小")
+    shutdown_timeout: float = Field(default=30.0, description="优雅关闭超时（秒）")
+
+
 class Settings(BaseSettingsConfig):
     """全局配置。"""
 
@@ -100,6 +109,7 @@ class Settings(BaseSettingsConfig):
     mcp: MCPSettings = MCPSettings()
     loader: LoaderSettings = LoaderSettings()
     scheduler: SchedulerSettings = SchedulerSettings()
+    thread_pool: ThreadPoolSettings = ThreadPoolSettings()
 
 
 # 模块级单例 — 项目内统一通过 from src.ai.config.settings import settings 获取
