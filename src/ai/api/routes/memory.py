@@ -10,8 +10,9 @@ from src.ai.api.schemas.memory import (
     MemorySearchRequest,
     MemorySearchResultResponse,
     MemoryStatsResponse,
+    MemoryStatusRequest,
 )
-from src.ai.core.memory.types import MemoryWriteRequest
+from src.ai.core.memory.types import MEMORY_TYPES, MemoryWriteRequest
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
@@ -25,6 +26,10 @@ def _entry_to_response(entry) -> MemoryEntryResponse:
         content=entry.content,
         file_path=str(entry.file_path) if entry.file_path else None,
         session_id=entry.session_id,
+        scope=entry.scope,
+        source_type=entry.source_type,
+        source_id=entry.source_id,
+        status=entry.status,
         created_at=entry.created_at.isoformat() if entry.created_at else None,
         metadata=entry.metadata,
     )
@@ -34,26 +39,30 @@ def _entry_to_response(entry) -> MemoryEntryResponse:
 async def list_memories(
     service: MemoryServiceDep,
     memory_type: str | None = None,
+    scope: str | None = None,
+    status: str | None = "active",
 ):
     """列出记忆条目。
 
     Args:
         memory_type: 按类型过滤（user/feedback/project/reference）。
     """
-    from src.ai.core.memory.types import MEMORY_TYPES
-
     type_filter = None
     if memory_type and memory_type in MEMORY_TYPES:
         type_filter = memory_type
 
-    entries = service.list_entries(memory_type=type_filter)
+    entries = await service.alist_entries(
+        memory_type=type_filter,
+        scope=scope,  # type: ignore[arg-type]
+        status=status,  # type: ignore[arg-type]
+    )
     return [_entry_to_response(e) for e in entries]
 
 
 @router.get("/stats", response_model=MemoryStatsResponse)
 async def get_memory_stats(service: MemoryServiceDep):
     """获取记忆统计。"""
-    stats = service.get_stats()
+    stats = await service.aget_stats()
     by_type_val: dict[str, int] | int = stats.get("by_type", {})
     return MemoryStatsResponse(
         total=stats.get("total", 0),
@@ -68,7 +77,7 @@ async def get_memory(name: str, service: MemoryServiceDep):
     Args:
         name: 记忆名称。
     """
-    entry = service.get(name)
+    entry = await service.aget(name)
     if entry is None:
         from src.ai.exception.memory_exception import MemoryNotFoundError
 
@@ -92,9 +101,12 @@ async def create_memory(
         memory_type=request.memory_type,  # type: ignore[arg-type]
         name=request.name,
         description=request.description,
+        scope=request.scope,  # type: ignore[arg-type]
+        source_type=request.source_type,  # type: ignore[arg-type]
+        source_id=request.source_id,
         metadata=request.metadata,
     )
-    entry = service.save(write_request)
+    entry = await service.asave(write_request)
     return _entry_to_response(entry)
 
 
@@ -105,13 +117,50 @@ async def delete_memory(name: str, service: MemoryServiceDep):
     Args:
         name: 记忆名称。
     """
-    success = service.delete(name)
+    success = await service.adelete(name)
     if not success:
         from src.ai.exception.memory_exception import MemoryNotFoundError
 
         raise MemoryNotFoundError(f"记忆不存在: {name}", context={"name": name})
 
     return MessageResponse(message=f"记忆 {name} 已删除")
+
+
+@router.post("/{name}/status", response_model=MemoryEntryResponse)
+async def set_memory_status(
+    name: str,
+    request: MemoryStatusRequest,
+    service: MemoryServiceDep,
+):
+    """设置记忆状态。
+
+    Args:
+        name: 记忆名称。
+        request: 状态请求，支持 active / disabled。
+    """
+    if request.status == "active":
+        success = await service.aenable(name)
+    elif request.status == "disabled":
+        success = await service.adisable(name)
+    else:
+        from src.ai.exception.memory_exception import MemoryException
+
+        raise MemoryException(
+            "不支持的记忆状态",
+            context={"name": name, "status": request.status},
+        )
+
+    if not success:
+        from src.ai.exception.memory_exception import MemoryNotFoundError
+
+        raise MemoryNotFoundError(f"记忆不存在: {name}", context={"name": name})
+
+    entry = await service.aget(name)
+    if entry is None:
+        from src.ai.exception.memory_exception import MemoryNotFoundError
+
+        raise MemoryNotFoundError(f"记忆不存在: {name}", context={"name": name})
+    return _entry_to_response(entry)
 
 
 @router.post("/search", response_model=list[MemorySearchResultResponse])
@@ -124,7 +173,7 @@ async def search_memories(
     Args:
         request: 搜索请求。
     """
-    results = service.search(request.query, limit=request.limit)
+    results = await service.asearch(request.query, limit=request.limit)
 
     return [
         MemorySearchResultResponse(

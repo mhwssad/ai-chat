@@ -7,6 +7,7 @@ from src.ai.api.schemas.skills import (
     SkillActivateRequest,
     SkillActivateResponse,
     SkillDetailResponse,
+    SkillEnabledRequest,
     SkillMetadataResponse,
 )
 
@@ -21,6 +22,7 @@ async def list_skills(service: SkillServiceDep):
         SkillMetadataResponse(
             name=m.name,
             description=m.description,
+            enabled=m.enabled,
             argument_hint=m.argument_hint,
             disable_model_invocation=m.disable_model_invocation,
             user_invocable=m.user_invocable,
@@ -45,6 +47,7 @@ async def get_skill(name: str, service: SkillServiceDep):
     return SkillDetailResponse(
         name=defn.name,
         description=defn.description,
+        enabled=defn.enabled,
         source_path=str(defn.source_path),
         instruction_template=defn.instruction_template,
         disable_model_invocation=defn.disable_model_invocation,
@@ -71,3 +74,27 @@ async def activate_skill(
     """
     content = service.activate(name, arguments=request.arguments)
     return SkillActivateResponse(name=name, content=content)
+
+
+@router.post("/{name}/enabled", response_model=SkillDetailResponse)
+async def set_skill_enabled(
+    name: str,
+    request: SkillEnabledRequest,
+    service: SkillServiceDep,
+):
+    """设置技能启用状态。"""
+    defn = service.set_enabled(name, request.enabled)
+    return SkillDetailResponse(
+        name=defn.name,
+        description=defn.description,
+        enabled=defn.enabled,
+        source_path=str(defn.source_path),
+        instruction_template=defn.instruction_template,
+        disable_model_invocation=defn.disable_model_invocation,
+        user_invocable=defn.user_invocable,
+        allowed_tools=defn.allowed_tools,
+        argument_hint=defn.argument_hint,
+        model=defn.model,
+        context_fork=defn.context_fork,
+        agent_type=defn.agent_type,
+    )

@@ -19,6 +19,11 @@ class RagDocumentInfoResponse(BaseModel):
     title: str = Field(description="标题")
     chunk_count: int = Field(description="分块数量")
     mime_type: str = Field(description="MIME 类型")
+    session_id: str | None = Field(default=None, description="会话 ID")
+    scope: str = Field(default="global", description="文档作用域")
+    collection_name: str = Field(default="", description="Chroma 集合名称")
+    status: str = Field(default="active", description="文档状态")
+    content_hash: str | None = Field(default=None, description="内容哈希")
 
 
 class RagSearchRequest(BaseModel):
@@ -89,6 +94,11 @@ class RagDocumentDetailResponse(BaseModel):
     title: str = Field(description="标题")
     chunk_count: int = Field(description="分块数量")
     mime_type: str = Field(description="MIME 类型")
+    session_id: str | None = Field(default=None, description="会话 ID")
+    scope: str = Field(default="global", description="文档作用域")
+    collection_name: str = Field(default="", description="Chroma 集合名称")
+    status: str = Field(default="active", description="文档状态")
+    content_hash: str | None = Field(default=None, description="内容哈希")
     chunks: list[RagChunkResponse] = Field(description="分块列表")
 
 

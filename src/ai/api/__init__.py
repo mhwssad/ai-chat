@@ -24,17 +24,20 @@ from src.ai.api.routes.tts import router as tts_router
 async def lifespan(app: FastAPI):
     """应用生命周期管理。
 
-    启动时初始化服务，关闭时清理资源。
+    启动时通过 DI 容器初始化线程池和服务，关闭时清理资源。
     """
+    from src.ai.core.container import container
     from src.ai.core.container_wiring import initialize_container, shutdown_container
 
-    # 初始化：建表、种子模板、技能发现、工具注册、调度器启动
+    # 初始化：容器（线程池随 provider 首次访问自动启动）
     initialize_container()
 
     yield
 
-    # 关闭时停止调度器
+    # 关闭：先停容器 → 再关线程池
     shutdown_container()
+    thread_pool = container.thread_pool()
+    await thread_pool.shutdown()
 
 
 def create_app() -> FastAPI:

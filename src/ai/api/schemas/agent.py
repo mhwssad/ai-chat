@@ -12,6 +12,7 @@ class AgentRunRequest(BaseModel):
     user_message: str = Field(description="用户消息")
     system_prompt: str | None = Field(default=None, description="系统提示")
     max_iterations: int = Field(default=10, description="最大迭代次数")
+    agent_timeout: float = Field(default=300, description="Agent 整体超时秒数")
     tools: list[str] | None = Field(
         default=None, description="可用工具列表（None 表示全部）"
     )
@@ -28,6 +29,17 @@ class ToolCallResponse(BaseModel):
     duration_ms: int = Field(default=0, description="执行时长（毫秒）")
 
 
+class AgentTraceStepResponse(BaseModel):
+    """Agent 执行轨迹步骤响应。"""
+
+    index: int = Field(description="步骤序号")
+    step_type: str = Field(description="步骤类型")
+    title: str = Field(description="步骤标题")
+    summary: str = Field(description="脱敏摘要")
+    status: str = Field(default="success", description="步骤状态")
+    error: str | None = Field(default=None, description="错误摘要")
+
+
 class AgentRunResponse(BaseModel):
     """Agent 执行响应。"""
 
@@ -39,3 +51,19 @@ class AgentRunResponse(BaseModel):
     iterations: int = Field(description="迭代次数")
     total_tokens: int = Field(description="总 token 数")
     plan: str | None = Field(default=None, description="计划内容")
+    trace: list[AgentTraceStepResponse] = Field(
+        default_factory=list,
+        description="执行轨迹摘要",
+    )
+    context_sources: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="上下文来源摘要",
+    )
+
+
+class AgentCancelResponse(BaseModel):
+    """Agent 取消响应。"""
+
+    cancelled: bool = Field(description="是否成功发送取消请求")
+    status: str = Field(description="取消请求状态")
+    message: str = Field(description="说明")

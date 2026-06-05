@@ -28,6 +28,7 @@ class AgentService:
         system_prompt: str | None = None,
         max_iterations: int = 10,
         tools: list[str] | None = None,
+        agent_timeout: float = 300,
     ) -> dict[str, Any]:
         """执行 Agent 任务。
 
@@ -37,6 +38,7 @@ class AgentService:
             system_prompt: 系统提示。
             max_iterations: 最大迭代次数。
             tools: 可用工具列表。
+            agent_timeout: Agent 整体超时秒数。
 
         Returns:
             Agent 执行结果。
@@ -47,6 +49,16 @@ class AgentService:
             system_prompt=system_prompt,
             max_iterations=max_iterations,
             tools=tools,
+            agent_timeout=agent_timeout,
         )
 
         return result.to_dict()
+
+    def cancel(self) -> dict[str, Any]:
+        """取消当前 Agent 任务。"""
+        cancelled = bool(self._orchestrator.cancel())
+        return {
+            "cancelled": cancelled,
+            "status": "cancel_requested" if cancelled else "idle",
+            "message": "已发送取消请求" if cancelled else "当前没有运行中的 Agent",
+        }

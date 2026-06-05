@@ -8,6 +8,7 @@ class SkillMetadataResponse(BaseModel):
 
     name: str = Field(description="技能名称")
     description: str = Field(description="技能描述")
+    enabled: bool = Field(default=True, description="是否启用")
     argument_hint: str | None = Field(default=None, description="参数提示")
     disable_model_invocation: bool = Field(
         default=False, description="是否禁止模型自动激活"
@@ -20,6 +21,7 @@ class SkillDetailResponse(BaseModel):
 
     name: str = Field(description="技能名称")
     description: str = Field(description="技能描述")
+    enabled: bool = Field(default=True, description="是否启用")
     source_path: str = Field(description="SKILL.md 文件路径")
     instruction_template: str = Field(description="指令模板")
     disable_model_invocation: bool = Field(
@@ -37,6 +39,12 @@ class SkillActivateRequest(BaseModel):
     """技能激活请求。"""
 
     arguments: str = Field(default="", description="用户输入参数")
+
+
+class SkillEnabledRequest(BaseModel):
+    """技能启停请求。"""
+
+    enabled: bool = Field(description="是否启用")
 
 
 class SkillActivateResponse(BaseModel):

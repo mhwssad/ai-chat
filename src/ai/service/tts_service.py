@@ -1,4 +1,7 @@
-"""TTS 服务 — 语音合成、存储和管理。"""
+"""TTS 服务 — 语音合成、存储和管理。
+
+共享服务层，CLI 和 API 统一使用。
+"""
 
 from __future__ import annotations
 
@@ -7,9 +10,12 @@ import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.ai.exception.media_exception import MediaNotFoundError
+
+if TYPE_CHECKING:
+    from src.ai.utils.thread_pool import ThreadPoolManager
 
 logger = logging.getLogger(__name__)
 
@@ -47,8 +53,22 @@ class TTSService:
     3. 列出、获取、删除音频
     """
 
-    def __init__(self, *, model_service: Any) -> None:
+    def __init__(
+        self,
+        *,
+        model_service: Any,
+        thread_pool: ThreadPoolManager | None = None,
+    ) -> None:
         self._model_service = model_service
+        self._thread_pool = thread_pool
+
+    def _get_pool(self) -> ThreadPoolManager:
+        """获取线程池实例。"""
+        if self._thread_pool is None:
+            from src.ai.utils.thread_pool import get_thread_pool
+
+            self._thread_pool = get_thread_pool()
+        return self._thread_pool
 
     def _get_output_dir(self) -> Path:
         """获取音频输出目录。"""
@@ -87,7 +107,8 @@ class TTSService:
         output_dir = self._get_output_dir()
         filename = f"{uuid.uuid4().hex[:12]}.{audio_data.format}"
         filepath = output_dir / filename
-        filepath.write_bytes(audio_data.audio_bytes)
+
+        await self._get_pool().run_io(filepath.write_bytes, audio_data.audio_bytes)
 
         return {
             "file": str(filepath),
@@ -100,7 +121,7 @@ class TTSService:
         """列出已合成的音频。
 
         Returns:
-            音频元数据列表。
+            音频元数据列表，按修改时间倒序排列。
         """
         output_dir = self._get_output_dir()
         if not output_dir.exists():
@@ -115,6 +136,7 @@ class TTSService:
                 result.append(
                     {
                         "filename": f.name,
+                        "path": str(f),
                         "size_bytes": stat.st_size,
                         "format": f.suffix.lstrip(".").upper(),
                         "created_at": datetime.fromtimestamp(stat.st_mtime),
@@ -169,3 +191,13 @@ class TTSService:
         filepath, _ = self.get_audio_path(filename)
         filepath.unlink()
         return f"已删除: {filename}"
+
+    # ── 异步包装 ──────────────────────────────────────────────
+
+    async def alist_audio(self) -> list[dict]:
+        """异步列出已合成的音频。"""
+        return await self._get_pool().run_io(self.list_audio)
+
+    async def adelete_audio(self, filename: str) -> str:
+        """异步删除指定音频。"""
+        return await self._get_pool().run_io(self.delete_audio, filename)

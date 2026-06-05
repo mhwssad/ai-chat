@@ -52,6 +52,10 @@ class ChatResponse(BaseModel):
         default_factory=list, description="工具调用列表"
     )
     usage: dict[str, int] = Field(default_factory=dict, description="token 使用量")
+    context_sources: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="上下文来源摘要",
+    )
 
 
 class StreamEvent(BaseModel):

@@ -4,6 +4,8 @@ from fastapi import APIRouter
 
 from src.ai.api.deps import AgentOrchestratorDep
 from src.ai.api.schemas.agent import (
+    AgentCancelResponse,
+    AgentTraceStepResponse,
     AgentRunRequest,
     AgentRunResponse,
     ToolCallResponse,
@@ -33,6 +35,7 @@ async def run_agent(
         system_prompt=request.system_prompt,
         max_iterations=request.max_iterations,
         tools=request.tools,
+        agent_timeout=request.agent_timeout,
     )
 
     return AgentRunResponse(
@@ -52,4 +55,24 @@ async def run_agent(
         iterations=result["iterations"],
         total_tokens=result["total_tokens"],
         plan=result.get("plan"),
+        trace=[
+            AgentTraceStepResponse(
+                index=step["index"],
+                step_type=step["step_type"],
+                title=step["title"],
+                summary=step["summary"],
+                status=step.get("status", "success"),
+                error=step.get("error"),
+            )
+            for step in result.get("trace", [])
+        ],
+        context_sources=result.get("context_sources", []),
     )
+
+
+@router.post("/cancel", response_model=AgentCancelResponse)
+async def cancel_agent(orchestrator: AgentOrchestratorDep):
+    """取消当前正在运行的 Agent 任务。"""
+    service = AgentService(orchestrator=orchestrator)
+    result = service.cancel()
+    return AgentCancelResponse(**result)

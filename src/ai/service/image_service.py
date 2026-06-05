@@ -1,4 +1,7 @@
-"""图像服务 — 图像生成、存储和管理。"""
+"""图像服务 — 图像生成、存储和管理。
+
+共享服务层，CLI 和 API 统一使用。
+"""
 
 from __future__ import annotations
 
@@ -7,9 +10,12 @@ import logging
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from src.ai.exception.media_exception import MediaNotFoundError
+
+if TYPE_CHECKING:
+    from src.ai.utils.thread_pool import ThreadPoolManager
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +42,22 @@ class ImageService:
     3. 列出、获取、删除图像
     """
 
-    def __init__(self, *, model_service: Any) -> None:
+    def __init__(
+        self,
+        *,
+        model_service: Any,
+        thread_pool: ThreadPoolManager | None = None,
+    ) -> None:
         self._model_service = model_service
+        self._thread_pool = thread_pool
+
+    def _get_pool(self) -> ThreadPoolManager:
+        """获取线程池实例。"""
+        if self._thread_pool is None:
+            from src.ai.utils.thread_pool import get_thread_pool
+
+            self._thread_pool = get_thread_pool()
+        return self._thread_pool
 
     def _get_output_dir(self) -> Path:
         """获取图像输出目录。"""
@@ -76,6 +96,7 @@ class ImageService:
             n=n,
         )
 
+        pool = self._get_pool()
         output_dir = self._get_output_dir()
         files: list[str] = []
         images_b64: list[str] = []
@@ -84,7 +105,7 @@ class ImageService:
         for img_data in results:
             filename = f"{uuid.uuid4().hex[:12]}.{img_data.format}"
             filepath = output_dir / filename
-            filepath.write_bytes(img_data.image_bytes)
+            await pool.run_io(filepath.write_bytes, img_data.image_bytes)
 
             files.append(str(filepath))
             images_b64.append(base64.b64encode(img_data.image_bytes).decode("ascii"))
@@ -100,7 +121,7 @@ class ImageService:
         """列出已生成的图像。
 
         Returns:
-            图像元数据列表。
+            图像元数据列表，按修改时间倒序排列。
         """
         output_dir = self._get_output_dir()
         if not output_dir.exists():
@@ -121,6 +142,7 @@ class ImageService:
                 result.append(
                     {
                         "filename": f.name,
+                        "path": str(f),
                         "size_bytes": stat.st_size,
                         "format": f.suffix.lstrip(".").upper(),
                         "created_at": datetime.fromtimestamp(stat.st_mtime),
@@ -174,3 +196,13 @@ class ImageService:
         filepath = self.get_image_path(filename)
         filepath.unlink()
         return f"已删除: {filename}"
+
+    # ── 异步包装 ──────────────────────────────────────────────
+
+    async def alist_images(self) -> list[dict]:
+        """异步列出已生成的图像。"""
+        return await self._get_pool().run_io(self.list_images)
+
+    async def adelete_image(self, filename: str) -> str:
+        """异步删除指定图像。"""
+        return await self._get_pool().run_io(self.delete_image, filename)

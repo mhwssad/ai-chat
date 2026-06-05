@@ -2,11 +2,13 @@
 
 from fastapi import APIRouter
 
-from src.ai.api.deps import ToolManagerDep, ToolRegistryDep
+from src.ai.api.deps import ToolServiceDep
 from src.ai.api.schemas.tools import (
     ToolExecuteRequest,
     ToolExecuteResponse,
     ToolMetaResponse,
+    ToolPermissionRequest,
+    ToolPermissionResponse,
     ToolSchemaResponse,
 )
 
@@ -15,7 +17,7 @@ router = APIRouter(prefix="/tools", tags=["tools"])
 
 @router.get("", response_model=list[ToolMetaResponse])
 async def list_tools(
-    registry: ToolRegistryDep,
+    service: ToolServiceDep,
     enabled_only: bool = True,
 ):
     """列出已注册工具。
@@ -23,27 +25,26 @@ async def list_tools(
     Args:
         enabled_only: 是否只返回启用的工具。
     """
-    tools = registry.list(enabled_only=enabled_only)
-    result = []
-    for tool in tools:
-        meta = registry.get_meta(tool.name)
-        result.append(
-            ToolMetaResponse(
-                name=tool.name,
-                description=tool.description or "",
-                source_type=meta.source_type,
-                source_id=meta.source_id,
-                permissions=meta.permissions,
-                essential=meta.essential,
-                enabled=meta.enabled,
-            )
+    tools = service.list_tools(enabled_only=enabled_only)
+    return [
+        ToolMetaResponse(
+            name=t["name"],
+            display_name=t["display_name"],
+            description=t["description"],
+            source_type=t["source_type"],
+            source_id=t["source_id"],
+            permissions=t["permissions"],
+            output_description=t["output_description"],
+            essential=t["essential"],
+            enabled=t["enabled"],
         )
-    return result
+        for t in tools
+    ]
 
 
 @router.get("/schemas", response_model=list[ToolSchemaResponse])
 async def list_tool_schemas(
-    manager: ToolManagerDep,
+    service: ToolServiceDep,
     enabled_only: bool = True,
 ):
     """列出工具的 OpenAI function-calling schema。
@@ -51,7 +52,7 @@ async def list_tool_schemas(
     Args:
         enabled_only: 是否只返回启用的工具。
     """
-    schemas = manager.list_schemas(enabled_only=enabled_only)
+    schemas = service.list_schemas(enabled_only=enabled_only)
     return [ToolSchemaResponse(type=s["type"], function=s["function"]) for s in schemas]
 
 
@@ -59,7 +60,7 @@ async def list_tool_schemas(
 async def execute_tool(
     name: str,
     request: ToolExecuteRequest,
-    manager: ToolManagerDep,
+    service: ToolServiceDep,
 ):
     """执行工具。
 
@@ -67,5 +68,36 @@ async def execute_tool(
         name: 工具名称。
         request: 执行请求。
     """
-    result = await manager.execute(name, request.arguments)
-    return ToolExecuteResponse(result=result, tool_name=name)
+    diagnostic = await service.execute_tool_diagnostic(name, request.arguments)
+    return ToolExecuteResponse(
+        result=diagnostic.result,
+        tool_name=diagnostic.tool_name,
+        status=diagnostic.status,
+        duration_ms=diagnostic.duration_ms,
+        permission_decision=diagnostic.permission_decision,
+        input_summary=diagnostic.input_summary,
+        output_summary=diagnostic.output_summary,
+        error_type=diagnostic.error_type,
+        error_message=diagnostic.error_message,
+    )
+
+
+@router.post("/{name}/permission", response_model=ToolPermissionResponse)
+async def check_tool_permission(
+    name: str,
+    request: ToolPermissionRequest,
+    service: ToolServiceDep,
+):
+    """检查工具权限决策。"""
+    decision = await service.check_permission(name, request.arguments)
+    if decision is None:
+        decision = {
+            "decision": "allow",
+            "tool_name": name,
+            "permissions": [],
+            "reason": "permission_checker_disabled",
+            "confirmed": None,
+            "cached": False,
+            "context": {},
+        }
+    return ToolPermissionResponse(**decision)

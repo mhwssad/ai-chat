@@ -24,6 +24,21 @@ from src.ai.api.schemas.rag import (
 router = APIRouter(prefix="/rag", tags=["rag"])
 
 
+def _to_document_response(doc) -> RagDocumentInfoResponse:
+    """将领域文档信息转换为 API 响应。"""
+    return RagDocumentInfoResponse(
+        source_path=doc.source_path,
+        title=doc.title,
+        chunk_count=doc.chunk_count,
+        mime_type=doc.mime_type,
+        session_id=doc.session_id,
+        scope=doc.scope,
+        collection_name=doc.collection_name,
+        status=doc.status,
+        content_hash=doc.content_hash,
+    )
+
+
 @router.post("/index", response_model=list[RagDocumentInfoResponse])
 async def index_documents(
     request: RagIndexRequest,
@@ -32,38 +47,27 @@ async def index_documents(
     """索引文档。
 
     索引单个文件或目录中的所有文件。
-
-    Args:
-        request: 索引请求。
     """
     from pathlib import Path
 
     path = Path(request.path)
 
     if path.is_dir():
-        documents = service.index_directory(
+        documents = await service.aindex_directory(
             path,
             session_id=request.session_id,
             patterns=request.patterns,
             reindex=request.reindex,
         )
     else:
-        doc = service.index_file(
+        doc = await service.aindex_file(
             path,
             session_id=request.session_id,
             reindex=request.reindex,
         )
         documents = [doc]
 
-    return [
-        RagDocumentInfoResponse(
-            source_path=d.source_path,
-            title=d.title,
-            chunk_count=d.chunk_count,
-            mime_type=d.mime_type,
-        )
-        for d in documents
-    ]
+    return [_to_document_response(d) for d in documents]
 
 
 @router.post("/upload", response_model=RagDocumentInfoResponse)
@@ -73,27 +77,16 @@ async def upload_file(
     session_id: str | None = Form(default=None, description="会话 ID"),
     reindex: bool = Form(default=False, description="是否重新索引"),
 ):
-    """上传文件并索引。
-
-    Args:
-        file: 上传的文件。
-        session_id: 会话 ID。
-        reindex: 是否重新索引。
-    """
+    """上传文件并索引。"""
     data = await file.read()
-    doc = service.index_stream(
+    doc = await service.aindex_stream(
         data,
         mime_type=file.content_type,
         filename=file.filename,
         session_id=session_id,
         reindex=reindex,
     )
-    return RagDocumentInfoResponse(
-        source_path=doc.source_path,
-        title=doc.title,
-        chunk_count=doc.chunk_count,
-        mime_type=doc.mime_type,
-    )
+    return _to_document_response(doc)
 
 
 @router.post("/url", response_model=RagDocumentInfoResponse)
@@ -101,22 +94,13 @@ async def index_from_url(
     request: RagUrlIndexRequest,
     service: RagServiceDep,
 ):
-    """从 URL 下载并索引文档。
-
-    Args:
-        request: URL 索引请求。
-    """
-    doc = service.index_url(
+    """从 URL 下载并索引文档。"""
+    doc = await service.aindex_url(
         request.url,
         session_id=request.session_id,
         reindex=request.reindex,
     )
-    return RagDocumentInfoResponse(
-        source_path=doc.source_path,
-        title=doc.title,
-        chunk_count=doc.chunk_count,
-        mime_type=doc.mime_type,
-    )
+    return _to_document_response(doc)
 
 
 @router.post("/text", response_model=RagDocumentInfoResponse)
@@ -124,23 +108,14 @@ async def index_from_text(
     request: RagTextIndexRequest,
     service: RagServiceDep,
 ):
-    """索引原始文本。
-
-    Args:
-        request: 文本索引请求。
-    """
-    doc = service.index_text(
+    """索引原始文本。"""
+    doc = await service.aindex_text(
         request.text,
         title=request.title,
         session_id=request.session_id,
         reindex=request.reindex,
     )
-    return RagDocumentInfoResponse(
-        source_path=doc.source_path,
-        title=doc.title,
-        chunk_count=doc.chunk_count,
-        mime_type=doc.mime_type,
-    )
+    return _to_document_response(doc)
 
 
 @router.post("/search", response_model=list[RagSearchResultResponse])
@@ -148,12 +123,8 @@ async def search_documents(
     request: RagSearchRequest,
     service: RagServiceDep,
 ):
-    """向量搜索。
-
-    Args:
-        request: 搜索请求。
-    """
-    results = service.search(
+    """向量搜索。"""
+    results = await service.asearch(
         request.query,
         session_id=request.session_id,
         top_k=request.top_k,
@@ -176,23 +147,12 @@ async def search_documents(
 async def list_documents(
     service: RagServiceDep,
     session_id: str | None = None,
+    status: str | None = "active",
 ):
-    """列出已索引文档。
+    """列出已索引文档。"""
+    documents = await service.alist_documents(session_id=session_id, status=status)
 
-    Args:
-        session_id: 会话 ID。
-    """
-    documents = service.list_documents(session_id=session_id)
-
-    return [
-        RagDocumentInfoResponse(
-            source_path=d.source_path,
-            title=d.title,
-            chunk_count=d.chunk_count,
-            mime_type=d.mime_type,
-        )
-        for d in documents
-    ]
+    return [_to_document_response(d) for d in documents]
 
 
 @router.put("/text", response_model=RagDocumentInfoResponse)
@@ -200,23 +160,14 @@ async def update_text_index(
     request: RagUpdateTextRequest,
     service: RagServiceDep,
 ):
-    """更新已索引文本内容（先删后建）。
-
-    Args:
-        request: 更新文本请求。
-    """
-    doc = service.update_text(
+    """更新已索引文本内容（先删后建）。"""
+    doc = await service.aupdate_text(
         request.text,
         source_path=request.source_path,
         title=request.title,
         session_id=request.session_id,
     )
-    return RagDocumentInfoResponse(
-        source_path=doc.source_path,
-        title=doc.title,
-        chunk_count=doc.chunk_count,
-        mime_type=doc.mime_type,
-    )
+    return _to_document_response(doc)
 
 
 @router.post("/hybrid-search", response_model=list[RagSearchResultResponse])
@@ -224,12 +175,8 @@ async def hybrid_search(
     request: RagSearchRequest,
     service: RagServiceDep,
 ):
-    """混合搜索（向量 + BM25）。
-
-    Args:
-        request: 搜索请求。
-    """
-    results = service.hybrid_search(
+    """混合搜索（向量 + BM25）。"""
+    results = await service.ahybrid_search(
         request.query,
         session_id=request.session_id,
         top_k=request.top_k,
@@ -252,12 +199,8 @@ async def build_rag_context(
     request: RagSearchRequest,
     service: RagServiceDep,
 ):
-    """构建 RAG 上下文文本。
-
-    Args:
-        request: 搜索请求（使用 query、session_id、top_k）。
-    """
-    context = service.build_context(
+    """构建 RAG 上下文文本。"""
+    context = await service.abuild_context(
         request.query,
         session_id=request.session_id,
         top_k=request.top_k,
@@ -274,19 +217,14 @@ async def get_document_chunks(
     service: RagServiceDep,
     session_id: str | None = None,
 ):
-    """获取文档的所有 chunks 详情。
-
-    Args:
-        path: 文档 source_path。
-        session_id: 会话 ID。
-    """
+    """获取文档的所有 chunks 详情。"""
     chunks = service.get_document_chunks(path, session_id=session_id)
     if not chunks:
         from src.ai.exception.rag_exception import RagError
 
         raise RagError(f"文档不存在: {path}", context={"path": path})
 
-    docs = service.list_documents(session_id=session_id)
+    docs = await service.alist_documents(session_id=session_id)
     doc_info = next((d for d in docs if d.source_path == path), None)
 
     return RagDocumentDetailResponse(
@@ -294,6 +232,11 @@ async def get_document_chunks(
         title=doc_info.title if doc_info else "",
         chunk_count=len(chunks),
         mime_type=doc_info.mime_type if doc_info else "",
+        session_id=doc_info.session_id if doc_info else session_id,
+        scope=doc_info.scope if doc_info else ("session" if session_id else "global"),
+        collection_name=doc_info.collection_name if doc_info else "",
+        status=doc_info.status if doc_info else "active",
+        content_hash=doc_info.content_hash if doc_info else None,
         chunks=[
             RagChunkResponse(
                 id=c["id"],
@@ -311,11 +254,7 @@ async def batch_delete_documents(
     request: RagBatchDeleteRequest,
     service: RagServiceDep,
 ):
-    """批量删除多个文档。
-
-    Args:
-        request: 批量删除请求。
-    """
+    """批量删除多个文档。"""
     results = service.delete_documents_batch(
         request.paths, session_id=request.session_id
     )
@@ -334,13 +273,8 @@ async def delete_document(
     path: str,
     session_id: str | None = None,
 ):
-    """删除文档。
-
-    Args:
-        path: 文件路径。
-        session_id: 会话 ID。
-    """
-    success = service.delete_file(path, session_id=session_id)
+    """删除文档。"""
+    success = await service.adelete_file(path, session_id=session_id)
     if not success:
         from src.ai.exception.rag_exception import RagError
 
@@ -354,12 +288,8 @@ async def clear_knowledge_base(
     service: RagServiceDep,
     session_id: str | None = None,
 ):
-    """清空知识库。
-
-    Args:
-        session_id: 会话 ID。
-    """
-    count = service.delete_all(session_id=session_id)
+    """清空知识库。"""
+    count = await service.adelete_all(session_id=session_id)
     return MessageResponse(message=f"已删除 {count} 个分块")
 
 
@@ -368,12 +298,8 @@ async def get_rag_stats(
     service: RagServiceDep,
     session_id: str | None = None,
 ):
-    """获取 RAG 统计。
-
-    Args:
-        session_id: 会话 ID。
-    """
-    stats = service.get_stats(session_id=session_id)
+    """获取 RAG 统计。"""
+    stats = await service.aget_stats(session_id=session_id)
 
     return RagStatsResponse(
         total_chunks=stats.get("total_chunks", 0),
@@ -386,11 +312,11 @@ async def list_rag_sessions(
     service: RagServiceDep,
 ):
     """列出所有 RAG 会话。"""
-    sessions = service.list_sessions()
+    sessions = await service.alist_sessions()
     result: list[RagSessionInfo] = []
     for session_id in sessions:
-        stats = service.get_stats(session_id=session_id)
-        docs = service.list_documents(session_id=session_id)
+        stats = await service.aget_stats(session_id=session_id)
+        docs = await service.alist_documents(session_id=session_id)
         result.append(
             RagSessionInfo(
                 session_id=session_id,
@@ -406,11 +332,7 @@ async def delete_rag_session(
     session_id: str,
     service: RagServiceDep,
 ):
-    """删除会话及其知识库。
-
-    Args:
-        session_id: 会话 ID。
-    """
+    """删除会话及其知识库。"""
     success = service.delete_session(session_id)
     if not success:
         from src.ai.exception.rag_exception import RagError
@@ -427,12 +349,8 @@ async def get_session_stats(
     session_id: str,
     service: RagServiceDep,
 ):
-    """获取会话统计。
-
-    Args:
-        session_id: 会话 ID。
-    """
-    stats = service.get_stats(session_id=session_id)
+    """获取会话统计。"""
+    stats = await service.aget_stats(session_id=session_id)
     return RagStatsResponse(
         total_chunks=stats.get("total_chunks", 0),
         collection_name=stats.get("collection_name", ""),
@@ -444,7 +362,7 @@ async def get_global_stats(
     service: RagServiceDep,
 ):
     """获取全局统计（跨所有会话）。"""
-    stats = service.get_all_stats()
+    stats = await service.aget_all_stats()
     return RagGlobalStatsResponse(
         default_chunks=stats["default_chunks"],
         sessions=[

@@ -19,6 +19,10 @@ if TYPE_CHECKING:
     from src.ai.core.skills.service import SkillService
     from src.ai.core.tools.manager import ToolManager
     from src.ai.core.tools.registry import ToolRegistry
+    from src.ai.service.chat_service import ChatService
+    from src.ai.service.image_service import ImageService
+    from src.ai.service.tool_service import ToolService
+    from src.ai.service.tts_service import TTSService
 
 
 def get_model_service():
@@ -71,6 +75,29 @@ def get_agent_orchestrator():
     return container.agent_container.agent_orchestrator()
 
 
+# ── 共享服务依赖 ─────────────────────────────────────────────
+
+
+def get_chat_service():
+    """获取共享 ChatService 实例。"""
+    return container.service_container.chat_service()
+
+
+def get_image_service():
+    """获取共享 ImageService 实例。"""
+    return container.service_container.image_service()
+
+
+def get_tts_service():
+    """获取共享 TTSService 实例。"""
+    return container.service_container.tts_service()
+
+
+def get_tool_service():
+    """获取共享 ToolService 实例。"""
+    return container.service_container.tool_service()
+
+
 # 类型别名（用于路由函数签名）
 ModelServiceDep = Annotated[ModelService, Depends(get_model_service)]
 ToolRegistryDep = Annotated[ToolRegistry, Depends(get_tool_registry)]
@@ -82,3 +109,9 @@ SchedulerServiceDep = Annotated[SchedulerService, Depends(get_scheduler_service)
 RagServiceDep = Annotated[RagService, Depends(get_rag_service)]
 ContextServiceDep = Annotated[ContextService, Depends(get_context_service)]
 AgentOrchestratorDep = Annotated[AgentOrchestrator, Depends(get_agent_orchestrator)]
+
+# 共享服务类型别名
+ChatServiceDep = Annotated[ChatService, Depends(get_chat_service)]
+ImageServiceDep = Annotated[ImageService, Depends(get_image_service)]
+TTSServiceDep = Annotated[TTSService, Depends(get_tts_service)]
+ToolServiceDep = Annotated[ToolService, Depends(get_tool_service)]
