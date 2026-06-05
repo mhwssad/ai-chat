@@ -3,12 +3,13 @@
 import asyncio
 import json
 import logging
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from src.ai.cli.tabs import BaseTab
+from src.ai.cli.tabs import BaseTab, TabLayoutSpec
 from src.ai.cli.utils.theme import Icons
 from src.ai.cli.utils.formatting import truncate, wrap_text
 from src.ai.cli.utils.rich_components import create_styled_table
@@ -23,40 +24,33 @@ class ToolsTab(BaseTab):
     """
 
     name = "工具"
-    hotkey = "2"
+    hotkey = "3"
+    layout = TabLayoutSpec(mode="resource")
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, thread_pool: Any, tool_service: Any) -> None:
+        super().__init__(thread_pool)
+        self._tool_service = tool_service
         self._cache_ttl = 5.0
         self._tools: list[dict[str, object]] = []
         self._show_all: bool = True
         self._test_result: str = ""
         self._test_running: bool = False
 
+    def register_commands(self, router: Any, tab_index: int) -> None:
+        router.register(tab_index, "e", self._toggle_selected)
+        router.register(tab_index, "a", self._toggle_filter)
+        router.register(tab_index, "t", self._test_selected)
+
     def _load_data(self) -> None:
         """加载工具列表。"""
         try:
-            from src.ai.core.container import container
-
-            registry = container.tool_container.tool_registry()
-            tools = registry.list(enabled_only=not self._show_all)
-            self._tools = []
-            query = self._search_query.lower()
-            for tool in tools:
-                name = tool.name
-                desc = getattr(tool, "description", "") or ""
-                # 搜索过滤：按名称或描述匹配
-                if query and query not in name.lower() and query not in desc.lower():
-                    continue
-                meta = registry.get_meta(name)
-                self._tools.append(
-                    {
-                        "name": name,
-                        "description": desc,
-                        "source_type": meta.source_type,
-                        "enabled": meta.enabled,
-                        "essential": meta.essential,
-                    }
+            if self._search_query:
+                self._tools = self._tool_service.search_tools(
+                    self._search_query, enabled_only=not self._show_all
+                )
+            else:
+                self._tools = self._tool_service.list_tools(
+                    enabled_only=not self._show_all
                 )
         except Exception as e:
             logger.debug("加载工具列表失败: %s", e)
@@ -164,10 +158,7 @@ class ToolsTab(BaseTab):
             self._move_selection(1, len(self._tools))
             return True
         elif key == "a":
-            self._show_all = not self._show_all
-            self._selected_index = 0
-            self._invalidate_cache()
-            return True
+            return self._toggle_filter()
         elif key == "e":
             return self._toggle_selected()
         elif key == "t":
@@ -188,19 +179,28 @@ class ToolsTab(BaseTab):
             return False
 
         try:
-            from src.ai.core.container import container
-
-            registry = container.tool_container.tool_registry()
-            meta = registry.get_meta(str(tool["name"]))
-            meta.enabled = not meta.enabled
+            name = str(tool["name"])
+            if tool["enabled"]:
+                self._tool_service.disable_tool(name)
+            else:
+                self._tool_service.enable_tool(name)
             self._invalidate_cache()
+            self._set_status("[success][OK] 工具状态已切换[/]")
             return True
         except Exception as e:
             logger.debug("切换工具状态失败: %s", e)
+            self._set_status("[error][X] 工具状态切换失败[/]")
             return False
 
+    def _toggle_filter(self) -> bool:
+        self._show_all = not self._show_all
+        self._selected_index = 0
+        self._invalidate_cache()
+        self._set_status("[info]工具筛选已切换[/]")
+        return True
+
     def _test_selected(self) -> bool:
-        """测试执行选中的工具（后台线程）。"""
+        """测试执行选中的工具（后台线程池执行）。"""
         if not self._tools or self._selected_index >= len(self._tools):
             return False
         if self._test_running:
@@ -211,16 +211,10 @@ class ToolsTab(BaseTab):
         self._test_running = True
         self._test_result = ""
 
-        import threading
-
         def _run() -> None:
             try:
-                from src.ai.core.container import container
-
-                manager = container.tool_container.tool_manager()
-
                 async def _do():
-                    return await manager.execute(tool_name, {})
+                    return await self._tool_service.execute_tool(tool_name, {})
 
                 result = asyncio.run(_do())
                 result_str = str(result)
@@ -232,12 +226,17 @@ class ToolsTab(BaseTab):
             finally:
                 self._test_running = False
 
-        threading.Thread(target=_run, daemon=True).start()
+        self._thread_pool.run_bg(_run)
+        self._set_status("[info]工具测试已启动[/]")
         return True
 
     def get_footer_commands(self) -> list[tuple[str, str]]:
         """返回 Tools Tab 底部命令列表。"""
         return [("e", "启用/禁用"), ("a", "筛选"), ("t", "测试")]
+
+    def get_tab_header_lines(self) -> list[str]:
+        filter_label = "全部" if self._show_all else "仅启用"
+        return [f"工具: {len(self._tools)}", f"筛选: {filter_label}"]
 
     def get_detail_panel(self, console: Console, width: int, height: int) -> Panel:
         text = Text()
@@ -265,17 +264,9 @@ class ToolsTab(BaseTab):
             # JSON Schema 信息
             text.append("\n  参数 Schema:\n", style="subtitle")
             try:
-                from src.ai.core.container import container
-
-                registry = container.tool_container.tool_registry()
-                base_tool = registry.get(str(tool["name"]))
-                schema = base_tool.args_schema
-                if schema:
-                    schema_dict = (
-                        schema.model_json_schema()
-                        if hasattr(schema, "model_json_schema")
-                        else {}
-                    )
+                detail = self._tool_service.get_tool_detail(str(tool["name"]))
+                schema_dict = detail.get("args_schema", {})
+                if schema_dict:
                     schema_str = json.dumps(schema_dict, indent=2, ensure_ascii=False)
                     for line in schema_str.split("\n")[:15]:
                         text.append(f"  {line}\n", style="muted")

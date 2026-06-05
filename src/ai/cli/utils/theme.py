@@ -176,3 +176,6 @@ class Icons:
     TAB_STATS: str = "[#]"
     TAB_IMAGE: str = "[I]"
     TAB_TTS: str = "[A]"
+    TAB_AGENT: str = "[G]"
+    TAB_RAG: str = "[R]"
+    TAB_SYSTEM: str = "[Y]"

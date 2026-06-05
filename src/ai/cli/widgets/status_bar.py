@@ -29,6 +29,7 @@ class StatusBar:
         session_name: str = "",
         tool_count: int = 0,
         active_tab_name: str = "",
+        active_tab_status: str = "",
     ) -> None:
         self.model_name = model_name
         self.scheduler_running = scheduler_running
@@ -36,6 +37,7 @@ class StatusBar:
         self.session_name = session_name
         self.tool_count = tool_count
         self.active_tab_name = active_tab_name
+        self.active_tab_status = active_tab_status
         self._start_time: float = time.monotonic()
 
     def render(self, console: Console, width: int) -> Panel:
@@ -75,11 +77,13 @@ class StatusBar:
         if self.active_tab_name:
             text.append(" | ", style="muted")
             text.append(f"Tab: {self.active_tab_name}", style="info")
+            if self.active_tab_status:
+                text.append(" / ", style="muted")
+                text.append(self.active_tab_status, style="muted")
 
         return Panel(
             text,
             style="header",
-            height=1,
             width=width,
         )
 

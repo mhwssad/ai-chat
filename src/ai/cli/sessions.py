@@ -157,44 +157,42 @@ class SessionManager:
     # ── 同步 ────────────────────────────────────────────────
 
     def discover_existing_sessions(self) -> int:
-        """从历史记录中发现已有的会话。
+        """从 SQL 数据库中发现已有的会话。
 
-        扫描 ChatHistoryManager 中已有的会话并同步到内存。
-        连续 3 个前缀探测无结果时提前退出。
+        通过 list_session_ids 查询实际存在的 session_id，
+        而非猜测。发现后自动激活第一个会话。
 
         Returns:
             发现的会话数量。
         """
-        discovered = 0
-        known_prefixes = ["cli-chat", "agent-session", "session-"]
-        for prefix in known_prefixes:
-            empty_streak = 0
-            for i in range(1, 50):
-                sid = (
-                    f"{prefix}{i}"
-                    if prefix != "cli-chat"
-                    else ("cli-chat" if i == 1 else f"cli-chat-{i}")
-                )
-                try:
-                    count = self._history_mgr.message_count(sid)
-                    if count > 0 and sid not in self._sessions:
-                        info = SessionInfo(
-                            session_id=sid,
-                            name=sid,
-                            message_count=count,
-                        )
-                        self._sessions[sid] = info
-                        discovered += 1
-                        empty_streak = 0
-                    else:
-                        empty_streak += 1
-                except Exception:
-                    # message_count 可能因表不存在而抛异常
-                    break
+        try:
+            session_ids = self._history_mgr.list_session_ids()
+        except Exception:
+            return 0
 
-                # 连续 3 次无结果，提前退出当前前缀
-                if empty_streak >= 3:
-                    break
+        discovered = 0
+        for sid in session_ids:
+            if sid in self._sessions:
+                continue
+            try:
+                count = self._history_mgr.message_count(sid)
+                if count > 0:
+                    info = SessionInfo(
+                        session_id=sid,
+                        name=sid,
+                        message_count=count,
+                    )
+                    self._sessions[sid] = info
+                    discovered += 1
+            except Exception:
+                continue
+
+        # 自动激活第一个发现的会话
+        if discovered > 0 and self._active_id is None:
+            sessions = self.list_sessions()
+            if sessions:
+                self.switch_session(sessions[0].session_id)
+
         return discovered
 
     def refresh_message_count(self, session_id: str) -> int:
@@ -211,6 +209,10 @@ class SessionManager:
         count = self._history_mgr.message_count(session_id)
         self._sessions[session_id].message_count = count
         return count
+
+    def get_session_summary(self, session_id: str) -> dict[str, object]:
+        """获取指定会话的历史摘要。"""
+        return self._history_mgr.get_session_summary(session_id)
 
     @property
     def history_manager(self) -> ChatHistoryManager:

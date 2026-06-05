@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime
-from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from src.ai.cli.tabs import BaseTab
+from src.ai.cli.tabs import BaseTab, TabLayoutSpec
 from src.ai.cli.utils.image_renderer import ImageRenderer
 from src.ai.cli.utils.rich_components import create_styled_table
 from src.ai.cli.utils.theme import Icons
@@ -26,66 +25,35 @@ class ImageTab(BaseTab):
     """
 
     name = "图像"
-    hotkey = "6"
+    hotkey = "8"
+    layout = TabLayoutSpec(mode="media")
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, thread_pool: Any, image_service: Any) -> None:
+        super().__init__(thread_pool)
+        self._image_service = image_service
         self._cache_ttl = 3.0
         self._images: list[dict[str, object]] = []
         self._renderer = ImageRenderer()
 
+    def register_commands(self, router: Any, tab_index: int) -> None:
+        router.register(tab_index, "p", self._preview_selected)
+        router.register(tab_index, "o", self._open_selected)
+        router.register(tab_index, "d", self._request_delete_selected)
+
     def _load_data(self) -> None:
-        """扫描 output/images 目录，按修改时间排序。"""
+        """通过共享 ImageService 加载图像列表。"""
         try:
-            config = self._get_output_dir()
-            output_dir = Path(config)
-            if not output_dir.exists():
-                self._images = []
-                return
-
-            images: list[dict[str, object]] = []
-            for f in output_dir.iterdir():
-                if f.is_file() and f.suffix.lower() in (
-                    ".png",
-                    ".jpg",
-                    ".jpeg",
-                    ".webp",
-                    ".gif",
-                ):
-                    stat = f.stat()
-                    images.append(
-                        {
-                            "path": str(f),
-                            "name": f.name,
-                            "format": f.suffix.lstrip(".").upper(),
-                            "size_bytes": stat.st_size,
-                            "created_at": datetime.fromtimestamp(stat.st_mtime),
-                        }
-                    )
-
-            # 按修改时间倒序
-            images.sort(key=lambda x: x["created_at"], reverse=True)  # type: ignore[return-value, arg-type]
+            images = self._image_service.list_images()
 
             # 搜索过滤
             query = self._search_query.lower()
             if query:
-                images = [img for img in images if query in str(img["name"]).lower()]
+                images = [img for img in images if query in str(img.get("filename", "")).lower()]
 
             self._images = images
         except Exception as e:
             logger.debug("加载图像列表失败: %s", e)
             self._images = []
-
-    @staticmethod
-    def _get_output_dir() -> str:
-        """获取图像输出目录。"""
-        try:
-            from src.ai.config.model_settings import ImageModelConfig
-
-            config = ImageModelConfig()
-            return config.output_dir
-        except Exception:
-            return "output/images"
 
     def render_content(self, console: Console, width: int, height: int) -> Panel:
         self._ensure_cache()
@@ -128,7 +96,7 @@ class ImageTab(BaseTab):
             img = self._images[i]
             pointer = Icons.POINTER if i == self._selected_index else " "
             fmt = str(img["format"])
-            name = str(img["name"])
+            name = str(img.get("filename", img.get("name", "")))
             size = _format_size(int(img["size_bytes"]))  # type: ignore[call-overload]
             created = img["created_at"].strftime("%Y-%m-%d %H:%M")  # type: ignore[attr-defined]
 
@@ -180,9 +148,9 @@ class ImageTab(BaseTab):
             return False
 
         img = self._images[self._selected_index]
-        path = Path(str(img["path"]))
+        filename = str(img.get("filename", ""))
         try:
-            path.unlink()
+            self._image_service.delete_image(filename)
             self._invalidate_cache()
             return True
         except Exception as e:
@@ -195,7 +163,15 @@ class ImageTab(BaseTab):
             return False
 
         img = self._images[self._selected_index]
-        path = str(img["path"])
+        # 优先使用 path，兼容新格式
+        path = str(img.get("path", ""))
+        if not path:
+            filename = str(img.get("filename", ""))
+            try:
+                path = str(self._image_service.get_image_path(filename))
+            except Exception:
+                return False
+
         try:
             import platform
 
@@ -223,7 +199,8 @@ class ImageTab(BaseTab):
         else:
             img = self._images[self._selected_index]
             text.append("图像详情\n\n", style="subtitle")
-            text.append(f"  文件名: {img['name']}\n", style="value")
+            filename = str(img.get("filename", img.get("name", "")))
+            text.append(f"  文件名: {filename}\n", style="value")
             text.append(f"  格式: {img['format']}\n", style="value")
             text.append(
                 f"  大小: {_format_size(int(img['size_bytes']))}\n",  # type: ignore[call-overload]
@@ -234,12 +211,21 @@ class ImageTab(BaseTab):
             # ASCII 预览
             text.append("\n  预览:\n", style="subtitle")
             try:
-                preview = self._renderer.render(
-                    str(img["path"]),
-                    width=max(10, width - 8),
-                    height=min(15, height - 12),
-                )
-                text.append_text(preview)
+                img_path = str(img.get("path", ""))
+                if not img_path:
+                    try:
+                        img_path = str(self._image_service.get_image_path(filename))
+                    except Exception:
+                        img_path = ""
+                if img_path:
+                    preview = self._renderer.render(
+                        img_path,
+                        width=max(10, width - 8),
+                        height=min(15, height - 12),
+                    )
+                    text.append_text(preview)
+                else:
+                    text.append("  无法获取图像路径\n", style="muted")
             except Exception as e:
                 text.append(f"  预览失败: {e}\n", style="error")
 
@@ -247,6 +233,25 @@ class ImageTab(BaseTab):
 
     def get_footer_commands(self) -> list[tuple[str, str]]:
         return [("p", "预览"), ("d", "删除"), ("o", "打开")]
+
+    def get_tab_header_lines(self) -> list[str]:
+        return [f"图像: {len(self._images)}", "模式: 媒体资源"]
+
+    def _request_delete_selected(self) -> None:
+        if not self._images or self._selected_index >= len(self._images):
+            self._set_status("[warning]无可删除的图像[/]")
+            return
+        img = self._images[self._selected_index]
+        self._request_confirm(
+            f'确认删除图像 "{img.get("filename", "")}"？',
+            self._confirm_delete_selected,
+        )
+
+    def _confirm_delete_selected(self) -> None:
+        if self._delete_selected():
+            self._set_status("[success][OK] 已删除图像[/]")
+        else:
+            self._set_status("[error][X] 删除图像失败[/]")
 
 
 def _format_size(size_bytes: int) -> str:

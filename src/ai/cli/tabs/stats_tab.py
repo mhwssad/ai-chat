@@ -1,12 +1,13 @@
 """系统统计面板 — 模型调用、工具使用、Token 消耗等统计信息。"""
 
 import logging
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from src.ai.cli.tabs import BaseTab
+from src.ai.cli.tabs import BaseTab, TabLayoutSpec, TabSummary
 from src.ai.cli.utils.theme import Icons
 from src.ai.cli.utils.rich_components import create_styled_table
 
@@ -27,10 +28,21 @@ class StatsTab(BaseTab):
     """
 
     name = "统计"
-    hotkey = "5"
+    hotkey = "7"
+    layout = TabLayoutSpec(mode="system")
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(
+        self,
+        *,
+        thread_pool: Any,
+        session_factory: Any,
+        memory_service: Any,
+        system_service: Any,
+    ) -> None:
+        super().__init__(thread_pool)
+        self._session_factory = session_factory
+        self._memory_service = memory_service
+        self._system_service = system_service
         self._cache_ttl = 10.0
         self._current_view: int = _VIEW_OVERVIEW
 
@@ -39,18 +51,23 @@ class StatsTab(BaseTab):
         self._model_breakdown: list[dict[str, object]] = []
         self._tool_stats: list[dict[str, object]] = []
         self._memory_stats: dict[str, object] = {}
+        self._runtime_status: dict[str, object] = {}
+
+    def register_commands(self, router: Any, tab_index: int) -> None:
+        router.register(tab_index, "o", lambda: self.handle_input("o"))
+        router.register(tab_index, "m", lambda: self.handle_input("m"))
+        router.register(tab_index, "t", lambda: self.handle_input("t"))
 
     def _load_data(self) -> None:
         """加载统计数据。"""
         try:
-            from src.ai.core.container import container
             from src.ai.storage.runtime_repository import (
                 ModelCallRepository,
                 ToolCallRepository,
             )
 
             # 模型调用聚合统计
-            with container.storage_container.session_factory() as session:
+            with self._session_factory() as session:
                 model_repo = ModelCallRepository(session)
                 self._model_stats = model_repo.get_aggregated_stats()
                 self._model_breakdown = model_repo.get_stats_by_model()
@@ -62,10 +79,13 @@ class StatsTab(BaseTab):
 
             # 记忆统计
             try:
-                memory_svc = container.memory_container.memory_service()
-                self._memory_stats = memory_svc.get_stats()
+                self._memory_stats = self._memory_service.get_stats()
             except Exception:
                 self._memory_stats = {}
+            try:
+                self._runtime_status = self._system_service.get_runtime_status()
+            except Exception:
+                self._runtime_status = {}
 
         except Exception as e:
             logger.debug("加载统计数据失败: %s", e)
@@ -73,6 +93,7 @@ class StatsTab(BaseTab):
             self._model_breakdown = []
             self._tool_stats = []
             self._memory_stats = {}
+            self._runtime_status = {}
 
     def _aggregate_tool_stats(self, tool_calls: list) -> list[dict[str, object]]:
         """手动聚合工具调用统计。"""
@@ -110,9 +131,11 @@ class StatsTab(BaseTab):
         text.append(" 视图: ", style="muted")
         for i, name in enumerate(_VIEW_NAMES):
             if i == self._current_view:
-                text.append(f"[{i + 1}] {name} ", style="active")
+                key = ("O", "M", "T")[i]
+                text.append(f"[{key}] {name} ", style="active")
             else:
-                text.append(f"[{i + 1}] {name} ", style="muted")
+                key = ("O", "M", "T")[i]
+                text.append(f"[{key}] {name} ", style="muted")
         text.append("\n")
         text.append(Icons.LINE * (width - 4) + "\n", style="muted")
 
@@ -172,6 +195,21 @@ class StatsTab(BaseTab):
             text.append("\n 记忆统计\n", style="subtitle")
             text.append(
                 f"  总条目: {self._memory_stats.get('total', 0)}\n", style="value"
+            )
+
+        if self._runtime_status:
+            text.append("\n 运行状态\n", style="subtitle")
+            text.append(
+                f"  模型: {self._runtime_status.get('model_key', '未配置')}\n",
+                style="value",
+            )
+            text.append(
+                f"  工具: {self._runtime_status.get('enabled_tool_count', 0)} 启用 / {self._runtime_status.get('tool_count', 0)} 总数\n",
+                style="value",
+            )
+            text.append(
+                f"  线程池: {self._runtime_status.get('thread_pool_status', '-')}\n",
+                style="value",
             )
 
         # 模型分布表
@@ -259,20 +297,36 @@ class StatsTab(BaseTab):
             text.append(f"  {avg_dur:>8s}\n", style="muted")
 
     def handle_input(self, key: str) -> bool:
-        if key == "1":
+        if key == "o":
             self._current_view = _VIEW_OVERVIEW
             return True
-        elif key == "2":
+        elif key == "m":
             self._current_view = _VIEW_MODELS
             return True
-        elif key == "3":
+        elif key == "t":
             self._current_view = _VIEW_TOOLS
             return True
         return False
 
     def get_footer_commands(self) -> list[tuple[str, str]]:
         """返回 Stats Tab 底部命令列表。"""
-        return [("1", "概览"), ("2", "模型"), ("3", "工具")]
+        return [("o", "概览"), ("m", "模型"), ("t", "工具")]
+
+    def get_tab_header_lines(self) -> list[str]:
+        return [f"视图: {_VIEW_NAMES[self._current_view]}", "模式: 系统统计"]
+
+    def get_summary(self) -> TabSummary:
+        return TabSummary(
+            title=self.name,
+            mode=self.layout.mode,
+            status=f"视图: {_VIEW_NAMES[self._current_view]}",
+            metrics=(
+                ("模型调用", str(self._model_stats.get("total_calls", 0))),
+                ("工具统计", str(len(self._tool_stats))),
+                ("记忆", str(self._memory_stats.get("total", 0))),
+                ("运行状态", str(self._runtime_status.get("thread_pool_status", "-"))),
+            ),
+        )
 
     def get_detail_panel(self, console: Console, width: int, height: int) -> Panel:
         text = Text()

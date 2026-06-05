@@ -1,6 +1,8 @@
 """对话管理面板 — 消息历史、输入、上下文信息。"""
 
 import logging
+from collections.abc import Callable
+from typing import Any
 
 from rich.console import Console
 from rich.console import Group
@@ -8,7 +10,7 @@ from rich.panel import Panel
 from rich.text import Text
 
 from src.ai.cli.sessions import SessionManager
-from src.ai.cli.tabs import BaseTab
+from src.ai.cli.tabs import BaseTab, TabLayoutSpec, TabSummary
 from src.ai.cli.utils.theme import Icons
 from src.ai.cli.utils.formatting import truncate
 from src.ai.cli.utils.markdown_renderer import render_markdown
@@ -25,14 +27,30 @@ class ChatTab(BaseTab):
 
     name = "对话"
     hotkey = "1"
+    layout = TabLayoutSpec(
+        mode="conversation",
+        prefer_detail=True,
+        main_ratio=5,
+        detail_ratio=3,
+        min_main_width=72,
+        min_detail_width=34,
+    )
 
-    def __init__(self, session_mgr: SessionManager) -> None:
-        super().__init__()
+    def __init__(self, *, thread_pool: Any, session_mgr: SessionManager) -> None:
+        super().__init__(thread_pool)
         self._session_mgr = session_mgr
         self._messages: list[dict[str, str]] = []
         self._pending_user_message: str = ""
         self._thinking: bool = False
         self._spinner: Spinner = Spinner("AI 正在思考")
+        self._cache_ttl = 30.0  # 对话消息不频繁变化，30 秒刷新即可
+        self._message_sender: Callable[[str], None] | None = None
+        self._context_sources: list[dict[str, Any]] = []
+        self._session_summary: dict[str, Any] = {}
+
+    def set_message_sender(self, sender: Callable[[str], None]) -> None:
+        """绑定消息发送回调。"""
+        self._message_sender = sender
 
     def _load_data(self) -> None:
         """加载当前会话的消息。"""
@@ -48,9 +66,13 @@ class ChatTab(BaseTab):
                 for msg in messages
                 if msg.type not in ("system", "generic")
             ]
+            self._session_summary = self._session_mgr.get_session_summary(
+                active.session_id
+            )
         except Exception as e:
             logger.debug("加载消息失败: %s", e)
             self._messages = []
+            self._session_summary = {}
 
     def set_pending_user_message(self, message: str) -> None:
         """设置待发送的用户消息（显示在消息列表末尾）。"""
@@ -58,11 +80,27 @@ class ChatTab(BaseTab):
         self._thinking = True
         self._invalidate_cache()
 
-    def set_last_ai_response(self, response: str) -> None:
+    def set_last_ai_response(
+        self,
+        response: str,
+        *,
+        context_sources: list[dict[str, Any]] | None = None,
+    ) -> None:
         """设置 AI 回复（清除待发送状态）。"""
         self._pending_user_message = ""
         self._thinking = False
+        self._context_sources = context_sources or []
         self._invalidate_cache()
+
+    def register_commands(self, router: Any, tab_index: int) -> None:
+        """注册 Chat 面板命令。"""
+        router.register(
+            tab_index,
+            "n",
+            lambda: self._request_input("新会话名: ", self._create_session),
+        )
+        router.register(tab_index, "c", self._request_send_message)
+        router.register(tab_index, "d", self._request_delete_selected)
 
     def render_content(self, console: Console, width: int, height: int) -> Panel:
         # 活跃会话标题
@@ -195,6 +233,27 @@ class ChatTab(BaseTab):
         """返回 Chat Tab 底部命令列表。"""
         return [("n", "新建会话"), ("c", "发送消息"), ("d", "删除")]
 
+    def get_tab_header_lines(self) -> list[str]:
+        """返回主工作区头部摘要。"""
+        active = self._session_mgr.active_session
+        if active is None:
+            return ["无活跃会话"]
+        return [f"会话: {active.name}", f"消息: {active.message_count}"]
+
+    def get_summary(self) -> TabSummary:
+        active = self._session_mgr.active_session
+        if active is None:
+            return TabSummary(title=self.name, mode=self.layout.mode, status="无活跃会话")
+        return TabSummary(
+            title=self.name,
+            mode=self.layout.mode,
+            status=f"会话: {active.name}",
+            metrics=(
+                ("消息", str(active.message_count)),
+                ("上下文来源", str(len(self._context_sources))),
+            ),
+        )
+
     def get_detail_panel(self, console: Console, width: int, height: int) -> Panel:
         sessions = self._session_mgr.list_sessions()
         active = self._session_mgr.active_session
@@ -230,4 +289,94 @@ class ChatTab(BaseTab):
             text.append(f"  助手: {ai_count}\n", style="value")
             text.append(f"  工具: {tool_count}\n", style="value")
 
+            text.append("\n")
+            text.append("历史状态\n", style="subtitle")
+            role_counts = self._session_summary.get("role_counts", {})
+            if isinstance(role_counts, dict) and role_counts:
+                for role, count in role_counts.items():
+                    text.append(f"  {role}: {count}\n", style="value")
+            else:
+                text.append("  暂无历史摘要\n", style="muted")
+            backup = self._session_summary.get("history_file_enabled")
+            if backup is not None:
+                text.append(
+                    f"  文件备份: {'开启' if backup else '关闭'}\n",
+                    style="value" if backup else "warning",
+                )
+
+            recent = self._session_summary.get("recent_messages", [])
+            if isinstance(recent, list) and recent:
+                text.append("\n最近消息\n", style="subtitle")
+                for item in recent[-5:]:
+                    if not isinstance(item, dict):
+                        continue
+                    role = str(item.get("role", "-"))
+                    content = str(item.get("content", ""))
+                    text.append(
+                        f"  {role}: {truncate(content, max_len=max(16, width - 10))}\n",
+                        style="muted",
+                    )
+
+            text.append("\n")
+            text.append("上下文来源\n", style="subtitle")
+            if not self._context_sources:
+                text.append("  暂无来源摘要\n", style="muted")
+            else:
+                for item in self._context_sources[:8]:
+                    source = item.get("source", "-")
+                    count = item.get("item_count", 0)
+                    tokens = item.get("token_count", 0)
+                    truncated = " / 已裁剪" if item.get("truncated") else ""
+                    text.append(
+                        f"  {source}: {count} 项 / {tokens} tokens{truncated}\n",
+                        style="value",
+                    )
+                    summary = item.get("summary") or ""
+                    if summary:
+                        text.append(f"    {truncate(summary, max_len=max(16, width - 8))}\n", style="muted")
+
         return Panel(text, title="[title]会话[/]", border_style="border")
+
+    def _create_session(self, name: str) -> None:
+        try:
+            self._session_mgr.create_session(session_id=name, name=name)
+            self._set_status(f"[success][OK] 已创建会话: {name}[/]")
+            self._invalidate_cache()
+        except ValueError as exc:
+            self._set_status(f"[error][X] {exc}[/]")
+
+    def _request_send_message(self) -> None:
+        if self._session_mgr.active_session is None:
+            self._set_status("[warning]请先创建或选择会话[/]")
+            return
+        if self._thinking:
+            self._set_status("[warning]正在等待回复...[/]")
+            return
+        self._request_input("消息: ", self._submit_message)
+
+    def _submit_message(self, message: str) -> None:
+        if not message.strip():
+            return
+        if self._message_sender is not None:
+            self._message_sender(message)
+
+    def _request_delete_selected(self) -> None:
+        sessions = self._session_mgr.list_sessions()
+        if not sessions or self._selected_index >= len(sessions):
+            self._set_status("[warning]无可删除的会话[/]")
+            return
+        target = sessions[self._selected_index]
+        self._request_confirm(
+            f'确认删除会话 "{target.name}"？',
+            lambda: self._confirm_delete(target.session_id),
+        )
+
+    def _confirm_delete(self, session_id: str) -> None:
+        try:
+            self._session_mgr.delete_session(session_id)
+            self._selected_index = max(0, self._selected_index - 1)
+            self._invalidate_cache()
+            self._set_status(f"[success][OK] 已删除会话: {session_id}[/]")
+        except Exception as exc:
+            logger.debug("删除会话失败: %s", exc)
+            self._set_status("[error][X] 删除会话失败[/]")

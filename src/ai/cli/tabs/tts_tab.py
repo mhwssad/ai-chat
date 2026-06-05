@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from pathlib import Path
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from src.ai.cli.tabs import BaseTab
+from src.ai.cli.tabs import BaseTab, TabLayoutSpec
 from src.ai.cli.utils.audio_player import AudioPlayer
 from src.ai.cli.utils.rich_components import create_styled_table
 from src.ai.cli.utils.theme import Icons
@@ -25,67 +24,35 @@ class TTSTab(BaseTab):
     """
 
     name = "语音"
-    hotkey = "7"
+    hotkey = "9"
+    layout = TabLayoutSpec(mode="media")
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, thread_pool: Any, tts_service: Any) -> None:
+        super().__init__(thread_pool)
+        self._tts_service = tts_service
         self._cache_ttl = 3.0
         self._audios: list[dict[str, object]] = []
         self._player = AudioPlayer()
 
+    def register_commands(self, router: Any, tab_index: int) -> None:
+        router.register(tab_index, "p", self._play_selected)
+        router.register(tab_index, "s", self._stop_playback)
+        router.register(tab_index, "d", self._request_delete_selected)
+
     def _load_data(self) -> None:
-        """扫描 output/audio 目录，按修改时间排序。"""
+        """通过共享 TTSService 加载音频列表。"""
         try:
-            config = self._get_output_dir()
-            output_dir = Path(config)
-            if not output_dir.exists():
-                self._audios = []
-                return
-
-            audios: list[dict[str, object]] = []
-            for f in output_dir.iterdir():
-                if f.is_file() and f.suffix.lower() in (
-                    ".mp3",
-                    ".wav",
-                    ".opus",
-                    ".aac",
-                    ".flac",
-                    ".ogg",
-                ):
-                    stat = f.stat()
-                    audios.append(
-                        {
-                            "path": str(f),
-                            "name": f.name,
-                            "format": f.suffix.lstrip(".").upper(),
-                            "size_bytes": stat.st_size,
-                            "created_at": datetime.fromtimestamp(stat.st_mtime),
-                        }
-                    )
-
-            # 按修改时间倒序
-            audios.sort(key=lambda x: x["created_at"], reverse=True)  # type: ignore[return-value, arg-type]
+            audios = self._tts_service.list_audio()
 
             # 搜索过滤
             query = self._search_query.lower()
             if query:
-                audios = [a for a in audios if query in str(a["name"]).lower()]
+                audios = [a for a in audios if query in str(a.get("filename", "")).lower()]
 
             self._audios = audios
         except Exception as e:
             logger.debug("加载音频列表失败: %s", e)
             self._audios = []
-
-    @staticmethod
-    def _get_output_dir() -> str:
-        """获取音频输出目录。"""
-        try:
-            from src.ai.config.model_settings import TTSModelConfig
-
-            config = TTSModelConfig()
-            return config.output_dir
-        except Exception:
-            return "output/audio"
 
     def render_content(self, console: Console, width: int, height: int) -> Panel:
         self._ensure_cache()
@@ -134,7 +101,7 @@ class TTSTab(BaseTab):
             play_icon = Icons.RUNNING if is_currently_playing else " "
 
             fmt = str(audio["format"])
-            name = str(audio["name"])
+            name = str(audio.get("filename", audio.get("name", "")))
             size = _format_size(int(audio["size_bytes"]))  # type: ignore[call-overload]
             created = audio["created_at"].strftime("%Y-%m-%d %H:%M")  # type: ignore[attr-defined]
 
@@ -180,7 +147,16 @@ class TTSTab(BaseTab):
             return False
 
         audio = self._audios[self._selected_index]
-        return self._player.play(str(audio["path"]))
+        # 优先使用 path，兼容新格式
+        path = str(audio.get("path", ""))
+        if not path:
+            filename = str(audio.get("filename", ""))
+            try:
+                filepath, _ = self._tts_service.get_audio_path(filename)
+                path = str(filepath)
+            except Exception:
+                return False
+        return self._player.play(path)
 
     def _stop_playback(self) -> bool:
         """停止当前播放。"""
@@ -195,13 +171,13 @@ class TTSTab(BaseTab):
             return False
 
         audio = self._audios[self._selected_index]
-        # 如果正在播放该文件，先停止
+        # 如果正在播放，先停止
         if self._player.is_playing:
             self._player.stop()
 
-        path = Path(str(audio["path"]))
+        filename = str(audio.get("filename", ""))
         try:
-            path.unlink()
+            self._tts_service.delete_audio(filename)
             self._invalidate_cache()
             return True
         except Exception as e:
@@ -216,7 +192,8 @@ class TTSTab(BaseTab):
         else:
             audio = self._audios[self._selected_index]
             text.append("音频详情\n\n", style="subtitle")
-            text.append(f"  文件名: {audio['name']}\n", style="value")
+            filename = str(audio.get("filename", audio.get("name", "")))
+            text.append(f"  文件名: {filename}\n", style="value")
             text.append(f"  格式: {audio['format']}\n", style="value")
             text.append(
                 f"  大小: {_format_size(int(audio['size_bytes']))}\n",  # type: ignore[call-overload]
@@ -238,6 +215,26 @@ class TTSTab(BaseTab):
 
     def get_footer_commands(self) -> list[tuple[str, str]]:
         return [("p", "播放"), ("s", "停止"), ("d", "删除")]
+
+    def get_tab_header_lines(self) -> list[str]:
+        state = "播放中" if self._player.is_playing else "空闲"
+        return [f"音频: {len(self._audios)}", f"播放: {state}"]
+
+    def _request_delete_selected(self) -> None:
+        if not self._audios or self._selected_index >= len(self._audios):
+            self._set_status("[warning]无可删除的音频[/]")
+            return
+        audio = self._audios[self._selected_index]
+        self._request_confirm(
+            f'确认删除音频 "{audio.get("filename", "")}"？',
+            self._confirm_delete_selected,
+        )
+
+    def _confirm_delete_selected(self) -> None:
+        if self._delete_selected():
+            self._set_status("[success][OK] 已删除音频[/]")
+        else:
+            self._set_status("[error][X] 删除音频失败[/]")
 
 
 def _format_size(size_bytes: int) -> str:

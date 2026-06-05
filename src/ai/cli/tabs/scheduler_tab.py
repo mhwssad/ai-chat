@@ -1,13 +1,14 @@
 """定时任务面板 — 任务列表、状态切换、日志查看。"""
 
 import logging
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 from rich.console import Group
 
-from src.ai.cli.tabs import BaseTab
+from src.ai.cli.tabs import BaseTab, TabLayoutSpec
 from src.ai.cli.utils.theme import Icons
 from src.ai.cli.utils.formatting import (
     truncate,
@@ -27,22 +28,27 @@ class SchedulerTab(BaseTab):
     """
 
     name = "任务"
-    hotkey = "4"
+    hotkey = "5"
+    layout = TabLayoutSpec(mode="resource")
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, thread_pool: Any, scheduler_service: Any) -> None:
+        super().__init__(thread_pool)
+        self._scheduler_service = scheduler_service
         self._cache_ttl = 3.0
         self._tasks: list[dict[str, object]] = []
         self._show_logs: bool = False
         self._selected_log_task: str | None = None
 
+    def register_commands(self, router: Any, tab_index: int) -> None:
+        router.register(tab_index, "p", self._toggle_pause)
+        router.register(tab_index, "d", self._request_delete_selected)
+        router.register(tab_index, "l", self._show_logs_command)
+        router.register(tab_index, "s", self._toggle_scheduler)
+
     def _load_data(self) -> None:
         """加载任务列表。"""
         try:
-            from src.ai.core.container import container
-
-            svc = container.scheduler_container.scheduler_service()
-            tasks = svc.list_tasks(limit=100)
+            tasks = self._scheduler_service.list_tasks(limit=100)
             self._tasks = []
             query = self._search_query.lower()
             for task in tasks:
@@ -81,10 +87,7 @@ class SchedulerTab(BaseTab):
         # 调度器状态行
         status_text = Text()
         try:
-            from src.ai.core.container import container
-
-            svc = container.scheduler_container.scheduler_service()
-            running = svc.is_running
+            running = self._scheduler_service.is_running
             status_icon = Icons.RUNNING if running else Icons.INACTIVE
             status_text.append(
                 f"调度器: {status_icon} {'运行中' if running else '已停止'}\n",
@@ -186,10 +189,9 @@ class SchedulerTab(BaseTab):
         text.append(Icons.LINE * (width - 4) + "\n", style="muted")
 
         try:
-            from src.ai.core.container import container
-
-            svc = container.scheduler_container.scheduler_service()
-            logs = svc.get_task_logs(str(self._selected_log_task), limit=20)
+            logs = self._scheduler_service.get_task_logs(
+                str(self._selected_log_task), limit=20
+            )
 
             if not logs:
                 text.append("  暂无执行日志\n", style="muted")
@@ -259,7 +261,7 @@ class SchedulerTab(BaseTab):
         return False
 
     def _toggle_pause(self) -> bool:
-        """暂停/恢复选中的任务。"""
+        """暂停/恢复选中的任务（后台线程执行）。"""
         if not self._tasks or self._selected_index >= len(self._tasks):
             return False
 
@@ -267,37 +269,38 @@ class SchedulerTab(BaseTab):
         task_id = str(task["id"])
         status = str(task["status"])
 
-        try:
-            from src.ai.core.container import container
+        def _do_toggle() -> None:
+            try:
+                if status == "active":
+                    self._scheduler_service.pause_task(task_id)
+                elif status == "paused":
+                    self._scheduler_service.resume_task(task_id)
+                self._invalidate_cache()
+            except Exception as e:
+                logger.debug("暂停/恢复任务失败: %s", e)
 
-            svc = container.scheduler_container.scheduler_service()
-            if status == "active":
-                svc.pause_task(task_id)
-            elif status == "paused":
-                svc.resume_task(task_id)
-            self._invalidate_cache()
-            return True
-        except Exception as e:
-            logger.debug("暂停/恢复任务失败: %s", e)
-            return False
+        self._thread_pool.run_bg(_do_toggle)
+        self._set_status("[info]任务状态切换已提交[/]")
+        return True
 
     def _delete_selected(self) -> bool:
-        """删除选中的任务。"""
+        """删除选中的任务（后台线程执行）。"""
         if not self._tasks or self._selected_index >= len(self._tasks):
             return False
 
         task = self._tasks[self._selected_index]
-        try:
-            from src.ai.core.container import container
+        task_id = str(task["id"])
 
-            svc = container.scheduler_container.scheduler_service()
-            svc.delete_task(str(task["id"]))
-            self._selected_index = max(0, self._selected_index - 1)
-            self._invalidate_cache()
-            return True
-        except Exception as e:
-            logger.debug("删除任务失败: %s", e)
-            return False
+        def _do_delete() -> None:
+            try:
+                self._scheduler_service.delete_task(task_id)
+                self._selected_index = max(0, self._selected_index - 1)
+                self._invalidate_cache()
+            except Exception as e:
+                logger.debug("删除任务失败: %s", e)
+
+        self._thread_pool.run_bg(_do_delete)
+        return True
 
     def _show_selected_logs(self) -> None:
         """显示选中任务的日志。"""
@@ -311,27 +314,23 @@ class SchedulerTab(BaseTab):
     def _toggle_scheduler(self) -> bool:
         """切换调度器运行状态（后台线程执行）。"""
         try:
-            from src.ai.core.container import container
-
-            svc = container.scheduler_container.scheduler_service()
-            running = svc.is_running
-
-            import threading
+            running = self._scheduler_service.is_running
 
             def _run() -> None:
                 try:
                     import asyncio
 
                     if running:
-                        asyncio.run(svc.stop())
+                        asyncio.run(self._scheduler_service.stop())
                     else:
-                        asyncio.run(svc.start())
+                        asyncio.run(self._scheduler_service.start())
                 except Exception as e:
                     logger.debug("切换调度器状态失败: %s", e)
                 finally:
                     self._invalidate_cache()
 
-            threading.Thread(target=_run, daemon=True).start()
+            self._thread_pool.run_bg(_run)
+            self._set_status("[info]调度器状态切换已提交[/]")
             return True
         except Exception as e:
             logger.debug("切换调度器状态失败: %s", e)
@@ -340,6 +339,12 @@ class SchedulerTab(BaseTab):
     def get_footer_commands(self) -> list[tuple[str, str]]:
         """返回 Scheduler Tab 底部命令列表。"""
         return [("p", "暂停/恢复"), ("d", "删除"), ("l", "日志"), ("s", "调度器")]
+
+    def get_tab_header_lines(self) -> list[str]:
+        if self._show_logs and self._selected_log_task:
+            return [f"日志任务: {self._selected_log_task}", "模式: 日志"]
+        running = "运行中" if self._scheduler_service.is_running else "已停止"
+        return [f"任务: {len(self._tasks)}", f"调度器: {running}"]
 
     def get_detail_panel(self, console: Console, width: int, height: int) -> Panel:
         text = Text()
@@ -384,3 +389,27 @@ class SchedulerTab(BaseTab):
             )
 
         return Panel(text, title="[title]任务详情[/]", border_style="border")
+
+    def _request_delete_selected(self) -> None:
+        if not self._tasks or self._selected_index >= len(self._tasks):
+            self._set_status("[warning]无可删除的任务[/]")
+            return
+        task = self._tasks[self._selected_index]
+        self._request_confirm(
+            f'确认删除任务 "{task["name"]}"？',
+            self._confirm_delete_selected,
+        )
+
+    def _confirm_delete_selected(self) -> None:
+        if self._delete_selected():
+            self._set_status("[success][OK] 已删除任务[/]")
+        else:
+            self._set_status("[error][X] 删除任务失败[/]")
+
+    def _show_logs_command(self) -> bool:
+        self._show_selected_logs()
+        if self._show_logs:
+            self._set_status("[info]已切换到日志视图[/]")
+            return True
+        self._set_status("[warning]无可查看日志的任务[/]")
+        return False
