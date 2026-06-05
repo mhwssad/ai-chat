@@ -46,6 +46,175 @@ CREATE INDEX IF NOT EXISTS idx_prompt_versions_prompt
     ON prompt_versions (prompt_id, version);
 
 -- ============================================================
+-- providers: 模型供应商配置表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS providers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider_key TEXT NOT NULL UNIQUE,
+    display_name TEXT,
+    provider_type TEXT NOT NULL,
+    api_base TEXT,
+    api_key_ciphertext TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))
+);
+
+CREATE INDEX IF NOT EXISTS idx_providers_enabled
+    ON providers (enabled);
+
+CREATE INDEX IF NOT EXISTS idx_providers_type
+    ON providers (provider_type);
+
+-- ============================================================
+-- models: 模型配置表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS models (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_key TEXT NOT NULL UNIQUE,
+    provider_id INTEGER NOT NULL,
+    model_type TEXT NOT NULL CHECK (model_type IN ('chat', 'embedding', 'image', 'tts')),
+    display_name TEXT,
+    model_name TEXT NOT NULL,
+    context_window INTEGER CHECK (context_window IS NULL OR context_window > 0),
+    capability_summary TEXT,
+    is_default INTEGER NOT NULL DEFAULT 0 CHECK (is_default IN (0, 1)),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata)),
+    FOREIGN KEY (provider_id) REFERENCES providers (id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_models_provider
+    ON models (provider_id);
+
+CREATE INDEX IF NOT EXISTS idx_models_type_enabled
+    ON models (model_type, enabled);
+
+CREATE INDEX IF NOT EXISTS idx_models_default
+    ON models (model_type, is_default);
+
+-- ============================================================
+-- app_settings: 应用设置表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS app_settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    setting_key TEXT NOT NULL UNIQUE,
+    display_name TEXT,
+    setting_value TEXT NOT NULL DEFAULT '',
+    value_type TEXT NOT NULL DEFAULT 'string',
+    encrypted INTEGER NOT NULL DEFAULT 0 CHECK (encrypted IN (0, 1)),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_settings_enabled
+    ON app_settings (enabled);
+
+-- ============================================================
+-- mcp_servers: MCP 服务端配置表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS mcp_servers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    server_key TEXT NOT NULL UNIQUE,
+    display_name TEXT,
+    transport TEXT NOT NULL CHECK (transport IN ('stdio', 'http', 'sse', 'websocket')),
+    command TEXT,
+    args_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(args_json)),
+    url TEXT,
+    env_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(env_json)),
+    permission_policy_json TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(permission_policy_json)),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled
+    ON mcp_servers (enabled);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_transport
+    ON mcp_servers (transport);
+
+-- ============================================================
+-- skills: 技能配置表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS skills (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    skill_key TEXT NOT NULL UNIQUE,
+    display_name TEXT,
+    description TEXT,
+    source_path TEXT,
+    user_invocable INTEGER NOT NULL DEFAULT 1 CHECK (user_invocable IN (0, 1)),
+    disable_model_invocation INTEGER NOT NULL DEFAULT 0 CHECK (disable_model_invocation IN (0, 1)),
+    allowed_tools_json TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(allowed_tools_json)),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))
+);
+
+CREATE INDEX IF NOT EXISTS idx_skills_enabled
+    ON skills (enabled);
+
+-- ============================================================
+-- security_policies: 安全策略表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS security_policies (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    policy_key TEXT NOT NULL UNIQUE,
+    display_name TEXT,
+    description TEXT,
+    policy_type TEXT NOT NULL,
+    policy_value TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(policy_value)),
+    enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))
+);
+
+CREATE INDEX IF NOT EXISTS idx_security_policies_enabled
+    ON security_policies (enabled);
+
+CREATE INDEX IF NOT EXISTS idx_security_policies_type
+    ON security_policies (policy_type);
+
+-- ============================================================
+-- chat_sessions: 会话摘要表
+-- 会话消息主内容当前由 chat_message_store 承载
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_sessions (
+    session_id TEXT PRIMARY KEY,
+    title TEXT,
+    current_model TEXT,
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'archived', 'deleted', 'error')),
+    message_count INTEGER NOT NULL DEFAULT 0 CHECK (message_count >= 0),
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    last_active_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_sessions_status_active
+    ON chat_sessions (status, last_active_at DESC);
+
+-- ============================================================
+-- chat_message_store: LangChain SQLChatMessageHistory 兼容表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS chat_message_store (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    message TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_message_store_session_id
+    ON chat_message_store (session_id, id);
+
+-- ============================================================
 -- model_calls: 模型调用记录表
 -- 记录所有 LLM API 调用，用于计费和调试
 -- ============================================================
@@ -88,12 +257,12 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     id INTEGER PRIMARY KEY AUTOINCREMENT,          -- 自增主键
     session_id TEXT,                               -- 关联的会话 ID (可为空，仅用于分组)
     tool_name TEXT NOT NULL,                      -- 工具名称
-    source_type TEXT NOT NULL CHECK (source_type IN ('builtin', 'mcp')),  -- 来源类型：内置/MCP
+    source_type TEXT NOT NULL CHECK (source_type IN ('builtin', 'mcp', 'skill')),  -- 来源类型：内置/MCP/Skill
     source_id TEXT,                                -- 来源 ID，如 MCP 服务器名称
     input_summary TEXT,                            -- 输入摘要 (脱敏后的参数概要)
     output_summary TEXT,                           -- 输出摘要 (结果概要)
     duration_ms INTEGER CHECK (duration_ms IS NULL OR duration_ms >= 0),  -- 执行耗时(毫秒)
-    status TEXT NOT NULL CHECK (status IN ('pending', 'success', 'failed', 'timeout', 'cancelled')),  -- 执行状态
+    status TEXT NOT NULL CHECK (status IN ('pending', 'success', 'failed', 'timeout', 'cancelled', 'denied')),  -- 执行状态
     error_type TEXT,                               -- 错误类型
     error_message TEXT,                            -- 错误信息
     created_at TEXT NOT NULL DEFAULT (datetime('now')),  -- 创建时间
@@ -137,6 +306,36 @@ CREATE INDEX IF NOT EXISTS idx_memory_entries_scope_status
 
 CREATE INDEX IF NOT EXISTS idx_memory_entries_source
     ON memory_entries (source_type, source_id);  -- 按来源索引，用于查找来源
+
+-- ============================================================
+-- rag_documents: RAG 文档索引元信息表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS rag_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    scope TEXT NOT NULL DEFAULT 'global'
+        CHECK (scope IN ('global', 'session')),
+    collection_name TEXT NOT NULL,
+    source_path TEXT NOT NULL,
+    title TEXT,
+    mime_type TEXT,
+    content_hash TEXT,
+    chunk_count INTEGER NOT NULL DEFAULT 0 CHECK (chunk_count >= 0),
+    status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active', 'deleted', 'disabled')),
+    indexed_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rag_documents_source_scope
+    ON rag_documents (COALESCE(session_id, ''), source_path);
+
+CREATE INDEX IF NOT EXISTS idx_rag_documents_session_status
+    ON rag_documents (session_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_rag_documents_collection
+    ON rag_documents (collection_name);
 
 -- ============================================================
 -- audit_logs: 审计日志表
