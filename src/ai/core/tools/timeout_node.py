@@ -9,6 +9,8 @@ from typing import Any
 from langchain_core.messages import AIMessage, ToolMessage
 from langgraph.prebuilt import ToolNode
 
+from src.ai.exception.tool_exception import ToolConfirmationRequiredError
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,10 +33,12 @@ class TimeoutToolNode(ToolNode):
         *,
         default_timeout: float = 120.0,
         handle_tool_errors: bool = True,
+        tool_manager: Any | None = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(tools, handle_tool_errors=handle_tool_errors, **kwargs)
         self._default_timeout = default_timeout
+        self._tool_manager = tool_manager
 
     async def _arun_one(  # type: ignore[override]
         self,
@@ -54,18 +58,34 @@ class TimeoutToolNode(ToolNode):
         """
         name = call.get("name", "")
         call_id = call.get("id", "")
+        arguments = call.get("args", {}) or {}
 
         try:
-            # 调用父类的单工具执行方法，带超时
-            result = await asyncio.wait_for(
+            if self._tool_manager is not None:
+                result = await self._tool_manager.execute(
+                    name,
+                    arguments,
+                    config=config,
+                    timeout=self._default_timeout,
+                )
+                content = result if isinstance(result, str) else str(result)
+                return ToolMessage(content=content, tool_call_id=call_id, name=name)
+
+            return await asyncio.wait_for(
                 super()._arun_one(call, input_type, config),  # type: ignore[arg-type]
                 timeout=self._default_timeout,
-            )
-            return result  # type: ignore[return-value]
+            )  # type: ignore[return-value]
         except TimeoutError:
             logger.warning("工具 %s 执行超时 (%.1fs)", name, self._default_timeout)
             return ToolMessage(
                 content=f"Error: 工具 {name} 执行超时 ({self._default_timeout}s)",
+                tool_call_id=call_id,
+                name=name,
+            )
+        except ToolConfirmationRequiredError as exc:
+            logger.info("工具 %s 等待用户确认", name)
+            return ToolMessage(
+                content=f"ConfirmationRequired: {exc}",
                 tool_call_id=call_id,
                 name=name,
             )
@@ -110,8 +130,8 @@ class TimeoutToolNode(ToolNode):
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # 处理异常结果
         messages: list[ToolMessage] = []
+        user_approval_pending = False
         for i, result in enumerate(results):
             if isinstance(result, Exception):
                 call = message.tool_calls[i]
@@ -126,6 +146,13 @@ class TimeoutToolNode(ToolNode):
                     )
                 )
             else:
+                if isinstance(result.content, str) and result.content.startswith(
+                    "ConfirmationRequired:"
+                ):
+                    user_approval_pending = True
                 messages.append(result)  # type: ignore[arg-type]
 
-        return {"messages": messages}
+        return {
+            "messages": messages,
+            "user_approval_pending": user_approval_pending,
+        }

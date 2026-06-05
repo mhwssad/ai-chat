@@ -1,12 +1,12 @@
 """Git Worktree 管理工具。"""
 
-import asyncio
 import json
 import subprocess
 
 from langchain_core.tools import tool
 
 from src.ai.core.tools.register import register_tool
+from src.ai.utils.thread_pool import get_thread_pool
 
 _current_worktree: str | None = None
 
@@ -37,7 +37,7 @@ async def enter_worktree(name: str = "", branch: str = "") -> str:
     def _run() -> subprocess.CompletedProcess[str]:
         return subprocess.run(cmd, capture_output=True, text=True, shell=True)
 
-    result = await asyncio.to_thread(_run)
+    result = await get_thread_pool().run_io(_run)
     if result.returncode != 0:
         return f"创建 worktree 失败:\n{result.stderr}"
 
@@ -74,7 +74,7 @@ async def exit_worktree(action: str = "keep") -> str:
         def _run() -> subprocess.CompletedProcess[str]:
             return subprocess.run(cmd, capture_output=True, text=True, shell=True)
 
-        result = await asyncio.to_thread(_run)
+        result = await get_thread_pool().run_io(_run)
         if result.returncode != 0:
             return f"删除 worktree 失败:\n{result.stderr}"
         _current_worktree = None

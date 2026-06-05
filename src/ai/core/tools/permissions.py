@@ -6,8 +6,9 @@ import hashlib
 import json
 import logging
 import time
+from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Awaitable, Callable
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 
 if TYPE_CHECKING:
     from src.ai.core.tools.registry import ToolRegistry
@@ -27,6 +28,22 @@ class PermissionLevel(Enum):
     AUTO = "auto"  # 自动放行
     CONFIRM = "confirm"  # 需要用户确认
     DENY = "deny"  # 拒绝执行
+
+
+PermissionDecisionValue = Literal["allow", "ask", "deny"]
+
+
+@dataclass(frozen=True)
+class PermissionDecision:
+    """工具权限决策结果。"""
+
+    decision: PermissionDecisionValue
+    tool_name: str
+    permissions: list[str] = field(default_factory=list)
+    reason: str = ""
+    confirmed: bool | None = None
+    cached: bool = False
+    context: dict[str, Any] = field(default_factory=dict)
 
 
 # 默认权限策略：权限标签 → 权限级别
@@ -104,26 +121,46 @@ class PermissionChecker:
         Raises:
             ToolPermissionError: 当权限被拒绝时。
         """
-        from src.ai.exception.tool_exception import ToolPermissionError
+        decision = await self.decide(tool_name, arguments)
+        if decision.decision == "allow":
+            return True
+        self._raise_for_decision(decision)
+        return False
 
+    async def decide(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> PermissionDecision:
+        """返回结构化权限决策结果。"""
         meta = self._registry.get_meta(tool_name)
         permissions = meta.permissions
 
         # 无权限标签的工具自动放行
         if not permissions:
-            return True
+            return PermissionDecision(
+                decision="allow",
+                tool_name=tool_name,
+                permissions=[],
+                reason="no_permissions_required",
+            )
 
         # 确定最高权限级别
         level = self._resolve_level(permissions)
 
         if level == PermissionLevel.AUTO:
-            return True
+            return PermissionDecision(
+                decision="allow",
+                tool_name=tool_name,
+                permissions=permissions,
+                reason="policy_auto",
+            )
 
         if level == PermissionLevel.DENY:
             logger.warning("工具 %s 被权限策略拒绝", tool_name)
-            raise ToolPermissionError(
-                "工具执行被拒绝",
-                context={"tool": tool_name, "permissions": permissions},
+            return PermissionDecision(
+                decision="deny",
+                tool_name=tool_name,
+                permissions=permissions,
+                reason="policy_deny",
             )
 
         # CONFIRM 级别：检查缓存或调用确认回调
@@ -134,7 +171,14 @@ class PermissionChecker:
         if cache_key in self._confirmed_cache:
             expire_time = self._confirmed_cache[cache_key]
             if now < expire_time:
-                return True
+                return PermissionDecision(
+                    decision="allow",
+                    tool_name=tool_name,
+                    permissions=permissions,
+                    reason="cached_confirmation",
+                    confirmed=True,
+                    cached=True,
+                )
             # 过期，删除
             del self._confirmed_cache[cache_key]
 
@@ -144,27 +188,42 @@ class PermissionChecker:
         if self._confirm_handler is None:
             # 无确认回调时默认拒绝（安全优先）
             logger.warning("工具 %s 需要确认但无 confirm_handler，默认拒绝", tool_name)
-            raise ToolPermissionError(
-                "需要用户确认但无确认回调",
-                context={"tool": tool_name, "permissions": permissions},
+            return PermissionDecision(
+                decision="ask",
+                tool_name=tool_name,
+                permissions=permissions,
+                reason="confirm_handler_missing",
+                confirmed=None,
             )
 
         try:
             confirmed = await self._confirm_handler(tool_name, arguments)
         except Exception:
             logger.exception("确认回调执行异常: tool=%s", tool_name)
-            raise ToolPermissionError(
-                "权限确认过程异常",
-                context={"tool": tool_name},
+            return PermissionDecision(
+                decision="deny",
+                tool_name=tool_name,
+                permissions=permissions,
+                reason="confirm_handler_error",
+                confirmed=False,
             )
 
         if confirmed:
             self._confirmed_cache[cache_key] = now + _CACHE_TTL_SECONDS
-            return True
+            return PermissionDecision(
+                decision="allow",
+                tool_name=tool_name,
+                permissions=permissions,
+                reason="user_confirmed",
+                confirmed=True,
+            )
 
-        raise ToolPermissionError(
-            "用户拒绝执行工具",
-            context={"tool": tool_name},
+        return PermissionDecision(
+            decision="deny",
+            tool_name=tool_name,
+            permissions=permissions,
+            reason="user_denied",
+            confirmed=False,
         )
 
     def _resolve_level(self, permissions: list[str]) -> PermissionLevel:
@@ -186,3 +245,37 @@ class PermissionChecker:
             if level == PermissionLevel.CONFIRM:
                 result = PermissionLevel.CONFIRM
         return result
+
+    @staticmethod
+    def _raise_for_decision(decision: PermissionDecision) -> None:
+        """将结构化决策转换为兼容旧调用的异常。"""
+        from src.ai.exception.tool_exception import (
+            ToolConfirmationRequiredError,
+            ToolPermissionError,
+        )
+
+        message = "工具执行被拒绝"
+        if decision.decision == "ask":
+            message = "需要用户确认但无确认回调"
+            raise ToolConfirmationRequiredError(
+                message,
+                context={
+                    "tool": decision.tool_name,
+                    "permissions": decision.permissions,
+                    "decision": decision.decision,
+                    "reason": decision.reason,
+                },
+            )
+        elif decision.reason == "user_denied":
+            message = "用户拒绝执行工具"
+        elif decision.reason == "confirm_handler_error":
+            message = "权限确认过程异常"
+        raise ToolPermissionError(
+            message,
+            context={
+                "tool": decision.tool_name,
+                "permissions": decision.permissions,
+                "decision": decision.decision,
+                "reason": decision.reason,
+            },
+        )

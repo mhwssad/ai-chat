@@ -16,6 +16,9 @@ from typing import Any, Literal
 
 MemoryType = Literal["user", "feedback", "project", "reference"]
 MEMORY_TYPES: tuple[MemoryType, ...] = ("user", "feedback", "project", "reference")
+MemoryScope = Literal["session", "user", "project", "team"]
+MemorySourceType = Literal["message", "tool_result", "manual", "auto_memory", "team_memory"]
+MemoryStatus = Literal["active", "deleted", "disabled"]
 
 _SLUG_RE = re.compile(r"[^a-zA-Z0-9一-鿿]+")
 
@@ -50,6 +53,10 @@ class MemoryEntry:
     content: str
     file_path: Path | None = None
     session_id: str | None = None
+    scope: MemoryScope = "project"
+    source_type: MemorySourceType = "manual"
+    source_id: str | None = None
+    status: MemoryStatus = "active"
     created_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -71,6 +78,9 @@ class MemoryWriteRequest:
     memory_type: MemoryType = "project"
     name: str | None = None
     description: str | None = None
+    scope: MemoryScope = "project"
+    source_type: MemorySourceType = "manual"
+    source_id: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

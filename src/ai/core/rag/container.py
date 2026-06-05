@@ -117,6 +117,8 @@ def _create_rag_service(
     prompt_service,
     meta_store=None,
     bm25_retriever=None,
+    thread_pool=None,
+    session_factory=None,
 ):
     """构建 RagService，通过 ModelService 获取 Embedding。"""
     from src.ai.config.base_config import project_root
@@ -147,6 +149,8 @@ def _create_rag_service(
         prompt_service=prompt_service,
         meta_store=meta_store,
         bm25_retriever=bm25_retriever,
+        thread_pool=thread_pool,
+        session_factory=session_factory,
     )
 
 
@@ -156,6 +160,8 @@ class RagContainer(containers.DeclarativeContainer):
     model_service: Any = providers.Dependency()
     settings: Any = providers.Dependency()
     prompt_service: Any = providers.Dependency()
+    thread_pool: Any = providers.Dependency()
+    session_factory: Any = providers.Dependency()
 
     # 子注册表（从 LoaderContainer/SplitterContainer 吸收）
     loader_settings = providers.Singleton(_create_loader_settings)
@@ -184,4 +190,6 @@ class RagContainer(containers.DeclarativeContainer):
         prompt_service=prompt_service,
         meta_store=index_meta_store,
         bm25_retriever=bm25_retriever,
+        thread_pool=thread_pool,
+        session_factory=session_factory,
     )

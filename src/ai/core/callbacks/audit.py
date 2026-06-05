@@ -7,6 +7,7 @@
 import json
 import logging
 import time
+from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
@@ -19,6 +20,46 @@ from src.ai.storage.database import get_session
 from src.ai.utils.redaction import redact_for_audit
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class AuditEvent:
+    """统一审计事件。"""
+
+    event_type: str
+    source_module: str | None = None
+    target: str | None = None
+    session_id: str | None = None
+    input_summary: str | None = None
+    output_summary: str | None = None
+    status: str = "success"
+    duration_ms: int | None = None
+    permission_decision: str | None = None
+    error_type: str | None = None
+    error_message: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+def record_audit_event(event: AuditEvent) -> None:
+    """写入统一审计日志，所有摘要字段先经过脱敏与截断。"""
+    try:
+        with get_session() as session:
+            AuditLogRepository(session).create(
+                session_id=event.session_id,
+                event_type=event.event_type,
+                source_module=event.source_module,
+                target=event.target,
+                input_summary=_safe_summary(event.input_summary),
+                output_summary=_safe_summary(event.output_summary),
+                status=event.status,
+                duration_ms=event.duration_ms,
+                permission_decision=event.permission_decision,
+                error_type=event.error_type,
+                error_message=_safe_summary(event.error_message),
+                extra=json.dumps(event.metadata or {}, ensure_ascii=False),
+            )
+    except Exception:
+        logger.debug("审计日志写入失败: %s", event.event_type, exc_info=True)
 
 
 class AuditCallbackHandler(BaseCallbackHandler):
@@ -83,7 +124,8 @@ class AuditCallbackHandler(BaseCallbackHandler):
                     duration_ms=duration_ms,
                     status="success",
                 )
-                AuditLogRepository(session).create(
+            record_audit_event(
+                AuditEvent(
                     event_type="tool_call",
                     source_module="tools",
                     target=tool_name,
@@ -91,7 +133,12 @@ class AuditCallbackHandler(BaseCallbackHandler):
                     output_summary=output_str,
                     status="success",
                     duration_ms=duration_ms,
+                    metadata={
+                        "source_type": _extract_source_type(kwargs),
+                        "source_id": _extract_source_id(kwargs),
+                    },
                 )
+            )
         except Exception:
             logger.debug("工具审计写入失败: %s", tool_name, exc_info=True)
 
@@ -123,7 +170,8 @@ class AuditCallbackHandler(BaseCallbackHandler):
                     error_type=type(error).__name__,
                     error_message=redact_for_audit(str(error)),
                 )
-                AuditLogRepository(session).create(
+            record_audit_event(
+                AuditEvent(
                     event_type="tool_call",
                     source_module="tools",
                     target=tool_name,
@@ -131,8 +179,13 @@ class AuditCallbackHandler(BaseCallbackHandler):
                     status="failed",
                     duration_ms=duration_ms,
                     error_type=type(error).__name__,
-                    error_message=redact_for_audit(str(error)),
+                    error_message=str(error),
+                    metadata={
+                        "source_type": _extract_source_type(kwargs),
+                        "source_id": _extract_source_id(kwargs),
+                    },
                 )
+            )
         except Exception:
             logger.debug("工具审计写入失败: %s", tool_name, exc_info=True)
 
@@ -158,15 +211,16 @@ class AuditCallbackHandler(BaseCallbackHandler):
                 )
 
                 try:
-                    with get_session() as session:
-                        AuditLogRepository(session).create(
+                    record_audit_event(
+                        AuditEvent(
                             event_type="model_call",
                             source_module="models",
                             target=model_name,
                             input_summary=f"消息数={len(message.content) if isinstance(message.content, list) else 1}",
-                            output_summary=redact_for_audit(str(message.content)[:200]),
+                            output_summary=str(message.content),
                             status="success",
                         )
+                    )
                 except Exception:
                     logger.debug("模型审计写入失败", exc_info=True)
 
@@ -180,11 +234,25 @@ def _json_summary(value: Any) -> str:
     return redact_for_audit(text, max_length=500)
 
 
+def _safe_summary(value: Any, *, max_length: int = 500) -> str | None:
+    """将审计字段安全脱敏；空值保持为空。"""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value
+    else:
+        try:
+            text = json.dumps(value, ensure_ascii=False, default=str)
+        except TypeError:
+            text = str(value)
+    return redact_for_audit(text, max_length=max_length)
+
+
 def _extract_source_type(kwargs: dict[str, Any]) -> str:
     """从回调 kwargs 提取 source_type。"""
     tags = kwargs.get("tags", [])
     for tag in tags:
-        if tag in ("builtin", "mcp"):
+        if tag in ("builtin", "mcp", "skill"):
             return tag
     return "builtin"
 

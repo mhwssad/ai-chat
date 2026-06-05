@@ -69,6 +69,18 @@ class ContextSourceBudget:
 
 
 @dataclass
+class ContextSourceSummary:
+    """上下文来源摘要，用于 API/TUI 可解释展示。"""
+
+    source: str
+    item_count: int = 0
+    token_count: int = 0
+    truncated: bool = False
+    cacheable: bool = False
+    summary: str = ""
+
+
+@dataclass
 class ContextBuildRequest:
     """上下文构建请求。"""
 
@@ -94,6 +106,7 @@ class ContextBuildResult:
     system_message: str = ""
     sections: list[ContextSection] = field(default_factory=list)
     budget_report: list[ContextSourceBudget] = field(default_factory=list)
+    source_summary: list[ContextSourceSummary] = field(default_factory=list)
     total_input_tokens: int = 0
     budget_enabled: bool = False
     strategy_used: str = ""

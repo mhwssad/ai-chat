@@ -1,12 +1,12 @@
 """Jupyter Notebook 编辑工具。"""
 
-import asyncio
 import json
 from pathlib import Path
 
 from langchain_core.tools import tool
 
 from src.ai.core.tools.register import register_tool
+from src.ai.utils.thread_pool import get_thread_pool
 
 
 @tool
@@ -68,7 +68,7 @@ async def notebook_edit(
         )
         return f"{msg}（共 {len(cells)} 个单元格）"
 
-    return await asyncio.to_thread(_edit)
+    return await get_thread_pool().run_io(_edit)
 
 
 # ── 自注册 ──────────────────────────────────────────────────────────────────

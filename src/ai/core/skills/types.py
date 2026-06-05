@@ -20,11 +20,12 @@ class SkillDefinition:
     model: str | None = None
     context_fork: bool = False
     agent_type: str | None = None
+    enabled: bool = True
 
     @property
     def is_auto_triggerable(self) -> bool:
         """是否可被模型自动激活。"""
-        return not self.disable_model_invocation
+        return self.enabled and not self.disable_model_invocation
 
 
 @dataclass(frozen=True)
@@ -36,3 +37,4 @@ class SkillMetadata:
     argument_hint: str | None = None
     disable_model_invocation: bool = False
     user_invocable: bool = True
+    enabled: bool = True

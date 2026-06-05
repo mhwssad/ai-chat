@@ -27,6 +27,6 @@ class MCPHealthResult:
     """MCP server 健康检查结果。"""
 
     server_key: str
-    status: Literal["available", "unavailable", "error"]
+    status: Literal["not_configured", "configured", "unavailable", "available", "error"]
     message: str = ""
     tool_count: int | None = None

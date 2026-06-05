@@ -3,11 +3,13 @@
 import glob as glob_lib
 import json
 import re
+from pathlib import Path
 
 from langchain_core.tools import tool
 
 from src.ai.core.tools.path_validator import validate_dir_path
 from src.ai.core.tools.register import register_tool
+from src.ai.utils.thread_pool import get_thread_pool
 
 
 @tool
@@ -19,10 +21,31 @@ async def glob_files(pattern: str, root: str = ".") -> str:
         root: 搜索根目录。
     """
     root_path = validate_dir_path(root)
-    matches = glob_lib.glob(str(root_path / pattern), recursive=True)
+    pool = get_thread_pool()
+    matches = await pool.run_io(glob_lib.glob, str(root_path / pattern), recursive=True)
     if not matches:
         return "未找到匹配文件"
     return "\n".join(sorted(matches))
+
+
+def _grep_sync(
+    pattern: re.Pattern[str],
+    root_path: Path,
+    glob_pattern: str,
+) -> list[dict[str, str | int]]:
+    """同步执行 grep 搜索（在线程池中运行）。"""
+    matches: list[dict[str, str | int]] = []
+    for path in root_path.glob(glob_pattern):
+        if not path.is_file():
+            continue
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except (UnicodeDecodeError, OSError):
+            continue
+        for index, line in enumerate(lines, start=1):
+            if pattern.search(line):
+                matches.append({"path": str(path), "line": index, "text": line})
+    return matches
 
 
 @tool
@@ -36,17 +59,8 @@ async def grep(pattern: str, root: str = ".", glob: str = "**/*") -> str:
     """
     regex = re.compile(pattern)
     root_path = validate_dir_path(root)
-    matches: list[dict[str, str | int]] = []
-    for path in root_path.glob(glob):
-        if not path.is_file():
-            continue
-        try:
-            lines = path.read_text(encoding="utf-8").splitlines()
-        except UnicodeDecodeError:
-            continue
-        for index, line in enumerate(lines, start=1):
-            if regex.search(line):
-                matches.append({"path": str(path), "line": index, "text": line})
+    pool = get_thread_pool()
+    matches = await pool.run_io(_grep_sync, regex, root_path, glob)
     if not matches:
         return "未找到匹配内容"
     return json.dumps(matches[:200], ensure_ascii=False, indent=2)

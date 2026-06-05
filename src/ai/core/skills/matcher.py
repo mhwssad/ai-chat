@@ -36,7 +36,7 @@ class SkillMatcher:
         if not command:
             return None
         defn = skills.get(command)
-        if defn is not None and defn.user_invocable:
+        if defn is not None and defn.enabled and defn.user_invocable:
             return defn
         return None
 
@@ -54,7 +54,7 @@ class SkillMatcher:
         return [
             {"command": f"/{d.name}", "description": d.description}
             for d in skills.values()
-            if d.user_invocable
+            if d.enabled and d.user_invocable
         ]
 
     def list_user_invocable(
@@ -68,7 +68,7 @@ class SkillMatcher:
         Returns:
             user_invocable=True 的技能列表。
         """
-        return [d for d in skills.values() if d.user_invocable]
+        return [d for d in skills.values() if d.enabled and d.user_invocable]
 
     def list_auto_triggerable(
         self, skills: dict[str, SkillDefinition]
@@ -81,4 +81,4 @@ class SkillMatcher:
         Returns:
             is_auto_triggerable=True 的技能列表。
         """
-        return [d for d in skills.values() if d.is_auto_triggerable]
+        return [d for d in skills.values() if d.enabled and d.is_auto_triggerable]

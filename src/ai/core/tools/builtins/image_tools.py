@@ -47,7 +47,12 @@ def create_image_generate_tool(model_service: Any) -> Any:
             for i, img_data in enumerate(results):
                 filename = f"{uuid.uuid4().hex[:12]}.{img_data.format}"
                 filepath = output_dir / filename
-                filepath.write_bytes(img_data.image_bytes)
+
+                from src.ai.utils.thread_pool import get_thread_pool
+
+                await get_thread_pool().run_io(
+                    filepath.write_bytes, img_data.image_bytes
+                )
                 saved_files.append(str(filepath))
 
             return f"成功生成 {len(saved_files)} 张图像:\n" + "\n".join(

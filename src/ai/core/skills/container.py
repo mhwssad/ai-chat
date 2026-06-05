@@ -3,7 +3,7 @@
 from dependency_injector import containers, providers
 
 
-def _create_skill_service():
+def _create_skill_service(session_factory):
     """技能发现服务。"""
     from src.ai.core.skills.loader import SkillLoader
     from src.ai.core.skills.matcher import SkillMatcher
@@ -16,10 +16,16 @@ def _create_skill_service():
         renderer=SkillRenderer(),
         resolver=SkillResolver(),
         matcher=SkillMatcher(),
+        session_factory=session_factory,
     )
 
 
 class SkillContainer(containers.DeclarativeContainer):
     """技能子系统容器。"""
 
-    skill_service = providers.Singleton(_create_skill_service)
+    session_factory = providers.Dependency()
+
+    skill_service = providers.Singleton(
+        _create_skill_service,
+        session_factory=session_factory,
+    )

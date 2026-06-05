@@ -10,6 +10,7 @@ import logging
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Engine
+from sqlmodel import Session
 
 if TYPE_CHECKING:
     from langchain_core.chat_history import BaseChatMessageHistory
@@ -18,6 +19,9 @@ if TYPE_CHECKING:
     from src.ai.core.memory.history_store import FileHistoryStore
 
 logger = logging.getLogger(__name__)
+
+_SUMMARY_MAX_MESSAGES = 8
+_SUMMARY_MAX_CONTENT = 120
 
 
 class ChatHistoryManager:
@@ -61,6 +65,7 @@ class ChatHistoryManager:
         """添加一条消息到 SQL 主存储，异步写入文件备份。"""
         history = self.get_history(session_id)
         history.add_message(message)
+        self._touch_session(session_id)
 
         if self._history_file_enabled:
             try:
@@ -81,6 +86,7 @@ class ChatHistoryManager:
         """清空 SQL 主存储和文件备份。"""
         history = self.get_history(session_id)
         history.clear()
+        self._touch_session(session_id, message_count=0)
 
         if self._history_file_enabled:
             try:
@@ -95,3 +101,71 @@ class ChatHistoryManager:
     def message_count(self, session_id: str) -> int:
         """获取会话消息数量。"""
         return len(self.get_messages(session_id))
+
+    def list_session_ids(self) -> list[str]:
+        """从 SQL 中列出所有存在消息的会话 ID。
+
+        Returns:
+            不重复的 session_id 列表。
+        """
+        from sqlalchemy import text
+
+        with self._engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    f"SELECT DISTINCT session_id FROM {self._table_name} "
+                    f"ORDER BY session_id"
+                )
+            )
+            return [row[0] for row in result.fetchall()]
+
+    def get_session_summary(self, session_id: str) -> dict[str, object]:
+        """获取会话历史摘要，供 TUI 检视区展示。"""
+        messages = self.get_messages(session_id)
+        role_counts: dict[str, int] = {}
+        for msg in messages:
+            msg_type = getattr(msg, "type", "unknown")
+            role_counts[msg_type] = role_counts.get(msg_type, 0) + 1
+
+        recent: list[dict[str, str]] = []
+        for msg in messages[-_SUMMARY_MAX_MESSAGES:]:
+            content = str(getattr(msg, "content", ""))
+            recent.append(
+                {
+                    "role": getattr(msg, "type", "unknown"),
+                    "content": _summarize_content(content),
+                }
+            )
+
+        return {
+            "session_id": session_id,
+            "message_count": len(messages),
+            "role_counts": role_counts,
+            "recent_messages": recent,
+            "history_file_enabled": self._history_file_enabled,
+        }
+
+    def _touch_session(
+        self, session_id: str, *, message_count: int | None = None
+    ) -> None:
+        """同步会话摘要表。"""
+        try:
+            from src.ai.storage.runtime_repository import ChatSessionRepository
+
+            count = self.message_count(session_id) if message_count is None else message_count
+            with Session(self._engine) as session:
+                ChatSessionRepository(session).touch(
+                    session_id,
+                    message_count=count,
+                )
+                session.commit()
+        except Exception:
+            logger.debug("同步会话摘要失败: session=%s", session_id, exc_info=True)
+
+
+def _summarize_content(content: str) -> str:
+    """生成历史消息短摘要。"""
+    normalized = " ".join(content.split())
+    if len(normalized) <= _SUMMARY_MAX_CONTENT:
+        return normalized
+    return normalized[:_SUMMARY_MAX_CONTENT] + "..."

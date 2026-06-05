@@ -1,6 +1,5 @@
 """Shell 命令工具。"""
 
-import asyncio
 import logging
 import re
 import subprocess
@@ -8,6 +7,7 @@ import subprocess
 from langchain_core.tools import tool
 
 from src.ai.core.tools.register import register_tool
+from src.ai.utils.thread_pool import get_thread_pool
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ async def bash(command: str, timeout: float = 120) -> str:
 
     logger.info("执行命令: %s", command[:100])
 
-    completed = await asyncio.to_thread(
+    completed = await get_thread_pool().run_io(
         subprocess.run,
         command,
         capture_output=True,
@@ -123,6 +123,8 @@ async def sleep(seconds: float = 1) -> str:
     Args:
         seconds: 等待秒数。
     """
+    import asyncio
+
     await asyncio.sleep(seconds)
     return f"已等待 {seconds} 秒"
 

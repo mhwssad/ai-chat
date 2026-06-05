@@ -12,7 +12,11 @@ from src.ai.exception.tool_exception import (
     ToolPermissionError,
 )
 from src.ai.core.tools.manager import ToolManager
-from src.ai.core.tools.permissions import PermissionChecker, PermissionLevel
+from src.ai.core.tools.permissions import (
+    PermissionChecker,
+    PermissionDecision,
+    PermissionLevel,
+)
 from src.ai.core.tools.register import register_tool
 from src.ai.core.tools.registry import ToolRegistry
 from src.ai.core.tools.types import ToolPlugin, ToolSourceType
@@ -45,6 +49,7 @@ __all__ = [
     "tool_manager",
     # 权限
     "PermissionChecker",
+    "PermissionDecision",
     "PermissionLevel",
     "permission_checker",
     # 类型

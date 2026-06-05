@@ -12,7 +12,11 @@ from src.ai.core.tools.registry import ToolRegistry
 from src.ai.core.tools.types import ToolPlugin, ToolProgress
 
 if TYPE_CHECKING:
-    from src.ai.core.tools.permissions import ConfirmHandler, PermissionChecker
+    from src.ai.core.tools.permissions import (
+        ConfirmHandler,
+        PermissionChecker,
+        PermissionDecision,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +56,14 @@ class ToolManager:
         """
         if self._permission_checker is not None:
             self._permission_checker.set_confirm_handler(handler)
+
+    async def check_permission(
+        self, tool_name: str, arguments: dict[str, Any]
+    ) -> PermissionDecision | None:
+        """返回工具权限决策结果，供 API/TUI/审计消费。"""
+        if self._permission_checker is None:
+            return None
+        return await self._permission_checker.decide(tool_name, arguments)
 
     # ── 插件管理 ────────────────────────────────────────────
 

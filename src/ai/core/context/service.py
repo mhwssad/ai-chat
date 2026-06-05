@@ -14,7 +14,10 @@ from src.ai.core.context.strategies.base import BaseMemoryStrategy
 from src.ai.core.context.types import (
     ContextBuildRequest,
     ContextBuildResult,
+    ContextSourceBudget,
+    ContextSourceSummary,
 )
+from src.ai.utils.redaction import redact_for_audit
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +121,10 @@ class ContextService:
             system_message=system_prompt,
             sections=sections,
             budget_report=budget_report,
+            source_summary=[
+                *_build_source_summary(sections, budget_report),
+                *_build_conversation_summary(context_messages),
+            ],
             total_input_tokens=total_tokens,
             budget_enabled=self._assembler._calculate_budget(request) is not None,
             strategy_used=self._strategy.strategy_name,
@@ -182,6 +189,10 @@ class ContextService:
             system_message=system_prompt,
             sections=sections,
             budget_report=budget_report,
+            source_summary=[
+                *_build_source_summary(sections, budget_report),
+                *_build_conversation_summary(context_messages),
+            ],
             total_input_tokens=total_tokens,
             budget_enabled=self._assembler._calculate_budget(request) is not None,
             strategy_used=self._strategy.strategy_name,
@@ -227,3 +238,70 @@ class ContextService:
     def cached_section_names(self) -> list[str]:
         """当前已缓存的段名称列表。"""
         return self._sections.cached_names
+
+
+def _build_source_summary(
+    sections: list[Any],
+    budget_report: list[ContextSourceBudget],
+) -> list[ContextSourceSummary]:
+    """从上下文段和预算报告构建来源摘要。"""
+    budget_by_source = {row.source: row for row in budget_report}
+    summaries: list[ContextSourceSummary] = []
+    for section in sections:
+        content = section.content or ""
+        budget = budget_by_source.get(section.name)
+        summaries.append(
+            ContextSourceSummary(
+                source=section.name,
+                item_count=_estimate_item_count(content),
+                token_count=budget.actual_tokens if budget else 0,
+                truncated=bool(budget.truncated) if budget else False,
+                cacheable=section.cacheable,
+                summary=_summarize_section(content),
+            )
+        )
+    return summaries
+
+
+def _estimate_item_count(content: str) -> int:
+    """估算来源包含的条目数量，避免暴露完整原文。"""
+    if not content.strip():
+        return 0
+    bullet_count = sum(
+        1
+        for line in content.splitlines()
+        if line.lstrip().startswith(("- ", "* ", "1. "))
+    )
+    return max(1, bullet_count)
+
+
+def _summarize_section(content: str) -> str:
+    """生成脱敏的一行来源摘要。"""
+    for line in content.splitlines():
+        normalized = line.strip()
+        if normalized:
+            return redact_for_audit(normalized, max_length=120)
+    return ""
+
+
+def _build_conversation_summary(messages: list[Any]) -> list[ContextSourceSummary]:
+    """生成历史对话来源摘要。"""
+    history_messages = [
+        msg
+        for msg in messages
+        if getattr(msg, "type", "") not in {"system", "generic"}
+    ]
+    if not history_messages:
+        return []
+
+    content = "\n".join(str(getattr(msg, "content", "")) for msg in history_messages)
+    return [
+        ContextSourceSummary(
+            source="conversation",
+            item_count=len(history_messages),
+            token_count=sum(len(str(getattr(msg, "content", ""))) // 4 for msg in history_messages),
+            truncated=False,
+            cacheable=False,
+            summary=f"历史消息 {len(history_messages)} 条",
+        )
+    ]

@@ -5,7 +5,8 @@ from typing import Any
 
 from langchain_core.tools import BaseTool, StructuredTool
 
-from src.ai.core.tools.registry import ToolMeta, ToolRegistry
+from src.ai.core.tools.registry import ToolRegistry
+from src.ai.core.tools.types import ToolMeta
 
 # 当前活跃的注册表，由 load_builtin_tools() 设置
 _active_registry: ToolRegistry | None = None
@@ -24,7 +25,9 @@ def register_tool(
     description: str | None = None,
     source_type: str = "builtin",
     source_id: str | None = None,
+    display_name: str | None = None,
     permissions: list[str] | None = None,
+    output_description: str | None = None,
     essential: bool = False,
     enabled: bool = True,
 ) -> BaseTool:
@@ -44,7 +47,9 @@ def register_tool(
     meta = ToolMeta(
         source_type=source_type,
         source_id=source_id,
+        display_name=display_name,
         permissions=permissions or [],
+        output_description=output_description,
         essential=essential,
         enabled=enabled,
     )

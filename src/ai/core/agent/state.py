@@ -23,6 +23,7 @@ class GraphState(TypedDict):
         checkpoint_id: 当前 checkpoint ID（断点续传）。
         interrupted_at: 中断时的节点名称（断点续传）。
         user_approval_pending: 是否等待用户审批（断点续传）。
+        context_sources: 上下文来源摘要。
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
@@ -36,3 +37,4 @@ class GraphState(TypedDict):
     checkpoint_id: str | None
     interrupted_at: str | None
     user_approval_pending: bool
+    context_sources: list[dict]

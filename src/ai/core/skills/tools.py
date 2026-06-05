@@ -31,10 +31,10 @@ def register_skill_tools(registry, skill_service) -> None:
         registry: 工具注册表实例。
         skill_service: 技能服务实例。
     """
-    from src.ai.core.tools.registry import ToolMeta
+    from src.ai.core.tools.types import ToolMeta
 
     tool_obj = create_skill_tool(skill_service)
     registry.register(
         tool_obj,
-        meta=ToolMeta(source_type="skill", essential=True),
+        meta=ToolMeta(source_type="skill", display_name="skill", essential=True),
     )

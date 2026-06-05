@@ -7,9 +7,71 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, AsyncIterator, Literal, Protocol
 
 if TYPE_CHECKING:
+    from langchain_core.tools import BaseTool
+
     from src.ai.core.tools.registry import ToolRegistry
 
 ToolSourceType = Literal["builtin", "mcp", "skill"]
+
+
+@dataclass(slots=True)
+class ToolMeta:
+    """统一工具元数据。"""
+
+    source_type: ToolSourceType = "builtin"
+    source_id: str | None = None
+    display_name: str | None = None
+    permissions: list[str] = field(default_factory=list)
+    output_description: str | None = None
+    essential: bool = False
+    enabled: bool = True
+
+
+@dataclass(frozen=True)
+class ToolDescriptor:
+    """统一工具描述对象。"""
+
+    name: str
+    display_name: str
+    description: str
+    source_type: ToolSourceType
+    source_id: str | None = None
+    permissions: list[str] = field(default_factory=list)
+    output_description: str | None = None
+    essential: bool = False
+    enabled: bool = True
+
+    @classmethod
+    def from_tool(cls, tool: "BaseTool", meta: ToolMeta) -> "ToolDescriptor":
+        """从工具实例和元数据构建统一描述对象。"""
+        return cls(
+            name=tool.name,
+            display_name=meta.display_name or tool.name,
+            description=getattr(tool, "description", "") or "",
+            source_type=meta.source_type,
+            source_id=meta.source_id,
+            permissions=list(meta.permissions),
+            output_description=meta.output_description,
+            essential=meta.essential,
+            enabled=meta.enabled,
+        )
+
+
+@dataclass(frozen=True)
+class ToolExecutionDiagnostic:
+    """工具执行诊断结果。"""
+
+    tool_name: str
+    source_type: ToolSourceType
+    source_id: str | None = None
+    status: str = "success"
+    duration_ms: int = 0
+    permission_decision: str | None = None
+    input_summary: str | None = None
+    output_summary: str | None = None
+    error_type: str | None = None
+    error_message: str | None = None
+    result: Any | None = None
 
 
 class ToolPlugin(ABC):

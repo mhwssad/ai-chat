@@ -46,7 +46,10 @@ def create_text_to_speech_tool(model_service: Any) -> Any:
 
             filename = f"{uuid.uuid4().hex[:12]}.{audio_data.format}"
             filepath = output_dir / filename
-            filepath.write_bytes(audio_data.audio_bytes)
+
+            from src.ai.utils.thread_pool import get_thread_pool
+
+            await get_thread_pool().run_io(filepath.write_bytes, audio_data.audio_bytes)
 
             duration_info = ""
             if audio_data.duration_seconds is not None:

@@ -76,6 +76,8 @@ def _create_memory_service(
     prompt_builder: Any,
     searcher: Any,
     vector_store: Any = None,
+    thread_pool: Any = None,
+    session_factory: Any = None,
 ) -> Any:
     """创建 MemoryService。"""
     from src.ai.core.memory.service import MemoryService
@@ -86,6 +88,8 @@ def _create_memory_service(
         prompt_builder=prompt_builder,
         searcher=searcher,
         vector_store=vector_store,
+        thread_pool=thread_pool,
+        session_factory=session_factory,
     )
 
 
@@ -95,6 +99,8 @@ class MemoryContainer(containers.DeclarativeContainer):
     settings: Any = providers.Dependency()
     llm: Any = providers.Dependency()
     prompt_service: Any = providers.Dependency()
+    thread_pool: Any = providers.Dependency()
+    session_factory: Any = providers.Dependency()
 
     # Layer 1: 基础依赖
     file_store = providers.Singleton(_create_file_store, settings=settings)
@@ -125,4 +131,6 @@ class MemoryContainer(containers.DeclarativeContainer):
         prompt_builder=prompt_builder,
         searcher=memory_searcher,
         vector_store=vector_store,
+        thread_pool=thread_pool,
+        session_factory=session_factory,
     )

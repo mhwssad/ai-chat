@@ -8,28 +8,9 @@ import logging
 from langchain_core.tools import BaseTool
 
 from src.ai.exception.tool_exception import ToolNotFoundError
+from src.ai.core.tools.types import ToolDescriptor, ToolMeta
 
 logger = logging.getLogger(__name__)
-
-
-class ToolMeta:
-    """工具元数据（Pydantic BaseTool 不支持动态属性）。"""
-
-    __slots__ = ("source_type", "source_id", "permissions", "essential", "enabled")
-
-    def __init__(
-        self,
-        source_type: str = "builtin",
-        source_id: str | None = None,
-        permissions: list[str] | None = None,
-        essential: bool = False,
-        enabled: bool = True,
-    ) -> None:
-        self.source_type = source_type
-        self.source_id = source_id
-        self.permissions = permissions or []
-        self.essential = essential
-        self.enabled = enabled
 
 
 class ToolRegistry:
@@ -85,6 +66,11 @@ class ToolRegistry:
         """按名称获取工具元数据。"""
         return self._meta.get(name, ToolMeta())
 
+    def get_descriptor(self, name: str) -> ToolDescriptor:
+        """按名称获取统一工具描述对象。"""
+        tool = self.get(name)
+        return ToolDescriptor.from_tool(tool, self.get_meta(name))
+
     # ── 查询 ────────────────────────────────────────────────
 
     def list(self, *, enabled_only: bool = False) -> list[BaseTool]:
@@ -107,4 +93,11 @@ class ToolRegistry:
             t
             for t in registered
             if q in t.name.lower() or q in (t.description or "").lower()
+        ]
+
+    def list_descriptors(self, *, enabled_only: bool = False) -> list[ToolDescriptor]:
+        """列出统一工具描述对象。"""
+        return [
+            ToolDescriptor.from_tool(tool, self.get_meta(tool.name))
+            for tool in self.list(enabled_only=enabled_only)
         ]

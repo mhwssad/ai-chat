@@ -19,9 +19,10 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langgraph.graph import END, START, StateGraph
 
 from src.ai.core.agent.state import GraphState
-from src.ai.core.agent.types import AgentResult, AgentStatus, ToolCall
+from src.ai.core.agent.types import AgentResult, AgentStatus, AgentTraceStep, ToolCall
 from src.ai.core.context.types import ContextBuildRequest
 from src.ai.core.tools.timeout_node import TimeoutToolNode
+from src.ai.utils.redaction import redact_for_audit
 
 if TYPE_CHECKING:
     from langchain_core.tools import BaseTool
@@ -125,6 +126,7 @@ class AgentOrchestrator:
             "checkpoint_id": None,
             "interrupted_at": None,
             "user_approval_pending": False,
+            "context_sources": [],
         }
 
         # 构造 RunnableConfig（含 thread_id 用于 checkpoint）
@@ -148,20 +150,38 @@ class AgentOrchestrator:
                 agent_timeout,
             )
             return AgentResult(
-                status=AgentStatus.ERROR,
+                status=AgentStatus.TIMEOUT,
                 content=f"Agent 执行超时 ({agent_timeout}s)",
                 tool_calls=[],
                 iterations=0,
                 total_tokens=0,
+                trace=[
+                    AgentTraceStep(
+                        index=1,
+                        step_type="timeout",
+                        title="Agent 超时",
+                        summary=f"整体执行超过 {agent_timeout}s",
+                        status="timeout",
+                    )
+                ],
             )
         except asyncio.CancelledError:
             logger.info("Agent 被取消: session=%s", session_id)
             return AgentResult(
-                status=AgentStatus.ERROR,
+                status=AgentStatus.CANCELLED,
                 content="Agent 执行被取消",
                 tool_calls=[],
                 iterations=0,
                 total_tokens=0,
+                trace=[
+                    AgentTraceStep(
+                        index=1,
+                        step_type="cancelled",
+                        title="Agent 已取消",
+                        summary="用户取消了当前执行",
+                        status="cancelled",
+                    )
+                ],
             )
         except Exception as e:
             logger.error(
@@ -171,11 +191,21 @@ class AgentOrchestrator:
                 exc_info=True,
             )
             return AgentResult(
-                status=AgentStatus.ERROR,
+                status=AgentStatus.FAILED,
                 content=f"执行异常: {e}",
                 tool_calls=[],
                 iterations=0,
                 total_tokens=0,
+                trace=[
+                    AgentTraceStep(
+                        index=1,
+                        step_type="error",
+                        title="Agent 异常",
+                        summary=redact_for_audit(str(e), max_length=500),
+                        status="failed",
+                        error=type(e).__name__,
+                    )
+                ],
             )
         finally:
             self._current_task = None
@@ -197,6 +227,10 @@ class AgentOrchestrator:
             logger.info("Agent 任务取消请求已发送")
             return True
         return False
+
+    def set_confirm_handler(self, handler: Any | None) -> None:
+        """设置工具权限确认回调。"""
+        self._tools.set_confirm_handler(handler)
 
     async def resume(
         self,
@@ -260,19 +294,37 @@ class AgentOrchestrator:
             )
         except TimeoutError:
             return AgentResult(
-                status=AgentStatus.ERROR,
+                status=AgentStatus.TIMEOUT,
                 content=f"Agent 恢复执行超时 ({agent_timeout}s)",
                 tool_calls=[],
                 iterations=0,
                 total_tokens=0,
+                trace=[
+                    AgentTraceStep(
+                        index=1,
+                        step_type="timeout",
+                        title="Agent 恢复超时",
+                        summary=f"恢复执行超过 {agent_timeout}s",
+                        status="timeout",
+                    )
+                ],
             )
         except asyncio.CancelledError:
             return AgentResult(
-                status=AgentStatus.ERROR,
+                status=AgentStatus.CANCELLED,
                 content="Agent 恢复执行被取消",
                 tool_calls=[],
                 iterations=0,
                 total_tokens=0,
+                trace=[
+                    AgentTraceStep(
+                        index=1,
+                        step_type="cancelled",
+                        title="Agent 恢复已取消",
+                        summary="用户取消了恢复执行",
+                        status="cancelled",
+                    )
+                ],
             )
         except Exception as e:
             logger.error(
@@ -282,11 +334,21 @@ class AgentOrchestrator:
                 exc_info=True,
             )
             return AgentResult(
-                status=AgentStatus.ERROR,
+                status=AgentStatus.FAILED,
                 content=f"恢复执行异常: {e}",
                 tool_calls=[],
                 iterations=0,
                 total_tokens=0,
+                trace=[
+                    AgentTraceStep(
+                        index=1,
+                        step_type="error",
+                        title="Agent 恢复异常",
+                        summary=redact_for_audit(str(e), max_length=500),
+                        status="failed",
+                        error=type(e).__name__,
+                    )
+                ],
             )
         finally:
             self._current_task = None
@@ -313,7 +375,11 @@ class AgentOrchestrator:
             编译前的 StateGraph。
         """
         # 创建 TimeoutToolNode（带超时的工具执行节点）
-        tool_node = TimeoutToolNode(tools, handle_tool_errors=True)
+        tool_node = TimeoutToolNode(
+            tools,
+            handle_tool_errors=True,
+            tool_manager=self._tools,
+        )
 
         # 创建绑定工具的 LLM
         llm = self._model.get_chat_llm(streaming=False)
@@ -358,7 +424,20 @@ class AgentOrchestrator:
                 messages=[],
             )
             result = await self._context.abuild(request)
-            return {"messages": result.messages}
+            return {
+                "messages": result.messages,
+                "context_sources": [
+                    {
+                        "source": item.source,
+                        "item_count": item.item_count,
+                        "token_count": item.token_count,
+                        "truncated": item.truncated,
+                        "cacheable": item.cacheable,
+                        "summary": item.summary,
+                    }
+                    for item in result.source_summary
+                ],
+            }
 
         return node
 
@@ -453,6 +532,10 @@ class AgentOrchestrator:
         if state.get("is_plan_mode"):
             return "end"
 
+        # 等待用户确认 → 结束，交给调用层展示等待状态
+        if state.get("user_approval_pending"):
+            return "end"
+
         # 达到最大迭代次数 → 结束
         if state["iteration"] >= state["max_iterations"]:
             logger.warning(
@@ -502,8 +585,11 @@ class AgentOrchestrator:
 
         # 确定状态
         if state.get("error"):
-            status = AgentStatus.ERROR
+            status = AgentStatus.FAILED
             content = content or f"执行异常: {state['error']}"
+        elif state.get("user_approval_pending"):
+            status = AgentStatus.WAITING_CONFIRMATION
+            content = content or "等待用户确认"
         elif state.get("is_plan_mode"):
             status = AgentStatus.PLAN_MODE
             content = content or "等待计划审批"
@@ -520,6 +606,8 @@ class AgentOrchestrator:
             iterations=state["iteration"],
             total_tokens=state.get("total_tokens", 0),
             plan=state.get("plan"),
+            trace=_build_trace(messages),
+            context_sources=state.get("context_sources", []),
         )
 
 
@@ -582,3 +670,63 @@ def _rebuild_tool_calls(messages: list[BaseMessage]) -> list[ToolCall]:
             )
 
     return result
+
+
+def _build_trace(messages: list[BaseMessage]) -> list[AgentTraceStep]:
+    """从消息历史构建可展示的 Agent 执行轨迹。"""
+    steps: list[AgentTraceStep] = []
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            steps.append(
+                AgentTraceStep(
+                    index=len(steps) + 1,
+                    step_type="user",
+                    title="用户输入",
+                    summary=_content_summary(msg.content),
+                )
+            )
+            continue
+
+        if isinstance(msg, AIMessage):
+            tool_calls = msg.tool_calls or []
+            title = "模型决策" if tool_calls else "模型回复"
+            summary = _content_summary(msg.content)
+            if tool_calls:
+                names = ", ".join(str(tc.get("name", "")) for tc in tool_calls)
+                summary = f"请求工具: {names}" if names else "请求工具执行"
+            steps.append(
+                AgentTraceStep(
+                    index=len(steps) + 1,
+                    step_type="llm",
+                    title=title,
+                    summary=summary,
+                )
+            )
+            continue
+
+        if isinstance(msg, ToolMessage):
+            content = _content_summary(msg.content)
+            is_error = content.startswith("Error:")
+            steps.append(
+                AgentTraceStep(
+                    index=len(steps) + 1,
+                    step_type="tool",
+                    title=f"工具结果 {msg.name or msg.tool_call_id or ''}".strip(),
+                    summary=content,
+                    status="failed" if is_error else "success",
+                    error=content if is_error else None,
+                )
+            )
+
+    return steps
+
+
+def _content_summary(value: Any) -> str:
+    """生成 Agent 轨迹内容摘要。"""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        text = value
+    else:
+        text = str(value)
+    return redact_for_audit(text, max_length=500)

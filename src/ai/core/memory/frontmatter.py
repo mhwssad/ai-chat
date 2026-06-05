@@ -50,6 +50,10 @@ def _parse_entry(data: dict[str, Any], content: str, path: Path) -> MemoryEntry:
         content=content,
         file_path=path,
         session_id=data.get("session_id"),
+        scope=data.get("scope", "session" if data.get("session_id") else "project"),
+        source_type=data.get("source_type", "manual"),
+        source_id=data.get("source_id") or None,
+        status=data.get("status", "active"),
         created_at=created_at or datetime.fromtimestamp(path.stat().st_mtime),
         metadata=data,
     )
@@ -161,6 +165,9 @@ def format_session_file(session_id: str, entries: list[MemoryEntry]) -> str:
                 f"name: {entry.name}",
                 f"type: {entry.memory_type}",
                 f"description: {entry.description}",
+                f"scope: {entry.scope}",
+                f"source_type: {entry.source_type}",
+                f"status: {entry.status}",
                 f"created_at: {created}",
                 "---",
                 "",
@@ -183,6 +190,9 @@ def format_entry_append(entry: MemoryEntry) -> str:
         f"name: {entry.name}\n"
         f"type: {entry.memory_type}\n"
         f"description: {entry.description}\n"
+        f"scope: {entry.scope}\n"
+        f"source_type: {entry.source_type}\n"
+        f"status: {entry.status}\n"
         f"created_at: {created_str}\n"
         "---\n\n"
         f"{entry.content.strip()}\n"

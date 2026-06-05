@@ -7,6 +7,7 @@ AppContainer 组合各模块子容器，测试时可通过
 from dependency_injector import containers, providers
 
 from src.ai.core.agent.container import AgentContainer
+from src.ai.cli.container import CLIContainer
 from src.ai.core.context.container import ContextContainer
 from src.ai.core.mcp.container import MCPContainer
 from src.ai.core.memory.container import MemoryContainer
@@ -16,6 +17,7 @@ from src.ai.core.rag.container import RagContainer
 from src.ai.core.scheduler.container import SchedulerContainer
 from src.ai.core.skills.container import SkillContainer
 from src.ai.core.tools.container import ToolContainer
+from src.ai.service.container import ServiceContainer
 from src.ai.storage.container import StorageContainer
 from src.ai.utils.http.container import HTTPContainer
 
@@ -42,6 +44,21 @@ def _create_chat_llm(model_service):
     return model_service.get_chat_llm()
 
 
+def _create_thread_pool(settings):
+    """创建并启动统一线程池。"""
+    from src.ai.utils.thread_pool import ThreadPoolManager
+
+    tp_settings = settings.thread_pool
+    mgr = ThreadPoolManager(
+        io_size=tp_settings.io_size,
+        cpu_size=tp_settings.cpu_size,
+        bg_size=tp_settings.bg_size,
+        shutdown_timeout=tp_settings.shutdown_timeout,
+    )
+    mgr.start()
+    return mgr
+
+
 # ── 容器定义 ─────────────────────────────────────────────────────
 
 
@@ -50,7 +67,7 @@ class AppContainer(containers.DeclarativeContainer):
 
     组合各模块子容器，按依赖层级组织：
     - Layer 0: 配置（无依赖）
-    - Layer 1: 基础设施（注册表、LLM 实例）
+    - Layer 1: 基础设施（线程池、注册表、LLM 实例）
     - Layer 2: 子容器（服务）
     - Layer 3: 跨容器依赖
     """
@@ -60,6 +77,7 @@ class AppContainer(containers.DeclarativeContainer):
     settings = providers.Singleton(_create_settings)
 
     # ── Layer 1: 基础设施 ──
+    thread_pool = providers.Singleton(_create_thread_pool, settings=settings)
     model_container = providers.Container(ModelContainer)
     chat_llm = providers.Singleton(
         _create_chat_llm,
@@ -75,8 +93,14 @@ class AppContainer(containers.DeclarativeContainer):
         PromptContainer,
         store=storage_container.db_prompt_store,
     )
-    skill_container = providers.Container(SkillContainer)
-    mcp_container = providers.Container(MCPContainer)
+    skill_container = providers.Container(
+        SkillContainer,
+        session_factory=storage_container.session_factory,
+    )
+    mcp_container = providers.Container(
+        MCPContainer,
+        session_factory=storage_container.session_factory,
+    )
     http_container = providers.Container(HTTPContainer)
     tool_container = providers.Container(
         ToolContainer,
@@ -89,12 +113,16 @@ class AppContainer(containers.DeclarativeContainer):
         settings=settings,
         llm=chat_llm,
         prompt_service=prompt_container.prompt_service,
+        thread_pool=thread_pool,
+        session_factory=storage_container.session_factory,
     )
     rag_container = providers.Container(
         RagContainer,
         model_service=model_container.model_service,
         settings=settings,
         prompt_service=prompt_container.prompt_service,
+        thread_pool=thread_pool,
+        session_factory=storage_container.session_factory,
     )
     scheduler_container = providers.Container(
         SchedulerContainer,
@@ -123,6 +151,36 @@ class AppContainer(containers.DeclarativeContainer):
         tool_manager=tool_container.tool_manager,
         context_service=context_container.context_service,
         tool_registry=tool_container.tool_registry,
+    )
+
+    # ── Layer 4: 共享服务 ──
+    service_container = providers.Container(
+        ServiceContainer,
+        model_service=model_container.model_service,
+        context_service=context_container.context_service,
+        tool_manager=tool_container.tool_manager,
+        tool_registry=tool_container.tool_registry,
+        memory_service=memory_container.memory_service,
+        chat_history_manager=context_container.chat_history_manager,
+        chat_llm=chat_llm,
+        thread_pool=thread_pool,
+        scheduler_service=scheduler_container.scheduler_service,
+        settings=settings,
+    )
+    cli_container = providers.Container(
+        CLIContainer,
+        chat_history_manager=context_container.chat_history_manager,
+        chat_service=service_container.chat_service,
+        tool_service=service_container.tool_service,
+        memory_service=memory_container.memory_service,
+        scheduler_service=scheduler_container.scheduler_service,
+        rag_service=rag_container.rag_service,
+        system_service=service_container.system_service,
+        agent_orchestrator=agent_container.agent_orchestrator,
+        image_service=service_container.image_service,
+        tts_service=service_container.tts_service,
+        thread_pool=thread_pool,
+        session_factory=storage_container.session_factory,
     )
 
 
