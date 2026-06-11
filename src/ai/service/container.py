@@ -99,6 +99,105 @@ def _create_system_service(
     )
 
 
+# ── 新增服务工厂函数 ──────────────────────────────────────────
+
+
+def _create_rag_api_service(
+    *,
+    rag_service: Any,
+    thread_pool: Any,
+) -> Any:
+    """创建 RAG API 服务。"""
+    from src.ai.service.rag_service import RagApiService
+
+    return RagApiService(
+        rag_service=rag_service,
+        thread_pool=thread_pool,
+    )
+
+
+def _create_agent_service(
+    *,
+    agent_orchestrator: Any,
+    thread_pool: Any,
+) -> Any:
+    """创建 Agent API 服务。"""
+    from src.ai.service.agent_service import AgentApiService
+
+    return AgentApiService(
+        agent_orchestrator=agent_orchestrator,
+        thread_pool=thread_pool,
+    )
+
+
+def _create_prompt_api_service(
+    *,
+    prompt_service: Any,
+) -> Any:
+    """创建提示词 API 服务。"""
+    from src.ai.service.prompt_service import PromptApiService
+
+    return PromptApiService(prompt_service=prompt_service)
+
+
+def _create_memory_api_service(
+    *,
+    memory_service: Any,
+    thread_pool: Any,
+) -> Any:
+    """创建记忆 API 服务。"""
+    from src.ai.service.memory_service import MemoryApiService
+
+    return MemoryApiService(
+        memory_service=memory_service,
+        thread_pool=thread_pool,
+    )
+
+
+def _create_model_config_service(
+    *,
+    session_factory: Any,
+) -> Any:
+    """创建模型配置服务。"""
+    from src.ai.service.model_config_service import ModelConfigService
+
+    return ModelConfigService(session_factory=session_factory)
+
+
+def _create_session_service(
+    *,
+    session_factory: Any,
+) -> Any:
+    """创建会话管理服务。"""
+    from src.ai.service.session_service import SessionService
+
+    return SessionService(session_factory=session_factory)
+
+
+def _create_scheduler_api_service(
+    *,
+    scheduler_service: Any,
+    thread_pool: Any,
+) -> Any:
+    """创建调度器 API 服务。"""
+    from src.ai.service.scheduler_service import SchedulerApiService
+
+    return SchedulerApiService(
+        scheduler_service=scheduler_service,
+        thread_pool=thread_pool,
+    )
+
+
+def _create_skill_api_service(
+    *,
+    skill_service: Any,
+) -> Any:
+    """创建技能 API 服务。"""
+    from src.ai.service.skill_service import SkillApiService
+
+    return SkillApiService(skill_service=skill_service)
+
+
 class ServiceContainer(containers.DeclarativeContainer):
     """共享服务层容器。
 
@@ -117,7 +216,15 @@ class ServiceContainer(containers.DeclarativeContainer):
     scheduler_service: Any = providers.Dependency()
     settings: Any = providers.Dependency()
 
-    # 共享服务
+    # 新增外部依赖
+    rag_service: Any = providers.Dependency()
+    prompt_service: Any = providers.Dependency()
+    agent_orchestrator: Any = providers.Dependency()
+    skill_service: Any = providers.Dependency()
+    session_factory: Any = providers.Dependency()
+
+    # ── 已有服务 ──────────────────────────────────────────────
+
     chat_service = providers.Singleton(
         _create_chat_service,
         model_service=model_service,
@@ -151,4 +258,43 @@ class ServiceContainer(containers.DeclarativeContainer):
         tool_service=tool_service,
         settings=settings,
         thread_pool=thread_pool,
+    )
+
+    # ── 新增服务 ──────────────────────────────────────────────
+
+    rag_api_service = providers.Singleton(
+        _create_rag_api_service,
+        rag_service=rag_service,
+        thread_pool=thread_pool,
+    )
+    agent_service = providers.Singleton(
+        _create_agent_service,
+        agent_orchestrator=agent_orchestrator,
+        thread_pool=thread_pool,
+    )
+    prompt_api_service = providers.Singleton(
+        _create_prompt_api_service,
+        prompt_service=prompt_service,
+    )
+    memory_api_service = providers.Singleton(
+        _create_memory_api_service,
+        memory_service=memory_service,
+        thread_pool=thread_pool,
+    )
+    model_config_service = providers.Singleton(
+        _create_model_config_service,
+        session_factory=session_factory,
+    )
+    session_service = providers.Singleton(
+        _create_session_service,
+        session_factory=session_factory,
+    )
+    scheduler_api_service = providers.Singleton(
+        _create_scheduler_api_service,
+        scheduler_service=scheduler_service,
+        thread_pool=thread_pool,
+    )
+    skill_api_service = providers.Singleton(
+        _create_skill_api_service,
+        skill_service=skill_service,
     )

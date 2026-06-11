@@ -1,185 +1,179 @@
-"""记忆路由。"""
+"""记忆管理路由 — CRUD、搜索、提取、统计。"""
 
-from fastapi import APIRouter
+from __future__ import annotations
 
-from src.ai.api.deps import MemoryServiceDep
+from typing import Annotated
+
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, HTTPException, Query
+
 from src.ai.api.schemas.common import MessageResponse
 from src.ai.api.schemas.memory import (
-    MemoryCreateRequest,
     MemoryEntryResponse,
+    MemoryExtractRequest,
     MemorySearchRequest,
     MemorySearchResultResponse,
     MemoryStatsResponse,
-    MemoryStatusRequest,
+    MemoryWriteRequestSchema,
 )
-from src.ai.core.memory.types import MEMORY_TYPES, MemoryWriteRequest
+from src.ai.core.container import AppContainer
+from src.ai.service.memory_service import MemoryApiService
 
-router = APIRouter(prefix="/memory", tags=["memory"])
+router = APIRouter()
 
 
-def _entry_to_response(entry) -> MemoryEntryResponse:
-    """转换 MemoryEntry 为响应格式。"""
-    return MemoryEntryResponse(
-        name=entry.name,
-        memory_type=entry.memory_type,
-        description=entry.description,
-        content=entry.content,
-        file_path=str(entry.file_path) if entry.file_path else None,
-        session_id=entry.session_id,
-        scope=entry.scope,
-        source_type=entry.source_type,
-        source_id=entry.source_id,
-        status=entry.status,
-        created_at=entry.created_at.isoformat() if entry.created_at else None,
-        metadata=entry.metadata,
+@router.get("", response_model=list[MemoryEntryResponse], summary="列出记忆")
+@inject
+async def list_entries(
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+    memory_type: str | None = Query(default=None, description="按类型过滤"),
+    scope: str | None = Query(default=None, description="按作用域过滤"),
+    status: str | None = Query(default=None, description="按状态过滤"),
+) -> list[MemoryEntryResponse]:
+    """列出记忆条目。"""
+    entries = await svc.list_entries(
+        memory_type=memory_type, scope=scope, status=status
     )
+    return [MemoryEntryResponse(**e) for e in entries]
 
 
-@router.get("", response_model=list[MemoryEntryResponse])
-async def list_memories(
-    service: MemoryServiceDep,
-    memory_type: str | None = None,
-    scope: str | None = None,
-    status: str | None = "active",
-):
-    """列出记忆条目。
-
-    Args:
-        memory_type: 按类型过滤（user/feedback/project/reference）。
-    """
-    type_filter = None
-    if memory_type and memory_type in MEMORY_TYPES:
-        type_filter = memory_type
-
-    entries = await service.alist_entries(
-        memory_type=type_filter,
-        scope=scope,  # type: ignore[arg-type]
-        status=status,  # type: ignore[arg-type]
+@router.post("", response_model=MemoryEntryResponse, summary="保存记忆")
+@inject
+async def save_memory(
+    req: MemoryWriteRequestSchema,
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> MemoryEntryResponse:
+    """保存记忆条目。"""
+    entry = await svc.save(
+        content=req.content,
+        memory_type=req.memory_type,
+        name=req.name,
+        description=req.description,
+        scope=req.scope,
+        source_type=req.source_type,
+        source_id=req.source_id,
     )
-    return [_entry_to_response(e) for e in entries]
+    return MemoryEntryResponse(**entry)
 
 
-@router.get("/stats", response_model=MemoryStatsResponse)
-async def get_memory_stats(service: MemoryServiceDep):
-    """获取记忆统计。"""
-    stats = await service.aget_stats()
-    by_type_val: dict[str, int] | int = stats.get("by_type", {})
-    return MemoryStatsResponse(
-        total=stats.get("total", 0),
-        by_type=by_type_val if isinstance(by_type_val, dict) else {},
-    )
-
-
-@router.get("/{name}", response_model=MemoryEntryResponse)
-async def get_memory(name: str, service: MemoryServiceDep):
-    """获取记忆。
-
-    Args:
-        name: 记忆名称。
-    """
-    entry = await service.aget(name)
-    if entry is None:
-        from src.ai.exception.memory_exception import MemoryNotFoundError
-
-        raise MemoryNotFoundError(f"记忆不存在: {name}", context={"name": name})
-
-    return _entry_to_response(entry)
-
-
-@router.post("", response_model=MemoryEntryResponse)
-async def create_memory(
-    request: MemoryCreateRequest,
-    service: MemoryServiceDep,
-):
-    """创建记忆。
-
-    Args:
-        request: 创建请求。
-    """
-    write_request = MemoryWriteRequest(
-        content=request.content,
-        memory_type=request.memory_type,  # type: ignore[arg-type]
-        name=request.name,
-        description=request.description,
-        scope=request.scope,  # type: ignore[arg-type]
-        source_type=request.source_type,  # type: ignore[arg-type]
-        source_id=request.source_id,
-        metadata=request.metadata,
-    )
-    entry = await service.asave(write_request)
-    return _entry_to_response(entry)
-
-
-@router.delete("/{name}", response_model=MessageResponse)
-async def delete_memory(name: str, service: MemoryServiceDep):
-    """删除记忆。
-
-    Args:
-        name: 记忆名称。
-    """
-    success = await service.adelete(name)
-    if not success:
-        from src.ai.exception.memory_exception import MemoryNotFoundError
-
-        raise MemoryNotFoundError(f"记忆不存在: {name}", context={"name": name})
-
-    return MessageResponse(message=f"记忆 {name} 已删除")
-
-
-@router.post("/{name}/status", response_model=MemoryEntryResponse)
-async def set_memory_status(
+@router.get("/{name}", response_model=MemoryEntryResponse, summary="获取记忆")
+@inject
+async def get_memory(
     name: str,
-    request: MemoryStatusRequest,
-    service: MemoryServiceDep,
-):
-    """设置记忆状态。
-
-    Args:
-        name: 记忆名称。
-        request: 状态请求，支持 active / disabled。
-    """
-    if request.status == "active":
-        success = await service.aenable(name)
-    elif request.status == "disabled":
-        success = await service.adisable(name)
-    else:
-        from src.ai.exception.memory_exception import MemoryException
-
-        raise MemoryException(
-            "不支持的记忆状态",
-            context={"name": name, "status": request.status},
-        )
-
-    if not success:
-        from src.ai.exception.memory_exception import MemoryNotFoundError
-
-        raise MemoryNotFoundError(f"记忆不存在: {name}", context={"name": name})
-
-    entry = await service.aget(name)
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> MemoryEntryResponse:
+    """获取指定记忆条目。"""
+    entry = await svc.get(name)
     if entry is None:
-        from src.ai.exception.memory_exception import MemoryNotFoundError
-
-        raise MemoryNotFoundError(f"记忆不存在: {name}", context={"name": name})
-    return _entry_to_response(entry)
+        raise HTTPException(status_code=404, detail=f"记忆不存在: {name}")
+    return MemoryEntryResponse(**entry)
 
 
-@router.post("/search", response_model=list[MemorySearchResultResponse])
-async def search_memories(
-    request: MemorySearchRequest,
-    service: MemoryServiceDep,
-):
-    """搜索记忆。
+@router.delete("/{name}", response_model=MessageResponse, summary="删除记忆")
+@inject
+async def delete_memory(
+    name: str,
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> MessageResponse:
+    """删除记忆条目。"""
+    await svc.delete(name)
+    return MessageResponse(message=f"已删除: {name}")
 
-    Args:
-        request: 搜索请求。
-    """
-    results = await service.asearch(request.query, limit=request.limit)
 
-    return [
-        MemorySearchResultResponse(
-            entry=_entry_to_response(r.entry),
-            score=r.score,
-            match_type=r.match_type,
-        )
-        for r in results
-    ]
+@router.post("/{name}/disable", response_model=MessageResponse, summary="禁用记忆")
+@inject
+async def disable_memory(
+    name: str,
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> MessageResponse:
+    """禁用记忆条目。"""
+    await svc.disable(name)
+    return MessageResponse(message=f"已禁用: {name}")
+
+
+@router.post("/{name}/enable", response_model=MessageResponse, summary="启用记忆")
+@inject
+async def enable_memory(
+    name: str,
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> MessageResponse:
+    """启用记忆条目。"""
+    await svc.enable(name)
+    return MessageResponse(message=f"已启用: {name}")
+
+
+@router.post(
+    "/search", response_model=list[MemorySearchResultResponse], summary="搜索记忆"
+)
+@inject
+async def search_memory(
+    req: MemorySearchRequest,
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> list[MemorySearchResultResponse]:
+    """搜索记忆条目。"""
+    results = await svc.search(req.query, limit=req.limit)
+    return [MemorySearchResultResponse(**r) for r in results]
+
+
+@router.post("/extract", summary="从对话提取记忆")
+@inject
+async def extract_memory(
+    req: MemoryExtractRequest,
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> list[dict]:
+    """从对话中提取记忆。"""
+    results = await svc.extract_from_conversation(
+        user_message=req.user_message,
+        assistant_message=req.assistant_message,
+    )
+    return results
+
+
+@router.post("/rebuild-index", response_model=MessageResponse, summary="重建索引")
+@inject
+async def rebuild_index(
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> MessageResponse:
+    """重建记忆索引。"""
+    await svc.rebuild_index()
+    return MessageResponse(message="索引重建完成")
+
+
+@router.get("/stats", response_model=MemoryStatsResponse, summary="记忆统计")
+@inject
+async def get_stats(
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> MemoryStatsResponse:
+    """获取记忆统计信息。"""
+    stats = await svc.get_stats()
+    return MemoryStatsResponse(**stats)

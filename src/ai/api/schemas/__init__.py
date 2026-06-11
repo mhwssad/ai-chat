@@ -1,1 +1,1 @@
-"""API Schema 包。"""
+"""API Schema 模块。"""

@@ -1,378 +1,181 @@
-"""RAG 路由。"""
+"""RAG 管理路由 — 文档索引、搜索、管理。"""
 
-from fastapi import APIRouter, UploadFile, File, Form
+from __future__ import annotations
 
-from src.ai.api.deps import RagServiceDep
+from typing import Annotated
+
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, HTTPException, Query
+
 from src.ai.api.schemas.common import MessageResponse
 from src.ai.api.schemas.rag import (
-    RagBatchDeleteRequest,
-    RagBatchDeleteResponse,
-    RagChunkResponse,
-    RagDocumentDetailResponse,
+    RagDeleteAllResponse,
     RagDocumentInfoResponse,
-    RagGlobalStatsResponse,
-    RagIndexRequest,
+    RagIndexDirectoryRequest,
+    RagIndexFileRequest,
+    RagIndexTextRequest,
+    RagIndexUrlRequest,
     RagSearchRequest,
     RagSearchResultResponse,
-    RagSessionInfo,
     RagStatsResponse,
-    RagTextIndexRequest,
-    RagUpdateTextRequest,
-    RagUrlIndexRequest,
 )
+from src.ai.core.container import AppContainer
+from src.ai.service.rag_service import RagApiService
 
-router = APIRouter(prefix="/rag", tags=["rag"])
+router = APIRouter()
 
 
-def _to_document_response(doc) -> RagDocumentInfoResponse:
-    """将领域文档信息转换为 API 响应。"""
-    return RagDocumentInfoResponse(
-        source_path=doc.source_path,
-        title=doc.title,
-        chunk_count=doc.chunk_count,
-        mime_type=doc.mime_type,
-        session_id=doc.session_id,
-        scope=doc.scope,
-        collection_name=doc.collection_name,
-        status=doc.status,
-        content_hash=doc.content_hash,
+@router.post("/index/file", response_model=RagDocumentInfoResponse, summary="索引文件")
+@inject
+async def index_file(
+    req: RagIndexFileRequest,
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+) -> RagDocumentInfoResponse:
+    """将文件内容索引到向量库。"""
+    result = await svc.index_file(
+        req.path, session_id=req.session_id, reindex=req.reindex
     )
+    return RagDocumentInfoResponse(**result)
 
 
-@router.post("/index", response_model=list[RagDocumentInfoResponse])
-async def index_documents(
-    request: RagIndexRequest,
-    service: RagServiceDep,
-):
-    """索引文档。
-
-    索引单个文件或目录中的所有文件。
-    """
-    from pathlib import Path
-
-    path = Path(request.path)
-
-    if path.is_dir():
-        documents = await service.aindex_directory(
-            path,
-            session_id=request.session_id,
-            patterns=request.patterns,
-            reindex=request.reindex,
-        )
-    else:
-        doc = await service.aindex_file(
-            path,
-            session_id=request.session_id,
-            reindex=request.reindex,
-        )
-        documents = [doc]
-
-    return [_to_document_response(d) for d in documents]
-
-
-@router.post("/upload", response_model=RagDocumentInfoResponse)
-async def upload_file(
-    service: RagServiceDep,
-    file: UploadFile = File(description="上传的文件"),
-    session_id: str | None = Form(default=None, description="会话 ID"),
-    reindex: bool = Form(default=False, description="是否重新索引"),
-):
-    """上传文件并索引。"""
-    data = await file.read()
-    doc = await service.aindex_stream(
-        data,
-        mime_type=file.content_type,
-        filename=file.filename,
-        session_id=session_id,
-        reindex=reindex,
+@router.post("/index/url", response_model=RagDocumentInfoResponse, summary="索引 URL")
+@inject
+async def index_url(
+    req: RagIndexUrlRequest,
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+) -> RagDocumentInfoResponse:
+    """将 URL 内容索引到向量库。"""
+    result = await svc.index_url(
+        req.url, session_id=req.session_id, reindex=req.reindex
     )
-    return _to_document_response(doc)
+    return RagDocumentInfoResponse(**result)
 
 
-@router.post("/url", response_model=RagDocumentInfoResponse)
-async def index_from_url(
-    request: RagUrlIndexRequest,
-    service: RagServiceDep,
-):
-    """从 URL 下载并索引文档。"""
-    doc = await service.aindex_url(
-        request.url,
-        session_id=request.session_id,
-        reindex=request.reindex,
+@router.post("/index/text", response_model=RagDocumentInfoResponse, summary="索引文本")
+@inject
+async def index_text(
+    req: RagIndexTextRequest,
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+) -> RagDocumentInfoResponse:
+    """将文本内容索引到向量库。"""
+    result = await svc.index_text(
+        req.text, title=req.title, session_id=req.session_id, reindex=req.reindex
     )
-    return _to_document_response(doc)
+    return RagDocumentInfoResponse(**result)
 
 
-@router.post("/text", response_model=RagDocumentInfoResponse)
-async def index_from_text(
-    request: RagTextIndexRequest,
-    service: RagServiceDep,
-):
-    """索引原始文本。"""
-    doc = await service.aindex_text(
-        request.text,
-        title=request.title,
-        session_id=request.session_id,
-        reindex=request.reindex,
+@router.post(
+    "/index/directory", response_model=list[RagDocumentInfoResponse], summary="索引目录"
+)
+@inject
+async def index_directory(
+    req: RagIndexDirectoryRequest,
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+) -> list[RagDocumentInfoResponse]:
+    """将目录下的文件批量索引到向量库。"""
+    results = await svc.index_directory(
+        req.path, patterns=req.patterns, session_id=req.session_id, reindex=req.reindex
     )
-    return _to_document_response(doc)
+    return [RagDocumentInfoResponse(**r) for r in results]
 
 
-@router.post("/search", response_model=list[RagSearchResultResponse])
-async def search_documents(
-    request: RagSearchRequest,
-    service: RagServiceDep,
-):
-    """向量搜索。"""
-    results = await service.asearch(
-        request.query,
-        session_id=request.session_id,
-        top_k=request.top_k,
-    )
-
-    return [
-        RagSearchResultResponse(
-            id=r.id,
-            source_path=r.source_path,
-            title=r.title,
-            content=r.content,
-            chunk_index=r.chunk_index,
-            score=r.score,
-        )
-        for r in results
-    ]
+@router.post(
+    "/search", response_model=list[RagSearchResultResponse], summary="向量搜索"
+)
+@inject
+async def search(
+    req: RagSearchRequest,
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+) -> list[RagSearchResultResponse]:
+    """向量相似度搜索。"""
+    results = await svc.search(req.query, session_id=req.session_id, top_k=req.top_k)
+    return [RagSearchResultResponse(**r) for r in results]
 
 
-@router.get("/documents", response_model=list[RagDocumentInfoResponse])
-async def list_documents(
-    service: RagServiceDep,
-    session_id: str | None = None,
-    status: str | None = "active",
-):
-    """列出已索引文档。"""
-    documents = await service.alist_documents(session_id=session_id, status=status)
-
-    return [_to_document_response(d) for d in documents]
-
-
-@router.put("/text", response_model=RagDocumentInfoResponse)
-async def update_text_index(
-    request: RagUpdateTextRequest,
-    service: RagServiceDep,
-):
-    """更新已索引文本内容（先删后建）。"""
-    doc = await service.aupdate_text(
-        request.text,
-        source_path=request.source_path,
-        title=request.title,
-        session_id=request.session_id,
-    )
-    return _to_document_response(doc)
-
-
-@router.post("/hybrid-search", response_model=list[RagSearchResultResponse])
+@router.post(
+    "/search/hybrid", response_model=list[RagSearchResultResponse], summary="混合搜索"
+)
+@inject
 async def hybrid_search(
-    request: RagSearchRequest,
-    service: RagServiceDep,
-):
+    req: RagSearchRequest,
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+) -> list[RagSearchResultResponse]:
     """混合搜索（向量 + BM25）。"""
-    results = await service.ahybrid_search(
-        request.query,
-        session_id=request.session_id,
-        top_k=request.top_k,
+    results = await svc.hybrid_search(
+        req.query, session_id=req.session_id, top_k=req.top_k
     )
-    return [
-        RagSearchResultResponse(
-            id=r.id,
-            source_path=r.source_path,
-            title=r.title,
-            content=r.content,
-            chunk_index=r.chunk_index,
-            score=r.score,
-        )
-        for r in results
-    ]
-
-
-@router.post("/context")
-async def build_rag_context(
-    request: RagSearchRequest,
-    service: RagServiceDep,
-):
-    """构建 RAG 上下文文本。"""
-    context = await service.abuild_context(
-        request.query,
-        session_id=request.session_id,
-        top_k=request.top_k,
-    )
-    return {"context": context}
+    return [RagSearchResultResponse(**r) for r in results]
 
 
 @router.get(
-    "/documents/{path:path}/chunks",
-    response_model=RagDocumentDetailResponse,
+    "/documents", response_model=list[RagDocumentInfoResponse], summary="列出文档"
 )
-async def get_document_chunks(
+@inject
+async def list_documents(
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+    session_id: str | None = Query(default=None, description="按会话 ID 过滤"),
+    status: str | None = Query(default="active", description="按状态过滤"),
+) -> list[RagDocumentInfoResponse]:
+    """列出已索引的文档。"""
+    docs = await svc.list_documents(session_id=session_id, status=status)
+    return [RagDocumentInfoResponse(**d) for d in docs]
+
+
+@router.delete(
+    "/documents/{path:path}", response_model=MessageResponse, summary="删除文档"
+)
+@inject
+async def delete_file(
     path: str,
-    service: RagServiceDep,
-    session_id: str | None = None,
-):
-    """获取文档的所有 chunks 详情。"""
-    chunks = service.get_document_chunks(path, session_id=session_id)
-    if not chunks:
-        from src.ai.exception.rag_exception import RagError
-
-        raise RagError(f"文档不存在: {path}", context={"path": path})
-
-    docs = await service.alist_documents(session_id=session_id)
-    doc_info = next((d for d in docs if d.source_path == path), None)
-
-    return RagDocumentDetailResponse(
-        source_path=path,
-        title=doc_info.title if doc_info else "",
-        chunk_count=len(chunks),
-        mime_type=doc_info.mime_type if doc_info else "",
-        session_id=doc_info.session_id if doc_info else session_id,
-        scope=doc_info.scope if doc_info else ("session" if session_id else "global"),
-        collection_name=doc_info.collection_name if doc_info else "",
-        status=doc_info.status if doc_info else "active",
-        content_hash=doc_info.content_hash if doc_info else None,
-        chunks=[
-            RagChunkResponse(
-                id=c["id"],
-                content=c["content"],
-                chunk_index=c["chunk_index"],
-                metadata=c["metadata"],
-            )
-            for c in chunks
-        ],
-    )
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+    session_id: str | None = Query(default=None, description="会话 ID"),
+) -> MessageResponse:
+    """删除指定文档的索引。"""
+    deleted = await svc.delete_file(path, session_id=session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"文档不存在: {path}")
+    return MessageResponse(message=f"已删除: {path}")
 
 
-@router.post("/documents/batch-delete", response_model=RagBatchDeleteResponse)
-async def batch_delete_documents(
-    request: RagBatchDeleteRequest,
-    service: RagServiceDep,
-):
-    """批量删除多个文档。"""
-    results = service.delete_documents_batch(
-        request.paths, session_id=request.session_id
-    )
-    success_count = sum(1 for v in results.values() if v)
-    fail_count = sum(1 for v in results.values() if not v)
-    return RagBatchDeleteResponse(
-        results=results,
-        success_count=success_count,
-        fail_count=fail_count,
-    )
+@router.post(
+    "/documents/delete-all", response_model=RagDeleteAllResponse, summary="删除全部文档"
+)
+@inject
+async def delete_all(
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+    session_id: str | None = Query(default=None, description="会话 ID"),
+) -> RagDeleteAllResponse:
+    """删除全部文档索引。"""
+    count = await svc.delete_all(session_id=session_id)
+    return RagDeleteAllResponse(deleted_count=count)
 
 
-@router.delete("/documents", response_model=MessageResponse)
-async def delete_document(
-    service: RagServiceDep,
-    path: str,
-    session_id: str | None = None,
-):
-    """删除文档。"""
-    success = await service.adelete_file(path, session_id=session_id)
-    if not success:
-        from src.ai.exception.rag_exception import RagError
-
-        raise RagError(f"文档不存在: {path}", context={"path": path})
-
-    return MessageResponse(message=f"文档 {path} 已删除")
-
-
-@router.delete("/all", response_model=MessageResponse)
-async def clear_knowledge_base(
-    service: RagServiceDep,
-    session_id: str | None = None,
-):
-    """清空知识库。"""
-    count = await service.adelete_all(session_id=session_id)
-    return MessageResponse(message=f"已删除 {count} 个分块")
-
-
-@router.get("/stats", response_model=RagStatsResponse)
-async def get_rag_stats(
-    service: RagServiceDep,
-    session_id: str | None = None,
-):
-    """获取 RAG 统计。"""
-    stats = await service.aget_stats(session_id=session_id)
-
-    return RagStatsResponse(
-        total_chunks=stats.get("total_chunks", 0),
-        collection_name=stats.get("collection_name", ""),
-    )
-
-
-@router.get("/sessions", response_model=list[RagSessionInfo])
-async def list_rag_sessions(
-    service: RagServiceDep,
-):
-    """列出所有 RAG 会话。"""
-    sessions = await service.alist_sessions()
-    result: list[RagSessionInfo] = []
-    for session_id in sessions:
-        stats = await service.aget_stats(session_id=session_id)
-        docs = await service.alist_documents(session_id=session_id)
-        result.append(
-            RagSessionInfo(
-                session_id=session_id,
-                document_count=len(docs),
-                total_chunks=stats.get("total_chunks", 0),
-            )
-        )
-    return result
-
-
-@router.delete("/sessions/{session_id}", response_model=MessageResponse)
-async def delete_rag_session(
-    session_id: str,
-    service: RagServiceDep,
-):
-    """删除会话及其知识库。"""
-    success = service.delete_session(session_id)
-    if not success:
-        from src.ai.exception.rag_exception import RagError
-
-        raise RagError(
-            f"会话不存在或删除失败: {session_id}",
-            context={"session_id": session_id},
-        )
-    return MessageResponse(message=f"会话 {session_id} 已删除")
-
-
-@router.get("/sessions/{session_id}/stats", response_model=RagStatsResponse)
-async def get_session_stats(
-    session_id: str,
-    service: RagServiceDep,
-):
-    """获取会话统计。"""
-    stats = await service.aget_stats(session_id=session_id)
-    return RagStatsResponse(
-        total_chunks=stats.get("total_chunks", 0),
-        collection_name=stats.get("collection_name", ""),
-    )
-
-
-@router.get("/global-stats", response_model=RagGlobalStatsResponse)
-async def get_global_stats(
-    service: RagServiceDep,
-):
-    """获取全局统计（跨所有会话）。"""
-    stats = await service.aget_all_stats()
-    return RagGlobalStatsResponse(
-        default_chunks=stats["default_chunks"],
-        sessions=[
-            RagSessionInfo(
-                session_id=s["session_id"],
-                document_count=s["document_count"],
-                total_chunks=s["total_chunks"],
-            )
-            for s in stats["sessions"]
-        ],
-        total_sessions=stats["total_sessions"],
-        total_chunks=stats["total_chunks"],
-    )
+@router.get("/stats", response_model=RagStatsResponse, summary="RAG 统计")
+@inject
+async def get_stats(
+    svc: Annotated[
+        RagApiService, Depends(Provide[AppContainer.service_container.rag_api_service])
+    ],
+    session_id: str | None = Query(default=None, description="会话 ID"),
+) -> RagStatsResponse:
+    """获取 RAG 统计信息。"""
+    stats = await svc.get_stats(session_id=session_id)
+    return RagStatsResponse(**stats)

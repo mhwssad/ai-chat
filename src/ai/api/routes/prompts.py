@@ -1,222 +1,186 @@
-"""提示词路由。"""
+"""提示词模板路由 — CRUD、渲染、版本管理。"""
 
-from fastapi import APIRouter, Query
+from __future__ import annotations
 
-from src.ai.api.deps import PromptServiceDep
-from src.ai.api.schemas.common import MessageResponse, PaginatedResponse
+from typing import Annotated
+
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from src.ai.api.schemas.common import MessageResponse
 from src.ai.api.schemas.prompts import (
-    PromptCreateRequest,
-    PromptRenderRequest,
-    PromptRenderResponse,
-    PromptResponse,
+    PromptDataResponse,
+    PromptRenderRequestSchema,
+    PromptRenderResultResponse,
     PromptRollbackRequest,
+    PromptSaveRequest,
     PromptUpdateRequest,
     PromptVersionResponse,
 )
-from src.ai.core.prompts.types import PromptRenderRequest as CorePromptRenderRequest
+from src.ai.core.container import AppContainer
+from src.ai.service.prompt_service import PromptApiService
 
-router = APIRouter(prefix="/prompts", tags=["prompts"])
+router = APIRouter()
 
 
-def _prompt_to_response(prompt) -> PromptResponse:
-    """转换 PromptData 为响应格式。"""
-    return PromptResponse(
-        prompt_key=prompt.prompt_key,
-        template=prompt.template,
-        version=prompt.version,
-        display_name=prompt.display_name,
-        description=prompt.description,
-        category=prompt.category,
-        enabled=prompt.enabled,
+@router.get("", response_model=list[PromptDataResponse], summary="列出模板")
+@inject
+async def list_templates(
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+    category: str | None = Query(default=None, description="按分类过滤"),
+) -> list[PromptDataResponse]:
+    """列出所有提示词模板。"""
+    templates = svc.list_templates(category=category)
+    return [PromptDataResponse(**t) for t in templates]
+
+
+@router.post("", response_model=PromptDataResponse, summary="创建模板")
+@inject
+async def save_template(
+    req: PromptSaveRequest,
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+) -> PromptDataResponse:
+    """创建或保存提示词模板。"""
+    data = svc.save_template(
+        prompt_key=req.prompt_key,
+        template=req.template,
+        display_name=req.display_name,
+        description=req.description,
+        category=req.category,
+        change_note=req.change_note,
     )
+    return PromptDataResponse(**data)
 
 
-def _version_to_response(v) -> PromptVersionResponse:
-    """转换 PromptVersionData 为响应格式。"""
-    return PromptVersionResponse(
-        id=v.id,
-        version=v.version,
-        template=v.template,
-        change_note=v.change_note,
-    )
+@router.get("/{prompt_key}", response_model=PromptDataResponse, summary="获取模板")
+@inject
+async def get_template(
+    prompt_key: str,
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+) -> PromptDataResponse:
+    """获取指定提示词模板。"""
+    try:
+        data = svc.get_template(prompt_key)
+        return PromptDataResponse(**data)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"模板不存在: {prompt_key}")
 
 
-@router.get("", response_model=PaginatedResponse[PromptResponse])
-async def list_prompts(
-    service: PromptServiceDep,
-    category: str | None = None,
-    enabled: bool | None = None,
-    page: int = Query(default=1, ge=1, description="页码"),
-    page_size: int = Query(default=20, ge=1, le=100, description="每页数量"),
-):
-    """列出提示词模板（支持分页）。
-
-    Args:
-        category: 按分类过滤。
-        enabled: 按启用状态过滤。
-        page: 页码（从 1 开始）。
-        page_size: 每页数量。
-    """
-    items, total = service.list_templates_paginated(
-        category=category, enabled=enabled, page=page, page_size=page_size
-    )
-    return PaginatedResponse(
-        items=[_prompt_to_response(t) for t in items],
-        total=total,
-        page=page,
-        page_size=page_size,
-    )
-
-
-@router.get("/{prompt_key}", response_model=PromptResponse)
-async def get_prompt(prompt_key: str, service: PromptServiceDep):
-    """获取提示词模板。
-
-    Args:
-        prompt_key: 提示词键。
-    """
-    prompt = service.get_template(prompt_key)
-    if prompt is None:
-        from src.ai.exception.prompt_exception import PromptNotFoundError
-
-        raise PromptNotFoundError(
-            f"提示词不存在: {prompt_key}", context={"prompt_key": prompt_key}
+@router.put("/{prompt_key}", response_model=PromptDataResponse, summary="更新模板")
+@inject
+async def update_template(
+    prompt_key: str,
+    req: PromptUpdateRequest,
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+) -> PromptDataResponse:
+    """更新提示词模板元数据。"""
+    try:
+        data = svc.update_template(
+            prompt_key,
+            display_name=req.display_name,
+            description=req.description,
+            category=req.category,
+            enabled=req.enabled,
         )
-    return _prompt_to_response(prompt)
+        return PromptDataResponse(**data)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"模板不存在: {prompt_key}")
 
 
-@router.post("", response_model=PromptResponse)
-async def create_or_update_prompt(
-    request: PromptCreateRequest,
-    service: PromptServiceDep,
-):
-    """创建或更新提示词模板。
-
-    Args:
-        request: 创建/更新请求。
-    """
-    prompt = service.save_template(
-        prompt_key=request.prompt_key,
-        template=request.template,
-        display_name=request.display_name,
-        description=request.description,
-        category=request.category,
-        change_note=request.change_note,
-    )
-    return _prompt_to_response(prompt)
-
-
-@router.patch("/{prompt_key}", response_model=PromptResponse)
-async def update_prompt(
+@router.delete("/{prompt_key}", response_model=MessageResponse, summary="删除模板")
+@inject
+async def delete_template(
     prompt_key: str,
-    request: PromptUpdateRequest,
-    service: PromptServiceDep,
-):
-    """部分更新提示词模板（不改模板内容，不产生新版本）。
-
-    Args:
-        prompt_key: 提示词键。
-        request: 更新请求。
-    """
-    prompt = service.update_template(
-        prompt_key,
-        display_name=request.display_name,
-        description=request.description,
-        category=request.category,
-        enabled=request.enabled,
-    )
-    return _prompt_to_response(prompt)
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+) -> MessageResponse:
+    """删除提示词模板。"""
+    try:
+        svc.delete_template(prompt_key)
+        return MessageResponse(message=f"已删除: {prompt_key}")
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"模板不存在: {prompt_key}")
 
 
-@router.delete("/{prompt_key}", response_model=MessageResponse)
-async def delete_prompt(
-    prompt_key: str,
-    service: PromptServiceDep,
-    permanent: bool = Query(default=False, description="是否永久删除"),
-):
-    """删除提示词模板。默认软删除（禁用）。
-
-    Args:
-        prompt_key: 提示词键。
-        permanent: 是否永久删除。
-    """
-    service.delete_template(prompt_key, permanent=permanent)
-    action = "永久删除" if permanent else "已禁用"
-    return MessageResponse(message=f"提示词 {prompt_key} {action}")
-
-
-@router.post("/render", response_model=PromptRenderResponse)
-async def render_prompt(
-    request: PromptRenderRequest,
-    service: PromptServiceDep,
-):
-    """渲染提示词模板。
-
-    Args:
-        request: 渲染请求。
-    """
-    core_request = CorePromptRenderRequest(
-        prompt_key=request.prompt_key,
-        variables=request.variables,
-    )
-    result = service.render(core_request)
-    return PromptRenderResponse(
-        prompt_key=result.prompt_key,
-        content=result.content,
-        version=result.version,
-        metadata=result.metadata,
-    )
+@router.post("/render", response_model=PromptRenderResultResponse, summary="渲染模板")
+@inject
+async def render_template(
+    req: PromptRenderRequestSchema,
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+) -> PromptRenderResultResponse:
+    """渲染提示词模板。"""
+    result = svc.render(prompt_key=req.prompt_key, variables=req.variables)
+    return PromptRenderResultResponse(**result)
 
 
 @router.get(
     "/{prompt_key}/versions",
     response_model=list[PromptVersionResponse],
+    summary="列出版本",
 )
-async def list_prompt_versions(
+@inject
+async def list_versions(
     prompt_key: str,
-    service: PromptServiceDep,
-):
-    """列出提示词版本历史。
-
-    Args:
-        prompt_key: 提示词键。
-    """
-    versions = service.list_versions(prompt_key)
-    return [_version_to_response(v) for v in versions]
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+) -> list[PromptVersionResponse]:
+    """列出模板的版本历史。"""
+    versions = svc.list_versions(prompt_key)
+    return [PromptVersionResponse(**v) for v in versions]
 
 
 @router.get(
     "/{prompt_key}/versions/{version}",
     response_model=PromptVersionResponse,
+    summary="获取版本",
 )
-async def get_prompt_version(
+@inject
+async def get_version(
     prompt_key: str,
     version: int,
-    service: PromptServiceDep,
-):
-    """获取提示词指定版本。
-
-    Args:
-        prompt_key: 提示词键。
-        version: 版本号。
-    """
-    v = service.get_version(prompt_key, version)
-    return _version_to_response(v)
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+) -> PromptVersionResponse:
+    """获取指定版本。"""
+    data = svc.get_version(prompt_key, version)
+    return PromptVersionResponse(**data)
 
 
-@router.post("/{prompt_key}/rollback", response_model=PromptResponse)
-async def rollback_prompt(
+@router.post(
+    "/{prompt_key}/rollback", response_model=PromptDataResponse, summary="回滚版本"
+)
+@inject
+async def rollback_template(
     prompt_key: str,
-    request: PromptRollbackRequest,
-    service: PromptServiceDep,
-):
-    """回滚提示词到指定版本。
-
-    Args:
-        prompt_key: 提示词键。
-        request: 回滚请求。
-    """
-    prompt = service.rollback_template(
-        prompt_key, request.version, change_note=request.change_note
+    req: PromptRollbackRequest,
+    svc: Annotated[
+        PromptApiService,
+        Depends(Provide[AppContainer.service_container.prompt_api_service]),
+    ],
+) -> PromptDataResponse:
+    """回滚模板到指定版本。"""
+    data = svc.rollback_template(
+        prompt_key, version=req.version, change_note=req.change_note
     )
-    return _prompt_to_response(prompt)
+    return PromptDataResponse(**data)

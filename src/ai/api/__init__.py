@@ -1,84 +1,89 @@
-"""FastAPI 应用工厂。"""
+"""FastAPI 应用入口。
+
+提供 REST API 和前端 SPA 静态文件服务。
+"""
+
+from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import AsyncIterator
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
-from src.ai.api.error_handlers import register_error_handlers
-from src.ai.api.routes.agent import router as agent_router
-from src.ai.api.routes.chat import router as chat_router
-from src.ai.api.routes.image import router as image_router
-from src.ai.api.routes.memory import router as memory_router
-from src.ai.api.routes.models import router as models_router
-from src.ai.api.routes.prompts import router as prompts_router
-from src.ai.api.routes.rag import router as rag_router
-from src.ai.api.routes.scheduler import router as scheduler_router
-from src.ai.api.routes.sessions import router as sessions_router
-from src.ai.api.routes.skills import router as skills_router
-from src.ai.api.routes.tools import router as tools_router
-from src.ai.api.routes.tts import router as tts_router
+from src.ai.api.routes import api_router
+from src.ai.config.logging_setup import get_logger
+
+logger = get_logger(__name__)
+
+# 前端构建产物路径（src/ai/api/__init__.py -> src/front/ai-chat/dist）
+_DIST_DIR = Path(__file__).resolve().parent.parent.parent / "front" / "ai-chat" / "dist"
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
-    """应用生命周期管理。
-
-    启动时通过 DI 容器初始化线程池和服务，关闭时清理资源。
-    """
-    from src.ai.core.container import container
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """应用生命周期：启动时初始化 DI 容器，关闭时释放资源。"""
     from src.ai.core.container_wiring import initialize_container, shutdown_container
 
-    # 初始化：容器（线程池随 provider 首次访问自动启动）
+    logger.info("初始化 DI 容器...")
     initialize_container()
+    logger.info("AI Chat 服务已启动")
 
     yield
 
-    # 关闭：先停容器 → 再关线程池
+    logger.info("关闭 DI 容器...")
     shutdown_container()
-    thread_pool = container.thread_pool()
-    await thread_pool.shutdown()
+    logger.info("AI Chat 服务已停止")
 
 
 def create_app() -> FastAPI:
-    """创建 FastAPI 应用实例。"""
+    """创建并配置 FastAPI 应用实例。"""
     app = FastAPI(
         title="AI Chat",
-        description="本地 AI 工作台",
+        description="本地 AI 工作台 API",
         version="0.1.0",
         lifespan=lifespan,
     )
 
-    # 注册异常处理器
-    register_error_handlers(app)
-
-    # CORS 中间件（允许前端开发服务器访问）
+    # CORS — 本地开发
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+        allow_origins=["http://localhost:*", "http://127.0.0.1:*"],
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
 
-    # 注册路由
-    app.include_router(agent_router, prefix="/api/v1")
-    app.include_router(chat_router, prefix="/api/v1")
-    app.include_router(image_router, prefix="/api/v1")
-    app.include_router(memory_router, prefix="/api/v1")
-    app.include_router(models_router, prefix="/api/v1")
-    app.include_router(prompts_router, prefix="/api/v1")
-    app.include_router(rag_router, prefix="/api/v1")
-    app.include_router(scheduler_router, prefix="/api/v1")
-    app.include_router(sessions_router, prefix="/api/v1")
-    app.include_router(skills_router, prefix="/api/v1")
-    app.include_router(tools_router, prefix="/api/v1")
-    app.include_router(tts_router, prefix="/api/v1")
+    # 注册 API 路由
+    app.include_router(api_router, prefix="/api")
 
-    @app.get("/health")
-    async def health() -> dict[str, str]:
-        """健康检查。"""
-        return {"status": "ok"}
+    # 挂载前端静态资源（/assets/ 等静态文件）
+    if _DIST_DIR.is_dir():
+        app.mount("/assets", StaticFiles(directory=_DIST_DIR / "assets"), name="static")
+
+        # SPA catch-all：所有非 /api 路径返回 index.html
+        @app.get("/{path:path}")
+        async def _spa_fallback(path: str, request: Request) -> FileResponse:
+            """SPA 前端回退 — 返回 index.html 由 Vue Router 处理。"""
+            return FileResponse(_DIST_DIR / "index.html")
+
+    # 全局异常处理
+    @app.exception_handler(Exception)
+    async def _unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+        logger.error(
+            "未处理异常: %s %s -> %s",
+            request.method,
+            request.url.path,
+            exc,
+            exc_info=True,
+        )
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "内部服务器错误", "error": str(exc)},
+        )
 
     return app
 

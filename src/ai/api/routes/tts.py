@@ -1,66 +1,76 @@
-"""TTS API 路由。"""
+"""TTS 路由 — 语音合成、列表、删除。"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from typing import Annotated
 
-from src.ai.api.deps import TTSServiceDep
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, HTTPException
+
+from src.ai.api.schemas.common import MessageResponse
 from src.ai.api.schemas.tts import (
-    AudioMetaResponse,
-    TTSSynthesizeRequest,
-    TTSSynthesizeResponse,
+    AudioInfoResponse,
+    TtsSynthesizeRequest,
+    TtsSynthesizeResponse,
 )
+from src.ai.core.container import AppContainer
+from src.ai.service.tts_service import TTSService
 
-router = APIRouter(prefix="/tts", tags=["tts"])
+router = APIRouter()
 
 
-@router.post("/synthesize", response_model=TTSSynthesizeResponse)
-async def synthesize_speech(
-    request: TTSSynthesizeRequest,
-    service: TTSServiceDep,
-):
-    """合成语音。
-
-    调用配置的 TTS 模型（OpenAI TTS、Edge TTS 等）合成语音并保存到本地。
-    """
-    result = await service.synthesize(
-        text=request.text,
-        voice=request.voice,
-        speed=request.speed,
-        output_format=request.output_format,
+@router.post("/synthesize", response_model=TtsSynthesizeResponse, summary="合成语音")
+@inject
+async def synthesize(
+    req: TtsSynthesizeRequest,
+    svc: Annotated[
+        TTSService, Depends(Provide[AppContainer.service_container.tts_service])
+    ],
+) -> TtsSynthesizeResponse:
+    """调用模型合成语音。"""
+    result = await svc.synthesize(
+        text=req.text,
+        voice=req.voice,
+        speed=req.speed,
+        output_format=req.output_format,
     )
-    return TTSSynthesizeResponse(**result)
+    return TtsSynthesizeResponse(**result)
 
 
-@router.get("/list", response_model=list[AudioMetaResponse])
+@router.get("", response_model=list[AudioInfoResponse], summary="列出音频")
+@inject
 async def list_audio(
-    service: TTSServiceDep,
-):
+    svc: Annotated[
+        TTSService, Depends(Provide[AppContainer.service_container.tts_service])
+    ],
+) -> list[AudioInfoResponse]:
     """列出已合成的音频。"""
-    audio_list = await service.alist_audio()
-    return [AudioMetaResponse(**audio) for audio in audio_list]
+    audios = await svc.alist_audio()
+    return [
+        AudioInfoResponse(
+            filename=a["filename"],
+            path=a["path"],
+            size_bytes=a["size_bytes"],
+            format=a["format"],
+            created_at=str(a["created_at"]),
+        )
+        for a in audios
+    ]
 
 
-@router.get("/{filename}")
-async def get_audio(
-    filename: str,
-    service: TTSServiceDep,
-):
-    """返回音频文件流。"""
-    filepath, mime_type = service.get_audio_path(filename)
-    return FileResponse(
-        path=str(filepath),
-        media_type=mime_type,
-        filename=filename,
-    )
-
-
-@router.delete("/{filename}")
+@router.delete("/{filename}", response_model=MessageResponse, summary="删除音频")
+@inject
 async def delete_audio(
     filename: str,
-    service: TTSServiceDep,
-):
+    svc: Annotated[
+        TTSService, Depends(Provide[AppContainer.service_container.tts_service])
+    ],
+) -> MessageResponse:
     """删除指定音频。"""
-    message = await service.adelete_audio(filename)
-    return {"message": message}
+    try:
+        msg = await svc.adelete_audio(filename)
+        return MessageResponse(message=msg)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"音频不存在: {filename}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

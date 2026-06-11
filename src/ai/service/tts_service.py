@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import base64
-import logging
+from src.ai.config.logging_setup import get_logger
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -17,7 +17,7 @@ from src.ai.exception.media_exception import MediaNotFoundError
 if TYPE_CHECKING:
     from src.ai.utils.thread_pool import ThreadPoolManager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _MIME_MAP = {
     ".mp3": "audio/mpeg",

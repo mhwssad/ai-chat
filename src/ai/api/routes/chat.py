@@ -1,95 +1,116 @@
-"""对话路由。"""
+"""对话路由 — 非流式、SSE 流式、OpenAI 兼容。"""
+
+from __future__ import annotations
 
 import json
-import logging
+from typing import Annotated, Any
 
-from fastapi import APIRouter
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from src.ai.api.deps import ChatServiceDep
-from src.ai.api.schemas.chat import ChatRequest, ChatResponse
+from src.ai.api.schemas.chat import (
+    ChatRequest,
+    ChatResponse,
+    MessagesChatRequest,
+    StreamChatRequest,
+)
+from src.ai.core.container import AppContainer
+from src.ai.service.chat_service import ChatService
 from src.ai.service.types import ChatOptions
 
-logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/chat", tags=["chat"])
+router = APIRouter()
 
 
-@router.post("", response_model=ChatResponse)
+def _build_options(
+    req: ChatRequest | StreamChatRequest | MessagesChatRequest,
+    session_id: str,
+    *,
+    streaming: bool = False,
+) -> ChatOptions:
+    """从请求构建 ChatOptions。"""
+    return ChatOptions(
+        session_id=session_id,
+        temperature=req.temperature,
+        max_tokens=req.max_tokens,
+        enable_memory=req.enable_memory,
+        enable_tools=req.enable_tools,
+        enable_rag=getattr(req, "enable_rag", False),
+        tools=getattr(req, "tools", None),
+        streaming=streaming,
+    )
+
+
+@router.post("", response_model=ChatResponse, summary="非流式对话")
+@inject
 async def chat(
-    request: ChatRequest,
-    service: ChatServiceDep,
-):
-    """非流式对话。
-
-    发送消息并获取完整的响应（含工具调用循环）。
-    """
-    messages = [msg.model_dump() for msg in request.messages]
-    options = ChatOptions(
-        session_id=request.session_id,
-        temperature=request.temperature,
-        max_tokens=request.max_tokens,
-        tools=request.tools,
-    )
-
-    result = await service.chat_with_messages(
-        messages=messages,
-        session_id=request.session_id,
-        options=options,
-    )
-
+    req: ChatRequest,
+    svc: Annotated[
+        ChatService, Depends(Provide[AppContainer.service_container.chat_service])
+    ],
+) -> ChatResponse:
+    """非流式对话（含完整工具循环）。"""
+    opts = _build_options(req, req.session_id)
+    result = await svc.chat(req.message, req.session_id, options=opts)
     return ChatResponse(
         content=result.content,
         session_id=result.session_id,
         tool_calls=result.tool_calls,
+        iterations=result.iterations,
+        error=result.error,
         usage=result.usage,
         context_sources=result.context_sources,
     )
 
 
-@router.post("/stream")
+@router.post("/stream", summary="SSE 流式对话")
+@inject
 async def chat_stream(
-    request: ChatRequest,
-    service: ChatServiceDep,
-):
-    """流式对话（SSE）。
+    req: StreamChatRequest,
+    svc: Annotated[
+        ChatService, Depends(Provide[AppContainer.service_container.chat_service])
+    ],
+) -> StreamingResponse:
+    """SSE 流式对话。
 
-    发送消息并获取流式响应（含工具调用循环）。
+    事件类型: token, tool_call, tool_result, done, error。
     """
-    # 提取最后一条用户消息
-    user_input = ""
-    for msg in reversed(request.messages):
-        if msg.role == "user":
-            user_input = msg.content if isinstance(msg.content, str) else str(msg.content)
-            break
+    opts = _build_options(req, req.session_id, streaming=True)
 
-    options = ChatOptions(
-        session_id=request.session_id,
-        temperature=request.temperature,
-        max_tokens=request.max_tokens,
-        tools=request.tools,
-        streaming=True,
-    )
-
-    async def event_generator():
-        try:
-            async for event in service.chat_stream(
-                user_input=user_input,
-                session_id=request.session_id or "",
-                options=options,
-            ):
-                yield f"event: {event['event']}\ndata: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
-        except Exception as e:
-            logger.error("SSE 流式响应异常: %s", e, exc_info=True)
-            error_data = json.dumps({"error": str(e)}, ensure_ascii=False)
-            yield f"event: error\ndata: {error_data}\n\n"
+    async def _event_generator() -> Any:
+        async for event in svc.chat_stream(req.message, req.session_id, options=opts):
+            event_type = event.get("event", "message")
+            data = event.get("data", {})
+            yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
-        event_generator(),
+        _event_generator(),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+@router.post("/messages", response_model=ChatResponse, summary="OpenAI 兼容对话")
+@inject
+async def chat_messages(
+    req: MessagesChatRequest,
+    svc: Annotated[
+        ChatService, Depends(Provide[AppContainer.service_container.chat_service])
+    ],
+) -> ChatResponse:
+    """OpenAI 兼容格式对话（接收 messages 数组）。"""
+    opts = _build_options(req, req.session_id or "default")
+    result = await svc.chat_with_messages(req.messages, req.session_id, options=opts)
+    return ChatResponse(
+        content=result.content,
+        session_id=result.session_id,
+        tool_calls=result.tool_calls,
+        iterations=result.iterations,
+        error=result.error,
+        usage=result.usage,
+        context_sources=result.context_sources,
     )

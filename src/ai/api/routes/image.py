@@ -1,67 +1,77 @@
-"""图像 API 路由。"""
+"""图像生成路由 — 生成、列表、删除。"""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from typing import Annotated
 
-from src.ai.api.deps import ImageServiceDep
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, HTTPException
+
+from src.ai.api.schemas.common import MessageResponse
 from src.ai.api.schemas.image import (
     ImageGenerateRequest,
     ImageGenerateResponse,
-    ImageMetaResponse,
+    ImageInfoResponse,
 )
+from src.ai.core.container import AppContainer
+from src.ai.service.image_service import ImageService
 
-router = APIRouter(prefix="/image", tags=["image"])
+router = APIRouter()
 
 
-@router.post("/generate", response_model=ImageGenerateResponse)
+@router.post("/generate", response_model=ImageGenerateResponse, summary="生成图像")
+@inject
 async def generate_image(
-    request: ImageGenerateRequest,
-    service: ImageServiceDep,
-):
-    """生成图像。
-
-    调用配置的图像生成模型（DALL-E 3、Stability AI 等）生成图像并保存到本地。
-    """
-    result = await service.generate(
-        prompt=request.prompt,
-        size=request.size,
-        quality=request.quality,
-        style=request.style,
-        n=request.n,
+    req: ImageGenerateRequest,
+    svc: Annotated[
+        ImageService, Depends(Provide[AppContainer.service_container.image_service])
+    ],
+) -> ImageGenerateResponse:
+    """调用模型生成图像。"""
+    result = await svc.generate(
+        prompt=req.prompt,
+        size=req.size,
+        quality=req.quality,
+        style=req.style,
+        n=req.n,
     )
     return ImageGenerateResponse(**result)
 
 
-@router.get("/list", response_model=list[ImageMetaResponse])
+@router.get("", response_model=list[ImageInfoResponse], summary="列出图像")
+@inject
 async def list_images(
-    service: ImageServiceDep,
-):
+    svc: Annotated[
+        ImageService, Depends(Provide[AppContainer.service_container.image_service])
+    ],
+) -> list[ImageInfoResponse]:
     """列出已生成的图像。"""
-    images = await service.alist_images()
-    return [ImageMetaResponse(**img) for img in images]
+    images = await svc.alist_images()
+    return [
+        ImageInfoResponse(
+            filename=img["filename"],
+            path=img["path"],
+            size_bytes=img["size_bytes"],
+            format=img["format"],
+            created_at=str(img["created_at"]),
+        )
+        for img in images
+    ]
 
 
-@router.get("/{filename}")
-async def get_image(
-    filename: str,
-    service: ImageServiceDep,
-):
-    """返回图像文件流。"""
-    filepath = service.get_image_path(filename)
-    return FileResponse(
-        path=str(filepath),
-        media_type=f"image/{filepath.suffix.lstrip('.')}",
-        filename=filename,
-    )
-
-
-@router.delete("/{filename}")
+@router.delete("/{filename}", response_model=MessageResponse, summary="删除图像")
+@inject
 async def delete_image(
     filename: str,
-    service: ImageServiceDep,
-):
+    svc: Annotated[
+        ImageService, Depends(Provide[AppContainer.service_container.image_service])
+    ],
+) -> MessageResponse:
     """删除指定图像。"""
-    message = await service.adelete_image(filename)
-    return {"message": message}
+    try:
+        msg = await svc.adelete_image(filename)
+        return MessageResponse(message=msg)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail=f"图像不存在: {filename}")
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

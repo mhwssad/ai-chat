@@ -1,100 +1,73 @@
-"""技能路由。"""
+"""技能管理路由 — 发现、列表、详情、斜杠命令。"""
 
-from fastapi import APIRouter
+from __future__ import annotations
 
-from src.ai.api.deps import SkillServiceDep
-from src.ai.api.schemas.skills import (
-    SkillActivateRequest,
-    SkillActivateResponse,
-    SkillDetailResponse,
-    SkillEnabledRequest,
-    SkillMetadataResponse,
-)
+from typing import Annotated
 
-router = APIRouter(prefix="/skills", tags=["skills"])
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, HTTPException
+
+from src.ai.api.schemas.skills import SkillIndexResponse, SlashCommandResponse
+from src.ai.core.container import AppContainer
+from src.ai.service.skill_service import SkillApiService
+
+router = APIRouter()
 
 
-@router.get("", response_model=list[SkillMetadataResponse])
-async def list_skills(service: SkillServiceDep):
+@router.get("", response_model=list[SkillIndexResponse], summary="列出技能")
+@inject
+async def list_skills(
+    svc: Annotated[
+        SkillApiService,
+        Depends(Provide[AppContainer.service_container.skill_api_service]),
+    ],
+) -> list[SkillIndexResponse]:
     """列出所有技能。"""
-    metadata = service.get_skill_metadata()
-    return [
-        SkillMetadataResponse(
-            name=m.name,
-            description=m.description,
-            enabled=m.enabled,
-            argument_hint=m.argument_hint,
-            disable_model_invocation=m.disable_model_invocation,
-            user_invocable=m.user_invocable,
-        )
-        for m in metadata
-    ]
+    skills = svc.list_skills()
+    return [SkillIndexResponse(**s) for s in skills]
 
 
-@router.get("/{name}", response_model=SkillDetailResponse)
-async def get_skill(name: str, service: SkillServiceDep):
-    """获取技能详情。
-
-    Args:
-        name: 技能名称。
-    """
-    defn = service.get(name)
-    if defn is None:
-        from src.ai.exception.skill_exception import SkillNotFoundError
-
-        raise SkillNotFoundError(f"技能不存在: {name}", context={"name": name})
-
-    return SkillDetailResponse(
-        name=defn.name,
-        description=defn.description,
-        enabled=defn.enabled,
-        source_path=str(defn.source_path),
-        instruction_template=defn.instruction_template,
-        disable_model_invocation=defn.disable_model_invocation,
-        user_invocable=defn.user_invocable,
-        allowed_tools=defn.allowed_tools,
-        argument_hint=defn.argument_hint,
-        model=defn.model,
-        context_fork=defn.context_fork,
-        agent_type=defn.agent_type,
-    )
+@router.post(
+    "/discover", response_model=list[SkillIndexResponse], summary="重新发现技能"
+)
+@inject
+async def discover_skills(
+    svc: Annotated[
+        SkillApiService,
+        Depends(Provide[AppContainer.service_container.skill_api_service]),
+    ],
+) -> list[SkillIndexResponse]:
+    """重新扫描技能目录。"""
+    skills = svc.discover()
+    return [SkillIndexResponse(**s) for s in skills]
 
 
-@router.post("/{name}/activate", response_model=SkillActivateResponse)
-async def activate_skill(
+@router.get(
+    "/commands", response_model=list[SlashCommandResponse], summary="斜杠命令列表"
+)
+@inject
+async def get_slash_commands(
+    svc: Annotated[
+        SkillApiService,
+        Depends(Provide[AppContainer.service_container.skill_api_service]),
+    ],
+) -> list[SlashCommandResponse]:
+    """获取可用的斜杠命令列表。"""
+    commands = svc.get_slash_commands()
+    return [SlashCommandResponse(**c) for c in commands]
+
+
+@router.get("/{name}", response_model=SkillIndexResponse, summary="获取技能")
+@inject
+async def get_skill(
     name: str,
-    request: SkillActivateRequest,
-    service: SkillServiceDep,
-):
-    """激活技能，渲染完整指令内容。
-
-    Args:
-        name: 技能名称。
-        request: 激活请求。
-    """
-    content = service.activate(name, arguments=request.arguments)
-    return SkillActivateResponse(name=name, content=content)
-
-
-@router.post("/{name}/enabled", response_model=SkillDetailResponse)
-async def set_skill_enabled(
-    name: str,
-    request: SkillEnabledRequest,
-    service: SkillServiceDep,
-):
-    """设置技能启用状态。"""
-    defn = service.set_enabled(name, request.enabled)
-    return SkillDetailResponse(
-        name=defn.name,
-        description=defn.description,
-        enabled=defn.enabled,
-        source_path=str(defn.source_path),
-        instruction_template=defn.instruction_template,
-        disable_model_invocation=defn.disable_model_invocation,
-        user_invocable=defn.user_invocable,
-        allowed_tools=defn.allowed_tools,
-        argument_hint=defn.argument_hint,
-        model=defn.model,
-        context_fork=defn.context_fork,
-        agent_type=defn.agent_type,
-    )
+    svc: Annotated[
+        SkillApiService,
+        Depends(Provide[AppContainer.service_container.skill_api_service]),
+    ],
+) -> SkillIndexResponse:
+    """获取指定技能。"""
+    skill = svc.get_skill(name)
+    if skill is None:
+        raise HTTPException(status_code=404, detail=f"技能不存在: {name}")
+    return SkillIndexResponse(**skill)

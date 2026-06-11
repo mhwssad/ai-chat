@@ -1,12 +1,12 @@
 """容器启动 — 初始化 DI 容器并执行后置组装。"""
 
 import asyncio
-import logging
+from src.ai.config.logging_setup import get_logger
 import threading
 
 from src.ai.core.container import container
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _initialized = False
 
@@ -21,6 +21,25 @@ def initialize_container() -> None:
     if _initialized:
         return
 
+    # 0. Wired 路由模块（启用 @inject + Provide 注入）
+    container.wire(
+        modules=[
+            "src.ai.api.routes.chat",
+            "src.ai.api.routes.tools",
+            "src.ai.api.routes.system",
+            "src.ai.api.routes.rag",
+            "src.ai.api.routes.agent",
+            "src.ai.api.routes.prompts",
+            "src.ai.api.routes.memory",
+            "src.ai.api.routes.models",
+            "src.ai.api.routes.sessions",
+            "src.ai.api.routes.image",
+            "src.ai.api.routes.tts",
+            "src.ai.api.routes.scheduler",
+            "src.ai.api.routes.skills",
+        ],
+    )
+
     # 1. 确保数据库表已创建
     from src.ai.storage.database import init_database
 
@@ -32,9 +51,8 @@ def initialize_container() -> None:
     store = container.storage_container.db_prompt_store()
     seed_default_prompts(store)
 
-    # 技能发现
-    skill_svc = container.skill_container.skill_service()
-    skill_svc.discover()
+    # 技能发现 — 仅扫描 frontmatter 建立内存索引
+    _initialize_skills()
 
     # 注册有依赖的工具（包括定时任务工具）
     _register_dependent_tools()
@@ -44,6 +62,13 @@ def initialize_container() -> None:
 
     logger.info("DI 容器初始化完成")
     _initialized = True
+
+
+def _initialize_skills() -> None:
+    """技能发现 — 仅扫描 frontmatter 建立内存索引。"""
+    skill_svc = container.skill_container.skill_service()
+    skill_svc.discover()
+    logger.info("技能索引构建完成")
 
 
 def shutdown_container() -> None:
@@ -66,9 +91,6 @@ def _register_dependent_tools() -> None:
     mcp_mgr = container.mcp_container.mcp_manager()
     mgr.register_plugin(mcp_mgr)
 
-    skill_svc = container.skill_container.skill_service()
-    mgr.register_plugin(skill_svc)
-
     # 2. 获取可选的调度器服务
     scheduler_service = None
     try:
@@ -79,7 +101,7 @@ def _register_dependent_tools() -> None:
     # 3. 加载内置工具 + 执行插件注册 + 注册有依赖的工具
     #    load_builtin_tools 内部会设置活跃注册表、导入 builtins 模块、
     #    调用 register_dependent_tools 并执行所有插件的 register_tools
-    mgr.load_builtin_tools(scheduler_service=scheduler_service)
+    mgr.load_builtin_tools(scheduler_service=scheduler_service, mcp_manager=mcp_mgr)
 
 
 def _start_scheduler() -> None:

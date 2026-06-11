@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 import uuid
 from typing import Any, AsyncIterator
 
@@ -19,7 +19,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, Tool
 from src.ai.core.context.types import ContextBuildRequest
 from src.ai.service.types import ChatOptions, ChatResult
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 工具结果最大字符数
 _TOOL_RESULT_MAX_LEN = 2000
@@ -117,7 +117,9 @@ class ChatService:
             if opts.extract_memory:
                 await self._extract_memory(session_id, user_input, response)
 
-            content = response.content if isinstance(response, AIMessage) else str(response)
+            content = (
+                response.content if isinstance(response, AIMessage) else str(response)
+            )
             return ChatResult(
                 content=content or "",
                 session_id=session_id,
@@ -173,9 +175,7 @@ class ChatService:
 
             # 流式调用 LLM
             messages = list(context_result.messages)
-            full_content, tool_calls = await self._stream_llm(
-                llm_with_tools, messages
-            )
+            full_content, tool_calls = await self._stream_llm(llm_with_tools, messages)
 
             # 工具调用循环（流式模式下仍需执行）
             iterations = 0
@@ -314,9 +314,7 @@ class ChatService:
             return self._model_service.get_chat_llm(streaming=True)
         return self._chat_llm
 
-    def _get_available_tools(
-        self, tool_names: list[str] | None = None
-    ) -> list[Any]:
+    def _get_available_tools(self, tool_names: list[str] | None = None) -> list[Any]:
         """获取可用工具。
 
         Args:
@@ -359,9 +357,7 @@ class ChatService:
                 result_str = await self._execute_single_tool(
                     tc["name"], tc["args"], tc["id"]
                 )
-                tool_msg = ToolMessage(
-                    content=result_str, tool_call_id=tc["id"]
-                )
+                tool_msg = ToolMessage(content=result_str, tool_call_id=tc["id"])
                 messages.append(tool_msg)
                 new_messages.append(tool_msg)
 
@@ -463,7 +459,9 @@ class ChatService:
             response: AI 响应。
         """
         try:
-            content = response.content if isinstance(response, AIMessage) else str(response)
+            content = (
+                response.content if isinstance(response, AIMessage) else str(response)
+            )
             candidates = await self._memory_service.aextract_from_conversation(
                 user_input, content
             )
@@ -481,10 +479,7 @@ class ChatService:
         """从响应中提取工具调用信息。"""
         if not isinstance(response, AIMessage) or not response.tool_calls:
             return []
-        return [
-            {"name": tc["name"], "args": tc["args"]}
-            for tc in response.tool_calls
-        ]
+        return [{"name": tc["name"], "args": tc["args"]} for tc in response.tool_calls]
 
     # ── 消息格式转换（API 兼容） ─────────────────────────────
 
@@ -557,9 +552,7 @@ class ChatService:
                         )
                 elif hasattr(block, "type"):
                     if block.type == "text":
-                        lc_content.append(
-                            {"type": "text", "text": block.text or ""}
-                        )
+                        lc_content.append({"type": "text", "text": block.text or ""})
                     elif block.type == "image_url":
                         lc_content.append(
                             {

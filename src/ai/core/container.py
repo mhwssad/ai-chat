@@ -7,7 +7,6 @@ AppContainer 组合各模块子容器，测试时可通过
 from dependency_injector import containers, providers
 
 from src.ai.core.agent.container import AgentContainer
-from src.ai.cli.container import CLIContainer
 from src.ai.core.context.container import ContextContainer
 from src.ai.core.mcp.container import MCPContainer
 from src.ai.core.memory.container import MemoryContainer
@@ -72,6 +71,24 @@ class AppContainer(containers.DeclarativeContainer):
     - Layer 3: 跨容器依赖
     """
 
+    wiring_config = containers.WiringConfiguration(
+        modules=[
+            "src.ai.api.routes.chat",
+            "src.ai.api.routes.tools",
+            "src.ai.api.routes.system",
+            "src.ai.api.routes.rag",
+            "src.ai.api.routes.agent",
+            "src.ai.api.routes.prompts",
+            "src.ai.api.routes.memory",
+            "src.ai.api.routes.models",
+            "src.ai.api.routes.sessions",
+            "src.ai.api.routes.image",
+            "src.ai.api.routes.tts",
+            "src.ai.api.routes.scheduler",
+            "src.ai.api.routes.skills",
+        ],
+    )
+
     # ── Layer 0: 配置 ──
     bootstrap_settings = providers.Singleton(_create_bootstrap_settings)
     settings = providers.Singleton(_create_settings)
@@ -95,7 +112,6 @@ class AppContainer(containers.DeclarativeContainer):
     )
     skill_container = providers.Container(
         SkillContainer,
-        session_factory=storage_container.session_factory,
     )
     mcp_container = providers.Container(
         MCPContainer,
@@ -166,20 +182,11 @@ class AppContainer(containers.DeclarativeContainer):
         thread_pool=thread_pool,
         scheduler_service=scheduler_container.scheduler_service,
         settings=settings,
-    )
-    cli_container = providers.Container(
-        CLIContainer,
-        chat_history_manager=context_container.chat_history_manager,
-        chat_service=service_container.chat_service,
-        tool_service=service_container.tool_service,
-        memory_service=memory_container.memory_service,
-        scheduler_service=scheduler_container.scheduler_service,
+        # 新增依赖
         rag_service=rag_container.rag_service,
-        system_service=service_container.system_service,
+        prompt_service=prompt_container.prompt_service,
         agent_orchestrator=agent_container.agent_orchestrator,
-        image_service=service_container.image_service,
-        tts_service=service_container.tts_service,
-        thread_pool=thread_pool,
+        skill_service=skill_container.skill_service,
         session_factory=storage_container.session_factory,
     )
 

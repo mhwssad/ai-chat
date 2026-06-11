@@ -15,6 +15,14 @@ _LAZY_EXPORTS = {
     "SystemService": "src.ai.service.system_service",
     "ToolService": "src.ai.service.tool_service",
     "TTSService": "src.ai.service.tts_service",
+    "RagApiService": "src.ai.service.rag_service",
+    "AgentApiService": "src.ai.service.agent_service",
+    "PromptApiService": "src.ai.service.prompt_service",
+    "MemoryApiService": "src.ai.service.memory_service",
+    "ModelConfigService": "src.ai.service.model_config_service",
+    "SessionService": "src.ai.service.session_service",
+    "SchedulerApiService": "src.ai.service.scheduler_service",
+    "SkillApiService": "src.ai.service.skill_service",
 }
 
 __all__ = [
@@ -25,6 +33,14 @@ __all__ = [
     "SystemService",
     "ToolService",
     "TTSService",
+    "RagApiService",
+    "AgentApiService",
+    "PromptApiService",
+    "MemoryApiService",
+    "ModelConfigService",
+    "SessionService",
+    "SchedulerApiService",
+    "SkillApiService",
 ]
 
 

@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 import time
 from typing import Any
 
@@ -16,7 +16,7 @@ from src.ai.storage import ToolCallRepository
 from src.ai.storage.database import get_session
 from src.ai.utils.redaction import redact_for_audit
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolService:
@@ -235,7 +235,11 @@ class ToolService:
             self._record_diagnostic(diagnostic, session_id=session_id)
             return diagnostic
         except Exception as exc:
-            status = "timeout" if type(exc).__name__ == "ToolExecutionError" and "超时" in str(exc) else "failed"
+            status = (
+                "timeout"
+                if type(exc).__name__ == "ToolExecutionError" and "超时" in str(exc)
+                else "failed"
+            )
             diagnostic = ToolExecutionDiagnostic(
                 tool_name=name,
                 source_type=descriptor.source_type,
@@ -339,4 +343,6 @@ class ToolService:
                 )
             )
         except Exception:
-            logger.debug("工具诊断记录写入失败: %s", diagnostic.tool_name, exc_info=True)
+            logger.debug(
+                "工具诊断记录写入失败: %s", diagnostic.tool_name, exc_info=True
+            )

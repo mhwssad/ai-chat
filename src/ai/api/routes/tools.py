@@ -1,103 +1,83 @@
-"""工具路由。"""
+"""工具管理路由。"""
 
-from fastapi import APIRouter
+from __future__ import annotations
 
-from src.ai.api.deps import ToolServiceDep
+from typing import Annotated
+
+from dependency_injector.wiring import Provide, inject
+from fastapi import APIRouter, Depends, HTTPException, Query
+
 from src.ai.api.schemas.tools import (
+    ToolDetail,
     ToolExecuteRequest,
     ToolExecuteResponse,
-    ToolMetaResponse,
-    ToolPermissionRequest,
-    ToolPermissionResponse,
-    ToolSchemaResponse,
+    ToolInfo,
 )
+from src.ai.core.container import AppContainer
+from src.ai.service.tool_service import ToolService
 
-router = APIRouter(prefix="/tools", tags=["tools"])
+router = APIRouter()
 
 
-@router.get("", response_model=list[ToolMetaResponse])
+@router.get("", response_model=list[ToolInfo], summary="获取工具列表")
+@inject
 async def list_tools(
-    service: ToolServiceDep,
-    enabled_only: bool = True,
-):
-    """列出已注册工具。
-
-    Args:
-        enabled_only: 是否只返回启用的工具。
-    """
-    tools = service.list_tools(enabled_only=enabled_only)
-    return [
-        ToolMetaResponse(
-            name=t["name"],
-            display_name=t["display_name"],
-            description=t["description"],
-            source_type=t["source_type"],
-            source_id=t["source_id"],
-            permissions=t["permissions"],
-            output_description=t["output_description"],
-            essential=t["essential"],
-            enabled=t["enabled"],
-        )
-        for t in tools
-    ]
+    svc: Annotated[
+        ToolService, Depends(Provide[AppContainer.service_container.tool_service])
+    ],
+    enabled_only: bool = Query(default=True, description="仅返回启用的工具"),
+) -> list[ToolInfo]:
+    """返回工具列表。"""
+    tools = svc.list_tools(enabled_only=enabled_only)
+    return [ToolInfo(**t) for t in tools]
 
 
-@router.get("/schemas", response_model=list[ToolSchemaResponse])
-async def list_tool_schemas(
-    service: ToolServiceDep,
-    enabled_only: bool = True,
-):
-    """列出工具的 OpenAI function-calling schema。
+@router.get("/{name}", response_model=ToolDetail, summary="获取工具详情")
+@inject
+async def get_tool_detail(
+    name: str,
+    svc: Annotated[
+        ToolService, Depends(Provide[AppContainer.service_container.tool_service])
+    ],
+) -> ToolDetail:
+    """返回工具详情（含参数 schema）。"""
+    try:
+        detail = svc.get_tool_detail(name)
+        return ToolDetail(**detail)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"工具不存在: {name}")
 
-    Args:
-        enabled_only: 是否只返回启用的工具。
-    """
-    schemas = service.list_schemas(enabled_only=enabled_only)
-    return [ToolSchemaResponse(type=s["type"], function=s["function"]) for s in schemas]
 
-
-@router.post("/{name}/execute", response_model=ToolExecuteResponse)
+@router.post(
+    "/{name}/execute", response_model=ToolExecuteResponse, summary="测试执行工具"
+)
+@inject
 async def execute_tool(
     name: str,
-    request: ToolExecuteRequest,
-    service: ToolServiceDep,
-):
-    """执行工具。
-
-    Args:
-        name: 工具名称。
-        request: 执行请求。
-    """
-    diagnostic = await service.execute_tool_diagnostic(name, request.arguments)
-    return ToolExecuteResponse(
-        result=diagnostic.result,
-        tool_name=diagnostic.tool_name,
-        status=diagnostic.status,
-        duration_ms=diagnostic.duration_ms,
-        permission_decision=diagnostic.permission_decision,
-        input_summary=diagnostic.input_summary,
-        output_summary=diagnostic.output_summary,
-        error_type=diagnostic.error_type,
-        error_message=diagnostic.error_message,
-    )
-
-
-@router.post("/{name}/permission", response_model=ToolPermissionResponse)
-async def check_tool_permission(
-    name: str,
-    request: ToolPermissionRequest,
-    service: ToolServiceDep,
-):
-    """检查工具权限决策。"""
-    decision = await service.check_permission(name, request.arguments)
-    if decision is None:
-        decision = {
-            "decision": "allow",
-            "tool_name": name,
-            "permissions": [],
-            "reason": "permission_checker_disabled",
-            "confirmed": None,
-            "cached": False,
-            "context": {},
-        }
-    return ToolPermissionResponse(**decision)
+    req: ToolExecuteRequest,
+    svc: Annotated[
+        ToolService, Depends(Provide[AppContainer.service_container.tool_service])
+    ],
+) -> ToolExecuteResponse:
+    """测试执行工具并返回诊断结果。"""
+    try:
+        diagnostic = await svc.execute_tool_diagnostic(
+            name,
+            req.arguments,
+            timeout=req.timeout,
+        )
+        return ToolExecuteResponse(
+            tool_name=diagnostic.tool_name,
+            source_type=diagnostic.source_type,
+            source_id=diagnostic.source_id,
+            status=diagnostic.status,
+            duration_ms=diagnostic.duration_ms,
+            permission_decision=diagnostic.permission_decision,
+            input_summary=diagnostic.input_summary,
+            output_summary=diagnostic.output_summary,
+            error_type=diagnostic.error_type,
+            error_message=diagnostic.error_message,
+            result=diagnostic.result,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"工具不存在: {name}")
