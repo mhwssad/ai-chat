@@ -22,14 +22,14 @@ from __future__ import annotations
 
 import asyncio
 import functools
-import logging
+from src.ai.config.logging_setup import get_logger
 from collections.abc import Awaitable, Callable
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any, TypeVar
 
 from src.ai.exception.pool_exception import ThreadPoolShutdownError
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 T = TypeVar("T")
 
@@ -291,9 +291,9 @@ def get_thread_pool() -> ThreadPoolManager:
     """
     global _instance
     if _instance is None:
-        from src.ai.config.settings import settings
+        from src.ai.config.container import config
 
-        tp_settings = settings.thread_pool
+        tp_settings = config.settings.thread_pool
         _instance = ThreadPoolManager(
             io_size=tp_settings.io_size,
             cpu_size=tp_settings.cpu_size,

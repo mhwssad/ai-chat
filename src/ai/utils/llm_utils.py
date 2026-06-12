@@ -31,11 +31,16 @@ def build_llm_chain(
     from langchain_core.output_parsers import StrOutputParser
     from langchain_core.prompts import ChatPromptTemplate
 
+    # 转义 system_prompt 中的花括号，避免 LangChain 将 JSON 示例、
+    # 代码片段等中的 { } 误解析为模板变量。human_template 中的 {var}
+    # 保持原样，由调用方按需传入变量。
+    safe_system = system_prompt.replace("{", "{{").replace("}", "}}")
+
     return cast(
         "RunnableSequence",
         ChatPromptTemplate.from_messages(
             [
-                ("system", system_prompt),
+                ("system", safe_system),
                 ("human", human_template),
             ]
         )

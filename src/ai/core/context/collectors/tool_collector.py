@@ -1,6 +1,6 @@
 """工具描述收集器 — 收集已启用工具的描述信息。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING
 
 from src.ai.core.context.collector import ContextCollector
@@ -13,7 +13,7 @@ from src.ai.core.context.types import (
 if TYPE_CHECKING:
     from src.ai.core.tools.registry import ToolRegistry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolCollector(ContextCollector):

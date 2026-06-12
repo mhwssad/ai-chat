@@ -18,7 +18,9 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 
 def demo_list_tools():
     """列出所有已注册工具。"""
-    from src.ai.core.tools import tool_manager
+    from src.ai.core.container import container
+
+    tool_manager = container.tool_container.tool_manager()
 
     tools = tool_manager.list_tools()
     enabled = tool_manager.list_tools(enabled_only=True)
@@ -40,7 +42,9 @@ def demo_list_tools():
 
 def demo_search_tools():
     """按关键词搜索工具。"""
-    from src.ai.core.tools import tool_manager
+    from src.ai.core.container import container
+
+    tool_manager = container.tool_container.tool_manager()
 
     print("=== 搜索工具 ===")
     for query in ["file", "bash", "search", "sleep"]:
@@ -55,7 +59,9 @@ def demo_search_tools():
 
 async def demo_execute_async():
     """异步执行工具调用。"""
-    from src.ai.core.tools import tool_manager
+    from src.ai.core.container import container
+
+    tool_manager = container.tool_container.tool_manager()
 
     print("=== 异步执行工具 ===")
 

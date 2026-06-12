@@ -19,6 +19,7 @@ class ChatRequest(BaseModel):
     enable_memory: bool = Field(default=True, description="是否启用记忆")
     enable_tools: bool = Field(default=True, description="是否启用工具")
     enable_rag: bool = Field(default=False, description="是否启用 RAG")
+    enable_agent: bool = Field(default=False, description="是否启用 Agent 自动执行")
     tools: list[str] | None = Field(default=None, description="工具白名单")
 
 
@@ -50,6 +51,7 @@ class StreamChatRequest(BaseModel):
     enable_memory: bool = Field(default=True, description="是否启用记忆")
     enable_tools: bool = Field(default=True, description="是否启用工具")
     enable_rag: bool = Field(default=False, description="是否启用 RAG")
+    enable_agent: bool = Field(default=False, description="是否启用 Agent 自动执行")
     tools: list[str] | None = Field(default=None, description="工具白名单")
 
 
@@ -65,3 +67,4 @@ class MessagesChatRequest(BaseModel):
     enable_memory: bool = Field(default=True, description="是否启用记忆")
     enable_tools: bool = Field(default=True, description="是否启用工具")
     enable_rag: bool = Field(default=False, description="是否启用 RAG")
+    enable_agent: bool = Field(default=False, description="是否启用 Agent 自动执行")

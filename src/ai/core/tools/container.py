@@ -1,9 +1,8 @@
 """工具子系统 DI 容器。"""
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from dependency_injector import containers, providers
-
 
 def _create_tool_registry():
     """工具注册表。"""

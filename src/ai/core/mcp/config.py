@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -16,7 +16,7 @@ from src.ai.exception.mcp_config_exception import MCPConfigError
 from src.ai.storage.config_models import MCPServerRecord
 from src.ai.storage.config_repository import MCPServerRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MCPConfigRepository:

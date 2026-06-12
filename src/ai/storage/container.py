@@ -6,26 +6,17 @@ from dependency_injector import containers, providers
 
 
 def _create_engine(bootstrap_settings):
-    """数据库引擎。"""
-    from sqlalchemy import create_engine
+    """委托给 database.py 的唯一引擎单例。"""
+    from src.ai.storage.database import get_engine
 
-    database_url = bootstrap_settings.resolved_database_url()
-    connect_args: dict = {}
-    if database_url.startswith("sqlite"):
-        connect_args["check_same_thread"] = False
-    return create_engine(
-        database_url,
-        echo=bootstrap_settings.sqlalchemy_echo,
-        connect_args=connect_args,
-    )
+    return get_engine()
 
 
 def _create_session_factory(engine):
-    """数据库会话工厂。"""
-    from sqlalchemy.orm import sessionmaker
-    from sqlmodel import Session
+    """委托给 database.py 的唯一会话工厂单例。"""
+    from src.ai.storage.database import get_session_factory
 
-    return sessionmaker(bind=engine, class_=Session, expire_on_commit=False)
+    return get_session_factory()
 
 
 def _create_db_prompt_store():

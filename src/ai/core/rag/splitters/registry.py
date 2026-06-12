@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     from .base import SplitterStrategy
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 元数据属性名
 _SPLITTER_PRIORITY_ATTR = "__splitter_priority__"

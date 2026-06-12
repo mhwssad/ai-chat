@@ -28,6 +28,7 @@ class LoaderStrategy(ABC):
     priority: int = 500
     name: str = ""
     settings_factory: object = None
+    _skip_registry: bool = False
 
     def __init_subclass__(cls, **kwargs: object) -> None:
         super().__init_subclass__(**kwargs)
@@ -35,6 +36,9 @@ class LoaderStrategy(ABC):
             cls.name = cls.__name__
         # ABC 子类不自动注册（有未实现的抽象方法）
         if getattr(cls, "__abstractmethods__", None):
+            return
+        # 源适配器（如 StreamLoader、UrlLoader）跳过注册
+        if getattr(cls, "_skip_registry", False):
             return
         from .registry import LoaderRegistry
 
@@ -115,6 +119,46 @@ class LoaderStrategy(ABC):
         for p in paths:
             docs.extend(self.load_file(p))
         return docs
+
+    def load_stream(
+        self,
+        data: bytes,
+        *,
+        mime_type: str | None = None,
+        filename: str | None = None,
+    ) -> list[Document]:
+        """从字节流加载文档。
+
+        默认实现不支持，子类（如 ChainLoader）可覆写。
+
+        Args:
+            data: 文档字节数据。
+            mime_type: MIME 类型，用于推断文件扩展名。
+            filename: 原始文件名，辅助推断扩展名。
+
+        Returns:
+            Document 列表。
+
+        Raises:
+            LoaderError: 不支持字节流加载时抛出。
+        """
+        raise LoaderError(f"加载器 {self.name} 不支持字节流加载")
+
+    def load_url(self, url: str) -> list[Document]:
+        """从 URL 下载并加载文档。
+
+        默认实现不支持，子类（如 ChainLoader）可覆写。
+
+        Args:
+            url: 文档 URL。
+
+        Returns:
+            Document 列表。
+
+        Raises:
+            LoaderError: 不支持 URL 加载时抛出。
+        """
+        raise LoaderError(f"加载器 {self.name} 不支持 URL 加载")
 
     def _validate(self, file_path: Path) -> None:
         """校验单个文件。

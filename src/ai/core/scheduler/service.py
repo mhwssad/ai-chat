@@ -10,7 +10,7 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 import uuid
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -29,7 +29,7 @@ from src.ai.core.scheduler.types import (
 if TYPE_CHECKING:
     from src.ai.config.settings import SchedulerSettings
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SchedulerService:

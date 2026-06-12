@@ -3,7 +3,7 @@
 import asyncio
 import hashlib
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import Any
 
 from langchain_core.tools import BaseTool
@@ -12,7 +12,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from .adapter import to_langchain_connections
 from .config import MCPConfigRepository
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MCPClient:
@@ -93,10 +93,20 @@ class MCPClient:
 
         try:
             client = self._get_client()
+            logger.debug("MCP 调用: %s/%s args=%s", server_key, tool_name, arguments)
             async with asyncio.timeout(timeout):
                 async with client.session(server_key) as session:
-                    return await session.call_tool(tool_name, arguments or {})
+                    result = await session.call_tool(tool_name, arguments or {})
+                    logger.debug(
+                        "MCP 调用成功: %s/%s 结果类型=%s",
+                        server_key, tool_name, type(result).__name__,
+                    )
+                    return result
         except asyncio.TimeoutError as exc:
+            logger.warning(
+                "MCP 调用超时: %s/%s timeout=%.0fs",
+                server_key, tool_name, timeout,
+            )
             raise MCPToolCallError(
                 f"MCP 工具调用超时: {tool_name}",
                 context={
@@ -106,6 +116,10 @@ class MCPClient:
                 },
             ) from exc
         except Exception as exc:
+            logger.warning(
+                "MCP 调用失败: %s/%s error=%s",
+                server_key, tool_name, exc,
+            )
             raise MCPToolCallError(
                 f"MCP 工具调用失败: {exc}",
                 context={"server_key": server_key, "tool_name": tool_name},

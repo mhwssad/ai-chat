@@ -1,6 +1,10 @@
-"""技能元数据收集器 — 收集技能信息（Level 1 渐进式披露）。"""
+"""技能索引收集器 — 注入技能名称、描述和文件路径到上下文。
 
-import logging
+AI 通过上下文中的索引进行语义匹配，判定需要时使用文件读取工具
+直接读取对应 SKILL.md 的完整内容。
+"""
+
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING
 
 from src.ai.core.context.collector import ContextCollector
@@ -13,14 +17,14 @@ from src.ai.core.context.types import (
 if TYPE_CHECKING:
     from src.ai.core.skills.service import SkillService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SkillCollector(ContextCollector):
-    """收集技能元数据上下文。
+    """收集技能索引上下文。
 
-    列出所有可自动触发的技能名称和描述（Level 1 渐进式披露）。
-    可缓存（技能列表变化不频繁）。
+    注入所有可自动触发的技能名称、描述和文件路径。
+    AI 判断需要某技能时，使用文件读取工具查看 SKILL.md 完整内容。
 
     Args:
         skill_service: 技能服务实例。
@@ -38,24 +42,27 @@ class SkillCollector(ContextCollector):
             return ContextCollectorResult()
 
         try:
-            # 获取所有技能元数据，过滤可自动触发的
-            all_metadata = self._skill_service.get_skill_metadata()
-            auto_triggerable = [
-                m for m in all_metadata if not m.disable_model_invocation
+            indices = [
+                idx
+                for idx in self._skill_service.list_auto_triggerable()
+                if not idx.disable_model_invocation
             ]
 
-            if not auto_triggerable:
+            if not indices:
                 return ContextCollectorResult()
 
             lines = ["## 可用技能", ""]
-            for meta in auto_triggerable:
-                hint = f" (参数: {meta.argument_hint})" if meta.argument_hint else ""
-                lines.append(f"- {meta.name}: {meta.description}{hint}")
+            for idx in indices:
+                hint = f" (参数: {idx.argument_hint})" if idx.argument_hint else ""
+                lines.append(
+                    f"- **{idx.name}**: {idx.description}{hint}"
+                    f"  → `{idx.source_path}`"
+                )
 
             lines.extend(
                 [
                     "",
-                    "使用 skill 工具激活技能: skill(name='技能名', arguments='参数')",
+                    "需要使用某技能时，使用文件读取工具查看对应 SKILL.md 获取完整指令。",
                 ]
             )
 
@@ -67,5 +74,5 @@ class SkillCollector(ContextCollector):
             )
             return ContextCollectorResult(sections=[section])
         except Exception:
-            logger.debug("技能元数据收集失败", exc_info=True)
+            logger.debug("技能索引收集失败", exc_info=True)
             return ContextCollectorResult()

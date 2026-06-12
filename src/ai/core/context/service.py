@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import Any
 
 from src.ai.core.context.assembler import ContextAssembler
@@ -19,7 +19,7 @@ from src.ai.core.context.types import (
 )
 from src.ai.utils.redaction import redact_for_audit
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ContextService:

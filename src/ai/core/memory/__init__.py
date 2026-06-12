@@ -61,11 +61,6 @@ def __getattr__(name: str) -> Any:
         mod = importlib.import_module(module_path)
         return getattr(mod, attr_name)
 
-    if name == "memory_service":
-        from src.ai.core.container import container
-
-        return container.memory_container.memory_service()
-
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -97,5 +92,4 @@ __all__ = [
     "FileSummaryStore",
     "MemoryService",
     "ChatHistoryManager",
-    "memory_service",
 ]

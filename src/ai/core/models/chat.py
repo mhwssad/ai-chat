@@ -30,12 +30,12 @@ class AnthropicChatBuilder(ChatModelBuilder):
     backend = ["anthropic"]
 
     def build(
-        self,
-        config: ChatModelConfig,
-        *,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        streaming: bool = False,
+            self,
+            config: ChatModelConfig,
+            *,
+            temperature: float | None = None,
+            max_tokens: int | None = None,
+            streaming: bool = False,
     ) -> BaseChatModel:
         from langchain_anthropic import ChatAnthropic
 
@@ -53,18 +53,19 @@ class AnthropicChatBuilder(ChatModelBuilder):
             kwargs["max_tokens"] = max_tokens
         return ChatAnthropic(**kwargs)
 
+
 class InitChatModelBuilder(ChatModelBuilder):
     """通用 Chat 构建策略，使用 langchain ``init_chat_model``。"""
 
     backend = ["openai", "google_genai", "ollama"]
 
-    def build(  
-        self,
-        config: ChatModelConfig,
-        *,
-        temperature: float | None = None,
-        max_tokens: int | None = None,
-        streaming: bool = False,
+    def build(
+            self,
+            config: ChatModelConfig,
+            *,
+            temperature: float | None = None,
+            max_tokens: int | None = None,
+            streaming: bool = False,
     ) -> BaseChatModel:
         from langchain.chat_models import init_chat_model
 

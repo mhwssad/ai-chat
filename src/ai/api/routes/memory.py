@@ -1,7 +1,5 @@
 """记忆管理路由 — CRUD、搜索、提取、统计。"""
 
-from __future__ import annotations
-
 from typing import Annotated
 
 from dependency_injector.wiring import Provide, inject
@@ -60,6 +58,19 @@ async def save_memory(
         source_id=req.source_id,
     )
     return MemoryEntryResponse(**entry)
+
+
+@router.get("/stats", response_model=MemoryStatsResponse, summary="记忆统计")
+@inject
+async def get_stats(
+    svc: Annotated[
+        MemoryApiService,
+        Depends(Provide[AppContainer.service_container.memory_api_service]),
+    ],
+) -> MemoryStatsResponse:
+    """获取记忆统计信息。"""
+    stats = await svc.get_stats()
+    return MemoryStatsResponse(**stats)
 
 
 @router.get("/{name}", response_model=MemoryEntryResponse, summary="获取记忆")
@@ -164,16 +175,3 @@ async def rebuild_index(
     """重建记忆索引。"""
     await svc.rebuild_index()
     return MessageResponse(message="索引重建完成")
-
-
-@router.get("/stats", response_model=MemoryStatsResponse, summary="记忆统计")
-@inject
-async def get_stats(
-    svc: Annotated[
-        MemoryApiService,
-        Depends(Provide[AppContainer.service_container.memory_api_service]),
-    ],
-) -> MemoryStatsResponse:
-    """获取记忆统计信息。"""
-    stats = await svc.get_stats()
-    return MemoryStatsResponse(**stats)

@@ -1,6 +1,5 @@
 """图像生成路由 — 生成、列表、删除。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

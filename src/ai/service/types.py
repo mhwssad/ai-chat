@@ -18,6 +18,7 @@ class ChatOptions:
     enable_memory: bool = True
     enable_tools: bool = True
     enable_rag: bool = False
+    enable_agent: bool = False
     extract_memory: bool = True
     streaming: bool = False
 

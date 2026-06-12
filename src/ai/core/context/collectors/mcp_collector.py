@@ -1,6 +1,6 @@
 """MCP 状态收集器 — 收集 MCP 服务器健康状态。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING
 
 from src.ai.core.context.collector import ContextCollector
@@ -13,7 +13,7 @@ from src.ai.core.context.types import (
 if TYPE_CHECKING:
     from src.ai.core.mcp.manager import MCPManager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MCPCollector(ContextCollector):

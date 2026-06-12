@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
-import logging
-from typing import Any
+from src.ai.config.logging_setup import get_logger
+from typing import TYPE_CHECKING, Any
 
 from src.ai.core.prompts import PromptRenderRequest
 
 from .types import MemorySearchResult
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from src.ai.core.prompts.service import PromptService
+
+logger = get_logger(__name__)
 
 
 class MemoryPromptBuilder:
@@ -19,7 +22,7 @@ class MemoryPromptBuilder:
         prompt_service: 提示词服务（从 DB 获取提示词模板）。
     """
 
-    def __init__(self, prompt_service: object) -> None:
+    def __init__(self, prompt_service: PromptService) -> None:
         self._prompt_service = prompt_service
 
     def build_system_context(

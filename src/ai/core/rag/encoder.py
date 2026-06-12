@@ -1,13 +1,19 @@
 """RAG 查询优化器 — 用 LLM 优化检索提示词，双路检索合并结果。"""
 
-import logging
+from __future__ import annotations
+
+from src.ai.config.logging_setup import get_logger
+from typing import TYPE_CHECKING
 
 from langchain_core.language_models import BaseChatModel
 
 from src.ai.utils.llm_utils import build_llm_chain
 from src.ai.core.rag.types import RAGSearchConfig, RAGSearchResult
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from src.ai.core.rag.service import RagService
+
+logger = get_logger(__name__)
 
 _OPTIMIZE_SYSTEM = """你是一个专业的搜索查询优化专家。你的任务是将用户的自然语言查询转换为高效的向量检索查询。
 
@@ -51,7 +57,7 @@ class RAGQueryEncoder:
     4. 合并去重结果
     """
 
-    def __init__(self, llm: BaseChatModel, rag_service: object) -> None:
+    def __init__(self, llm: BaseChatModel, rag_service: RagService) -> None:
         self._llm = llm
         self._optimize_chain = build_llm_chain(self._llm, _OPTIMIZE_SYSTEM, "{query}")
         self._rag_service = rag_service

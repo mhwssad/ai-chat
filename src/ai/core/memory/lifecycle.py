@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 import re
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from .store import MemoryStore
     from .vector_store import MemoryVectorStore
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MemoryLifecycleManager:

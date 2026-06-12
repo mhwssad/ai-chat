@@ -1,6 +1,6 @@
 """Shell 命令工具。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 import re
 import subprocess
 
@@ -9,7 +9,7 @@ from langchain_core.tools import tool
 from src.ai.core.tools.register import register_tool
 from src.ai.utils.thread_pool import get_thread_pool
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 危险命令黑名单 — 阻止破坏性操作
 _BLOCKED_COMMANDS = frozenset(

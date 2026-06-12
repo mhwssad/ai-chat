@@ -1,18 +1,24 @@
 """网络工具 — 网页获取和搜索。"""
 
+from __future__ import annotations
+
 import ipaddress
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 import re
 import socket
 from html.parser import HTMLParser
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from langchain_core.tools import tool
 
+if TYPE_CHECKING:
+    from langchain_core.tools import BaseTool
+
 from src.ai.core.tools.register import register_tool
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 内网 IP 范围 — 阻止 SSRF 攻击
 _PRIVATE_NETWORKS = [
@@ -132,11 +138,11 @@ def create_web_fetch_tool(http_aclient):
     return web_fetch
 
 
-def create_web_search_tool():
-    """工厂函数：创建 web_search 工具。"""
+def create_web_search_tool(mcp_manager):
+    """工厂函数：创建绑定了 mcp_manager 的 web_search 工具。"""
 
     # 缓存搜索工具引用，避免每次调用都重新发现
-    _cached_search_tool: object | None = None
+    _cached_search_tool: BaseTool | None = None
     _cache_valid = False
 
     @tool
@@ -150,9 +156,6 @@ def create_web_search_tool():
             num_results: 返回结果数量。
         """
         nonlocal _cached_search_tool, _cache_valid
-
-        # 惰性获取 MCP 管理器单例
-        from src.ai.core.mcp import mcp_manager
 
         # 尝试从 MCP 发现可用的搜索工具（带缓存）
         try:
@@ -197,10 +200,10 @@ def create_web_search_tool():
     return web_search
 
 
-def register(http_aclient):
+def register(http_aclient, mcp_manager=None):
     """注册网络工具。"""
     web_fetch_tool = create_web_fetch_tool(http_aclient)
-    web_search_tool = create_web_search_tool()
+    web_search_tool = create_web_search_tool(mcp_manager)
     register_tool(
         web_fetch_tool, source_type="builtin", permissions=["external_service"]
     )

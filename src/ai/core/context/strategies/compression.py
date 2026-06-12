@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING
 
 from src.ai.core.memory.prompt import MemoryPromptBuilder
@@ -21,8 +21,9 @@ if TYPE_CHECKING:
     from src.ai.core.context.compact import FullCompact
     from src.ai.core.memory.history import ChatHistoryManager
     from src.ai.core.memory.history_store import FileHistoryStore
+    from src.ai.core.prompts.service import PromptService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class CompressionContextBuilder:
@@ -103,7 +104,7 @@ class CompressionStrategy(BaseMemoryStrategy):
         history_manager: ChatHistoryManager,
         file_store: FileHistoryStore,
         llm: BaseChatModel,
-        prompt_service: object,
+        prompt_service: PromptService,
         *,
         max_messages: int = 30,
         keep_recent: int = 10,

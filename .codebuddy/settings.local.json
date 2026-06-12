@@ -1,0 +1,9 @@
+{
+  "enabledMcpjsonServers": [
+    "context7",
+    "filesystem",
+    "git",
+    "time"
+  ],
+  "disabledMcpjsonServers": []
+}

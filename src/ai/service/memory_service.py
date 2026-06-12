@@ -130,8 +130,7 @@ class MemoryApiService:
         assistant_message: str,
     ) -> list[dict[str, Any]]:
         """从对话中提取记忆。"""
-        requests = await self._get_pool().run_io(
-            self._svc.aextract_from_conversation,
+        requests = await self._svc.aextract_from_conversation(
             user_message,
             assistant_message,
         )

@@ -10,7 +10,7 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+from src.ai.config.logging_setup import get_logger
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from langgraph.graph import END, START, StateGraph
 
+from src.ai.config.container import config
 from src.ai.core.agent.state import GraphState
 from src.ai.core.agent.types import AgentResult, AgentStatus, AgentTraceStep, ToolCall
 from src.ai.core.context.types import ContextBuildRequest
@@ -32,7 +33,7 @@ if TYPE_CHECKING:
     from src.ai.core.tools.manager import ToolManager
     from src.ai.core.tools.registry import ToolRegistry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class AgentOrchestrator:
@@ -127,6 +128,11 @@ class AgentOrchestrator:
             "interrupted_at": None,
             "user_approval_pending": False,
             "context_sources": [],
+            "reflection_count": 0,
+            "max_reflections": config.settings.agent.agent_reflection_max_rounds,
+            "needs_reflection": False,
+            "reflection_history": [],
+            "recovery_history": [],
         }
 
         # 构造 RunnableConfig（含 thread_id 用于 checkpoint）
@@ -363,7 +369,14 @@ class AgentOrchestrator:
     def _build_graph(self, tools: list[BaseTool]) -> StateGraph:
         """构建 LangGraph 状态图。
 
-        图结构：
+        图结构（启用反思时）：
+        START → context_builder → llm_call ──[有工具调用]──→ tools → plan_mode_check ──[继续]──→ llm_call
+                                       │                                                  │
+                                       └──[无工具调用]──→ reflection ──[需要改进]──→ llm_call
+                                                                        │
+                                                            ──[通过/最大轮次]──→ END
+
+        图结构（未启用反思时）：
         START → context_builder → llm_call ──[有工具调用]──→ tools → plan_mode_check ──[继续]──→ llm_call
                                        │                                                  │
                                        └──[无工具调用]──→ END              ──[退出/错误]──→ END
@@ -375,16 +388,33 @@ class AgentOrchestrator:
             编译前的 StateGraph。
         """
         # 创建 TimeoutToolNode（带超时的工具执行节点）
+        # 可选：启用错误恢复时创建 RecoveryManager
+        recovery_manager = None
+        if config.settings.agent.agent_recovery_enabled:
+            from src.ai.core.tools.recovery import RecoveryConfig, RecoveryManager
+
+            recovery_manager = RecoveryManager(
+                config=RecoveryConfig(
+                    max_retries=config.settings.agent.agent_recovery_max_retries,
+                ),
+                tool_registry=self._registry,
+            )
+
         tool_node = TimeoutToolNode(
             tools,
             handle_tool_errors=True,
             tool_manager=self._tools,
+            parallel_enabled=config.settings.agent.agent_parallel_tools_enabled,
+            recovery_manager=recovery_manager,
         )
 
         # 创建绑定工具的 LLM
         llm = self._model.get_chat_llm(streaming=False)
         if tools:
             llm = llm.bind_tools(tools)  # type: ignore[assignment]
+
+        # 检查是否启用反思
+        reflection_enabled = config.settings.agent.agent_reflection_enabled
 
         # 创建图
         graph = StateGraph(GraphState)
@@ -395,20 +425,49 @@ class AgentOrchestrator:
         graph.add_node("tools", tool_node)
         graph.add_node("plan_mode_check", self._plan_mode_check_node)
 
+        if reflection_enabled:
+            from src.ai.core.agent.reflection import ReflectionLoop
+
+            reflection_loop = ReflectionLoop(
+                llm=llm,  # 复用 Agent 的 LLM 进行评估
+                max_rounds=config.settings.agent.agent_reflection_max_rounds,
+            )
+            graph.add_node(
+                "reflection", self._create_reflection_node(reflection_loop)
+            )
+
         # 注册边
         graph.add_edge(START, "context_builder")
         graph.add_edge("context_builder", "llm_call")
-        graph.add_conditional_edges(
-            "llm_call",
-            self._should_continue,
-            {"tools": "tools", "end": END},
-        )
+
+        if reflection_enabled:
+            # LLM 无工具调用 → 进入反思节点
+            graph.add_conditional_edges(
+                "llm_call",
+                self._should_continue,
+                {"tools": "tools", "end": "reflection"},
+            )
+        else:
+            graph.add_conditional_edges(
+                "llm_call",
+                self._should_continue,
+                {"tools": "tools", "end": END},
+            )
+
         graph.add_edge("tools", "plan_mode_check")
         graph.add_conditional_edges(
             "plan_mode_check",
             self._after_plan_check,
             {"llm_call": "llm_call", "end": END},
         )
+
+        # 反思节点的条件边
+        if reflection_enabled:
+            graph.add_conditional_edges(
+                "reflection",
+                self._after_reflection,
+                {"llm_call": "llm_call", "end": END},
+            )
 
         return graph
 
@@ -508,6 +567,76 @@ class AgentOrchestrator:
 
         return {}
 
+    def _create_reflection_node(self, reflection_loop: Any):
+        """创建自我反思节点（闭包捕获 reflection_loop）。"""
+
+        async def node(state: GraphState) -> dict[str, Any]:
+            reflection_count = state.get("reflection_count", 0)
+            max_reflections = state.get("max_reflections", reflection_loop.max_rounds)
+
+            logger.debug(
+                "自我反思: session=%s, round=%d/%d",
+                state["session_id"],
+                reflection_count + 1,
+                max_reflections,
+            )
+
+            # 提取用户原始问题和 AI 最终回答
+            user_question = _extract_user_question(state["messages"])
+            assistant_response = _extract_last_ai_content(state["messages"])
+
+            if not assistant_response:
+                return {
+                    "needs_reflection": False,
+                    "reflection_count": reflection_count,
+                }
+
+            # 执行评估
+            assessment = await reflection_loop.assess(
+                user_question=user_question,
+                assistant_response=assistant_response,
+                context_summary="",
+            )
+
+            reflection_count += 1
+
+            # 记录评估历史
+            history_entry = {
+                "round": reflection_count,
+                "verdict": assessment.verdict.value,
+                "completeness": assessment.completeness,
+                "accuracy": assessment.accuracy,
+                "intent_alignment": assessment.intent_alignment,
+                "reasoning": assessment.reasoning,
+                "suggestions": assessment.suggestions,
+            }
+            reflection_history = list(state.get("reflection_history", []))
+            reflection_history.append(history_entry)
+
+            should_continue = (
+                reflection_loop.should_continue(assessment)
+                and reflection_count < max_reflections
+            )
+
+            if should_continue:
+                # 追加反思提示消息，触发 LLM 改进
+                reflection_msg = reflection_loop.build_reflection_message(assessment)
+                return {
+                    "messages": [HumanMessage(content=reflection_msg)],
+                    "needs_reflection": True,
+                    "reflection_count": reflection_count,
+                    "reflection_history": reflection_history,
+                }
+
+            # 反思通过或达到最大轮次
+            return {
+                "needs_reflection": False,
+                "reflection_count": reflection_count,
+                "reflection_history": reflection_history,
+            }
+
+        return node
+
     # ── 路由函数 ──────────────────────────────────────────────
 
     @staticmethod
@@ -551,6 +680,18 @@ class AgentOrchestrator:
 
         return "llm_call"
 
+    @staticmethod
+    def _after_reflection(state: GraphState) -> str:
+        """反思节点后判断是否继续改进。"""
+        if state.get("needs_reflection"):
+            # 检查迭代次数，避免无限循环
+            if state["iteration"] < state["max_iterations"]:
+                return "llm_call"
+            logger.warning(
+                "反思后达到最大迭代次数: session=%s", state["session_id"]
+            )
+        return "end"
+
     # ── 辅助方法 ──────────────────────────────────────────────
 
     def _get_base_tools(self, tool_names: list[str] | None = None) -> list[BaseTool]:
@@ -573,6 +714,12 @@ class AgentOrchestrator:
     @staticmethod
     def _build_result(state: GraphState) -> AgentResult:
         """从最终图状态构建 AgentResult。"""
+        from src.ai.core.agent.reflection import (
+            ReflectionAssessment,
+            ReflectionResult,
+            ReflectionVerdict,
+        )
+
         messages = state["messages"]
         tool_calls = _rebuild_tool_calls(messages)
 
@@ -599,6 +746,36 @@ class AgentOrchestrator:
         else:
             status = AgentStatus.SUCCESS
 
+        # 构建反思结果
+        reflections: list[ReflectionResult] = []
+        reflection_history = state.get("reflection_history", [])
+        if reflection_history:
+            last_entry = reflection_history[-1]
+            assessments = [
+                ReflectionAssessment(
+                    verdict=ReflectionVerdict(e.get("verdict", "pass")),
+                    completeness=e.get("completeness", 1.0),
+                    accuracy=e.get("accuracy", 1.0),
+                    intent_alignment=e.get("intent_alignment", 1.0),
+                    reasoning=e.get("reasoning", ""),
+                    suggestions=e.get("suggestions", []),
+                )
+                for e in reflection_history
+            ]
+            reflections.append(
+                ReflectionResult(
+                    rounds_completed=state.get("reflection_count", 0),
+                    assessments=assessments,
+                    final_verdict=ReflectionVerdict(
+                        last_entry.get("verdict", "pass")
+                    ),
+                    improved=any(
+                        e.get("verdict", "pass") != "pass"
+                        for e in reflection_history
+                    ),
+                )
+            )
+
         return AgentResult(
             status=status,
             content=content,
@@ -608,6 +785,7 @@ class AgentOrchestrator:
             plan=state.get("plan"),
             trace=_build_trace(messages),
             context_sources=state.get("context_sources", []),
+            reflections=reflections,
         )
 
 
@@ -730,3 +908,25 @@ def _content_summary(value: Any) -> str:
     else:
         text = str(value)
     return redact_for_audit(text, max_length=500)
+
+
+def _extract_user_question(messages: list[BaseMessage]) -> str:
+    """从消息列表中提取第一条用户消息作为原始问题。"""
+    for msg in messages:
+        if isinstance(msg, HumanMessage):
+            content = msg.content
+            if isinstance(content, str):
+                return content[:500]
+            return str(content)[:500]
+    return ""
+
+
+def _extract_last_ai_content(messages: list[BaseMessage]) -> str:
+    """提取最后一条 AI 消息的文本内容。"""
+    for msg in reversed(messages):
+        if isinstance(msg, AIMessage):
+            content = msg.content
+            if isinstance(content, str):
+                return content
+            return str(content)
+    return ""

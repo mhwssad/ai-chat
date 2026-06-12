@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from abc import ABC, abstractmethod
 
 from src.ai.core.context.types import (
@@ -11,7 +11,7 @@ from src.ai.core.context.types import (
     ContextSection,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ContextCollector(ABC):

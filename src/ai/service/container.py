@@ -167,11 +167,17 @@ def _create_model_config_service(
 def _create_session_service(
     *,
     session_factory: Any,
+    chat_history_manager: Any,
+    settings: Any,
 ) -> Any:
     """创建会话管理服务。"""
     from src.ai.service.session_service import SessionService
 
-    return SessionService(session_factory=session_factory)
+    return SessionService(
+        session_factory=session_factory,
+        chat_history_manager=chat_history_manager,
+        settings=settings,
+    )
 
 
 def _create_scheduler_api_service(
@@ -288,6 +294,8 @@ class ServiceContainer(containers.DeclarativeContainer):
     session_service = providers.Singleton(
         _create_session_service,
         session_factory=session_factory,
+        chat_history_manager=chat_history_manager,
+        settings=settings,
     )
     scheduler_api_service = providers.Singleton(
         _create_scheduler_api_service,

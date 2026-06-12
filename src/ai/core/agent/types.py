@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from src.ai.core.agent.reflection import ReflectionResult
 
 
 class AgentStatus(str, Enum):
@@ -58,6 +61,7 @@ class AgentResult:
     plan: str | None = None
     trace: list[AgentTraceStep] = field(default_factory=list)
     context_sources: list[dict[str, Any]] = field(default_factory=list)
+    reflections: list[ReflectionResult] = field(default_factory=list)
 
     @property
     def is_success(self) -> bool:
@@ -110,4 +114,13 @@ class AgentResult:
                 for step in self.trace
             ],
             "context_sources": self.context_sources,
+            "reflections": [
+                {
+                    "rounds_completed": r.rounds_completed,
+                    "final_verdict": r.final_verdict.value,
+                    "improved": r.improved,
+                    "extra_tokens": r.extra_tokens,
+                }
+                for r in self.reflections
+            ],
         }

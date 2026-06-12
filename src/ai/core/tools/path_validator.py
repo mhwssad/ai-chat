@@ -1,10 +1,10 @@
 """路径验证工具 — 防止路径穿越攻击。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 import os
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 默认允许访问的目录 — 项目根目录和当前工作目录
 _PROJECT_ROOT: Path | None = None

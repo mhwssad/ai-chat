@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -15,7 +15,7 @@ from src.ai.storage.scheduler_repository import (
 if TYPE_CHECKING:
     from sqlalchemy.orm import sessionmaker
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SchedulerStore:

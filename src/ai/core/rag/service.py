@@ -1,10 +1,11 @@
-"""RAG 索引和检索服务 — 基于 langchain-chroma，支持会话隔离。"""
+"""RAG 索引和检索服务 — 基于 langchain-chroma，全局统一存储。"""
 
 from __future__ import annotations
 
 import hashlib
 import json
-import logging
+import threading
+from src.ai.config.logging_setup import get_logger
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -23,8 +24,11 @@ from src.ai.storage.runtime_repository import RagDocumentRepository
 if TYPE_CHECKING:
     from src.ai.config.settings import Settings
     from src.ai.core.prompts.service import PromptService
+    from src.ai.core.rag.bm25_retriever import BM25Retriever
+    from src.ai.core.rag.index_meta import IndexMetaStore
+    from src.ai.utils.thread_pool import ThreadPoolManager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
@@ -122,9 +126,9 @@ class RagService:
         top_k: int = 5,
         settings: Settings,
         prompt_service: PromptService,
-        meta_store: object | None = None,
-        bm25_retriever: object | None = None,
-        thread_pool: object | None = None,
+        meta_store: IndexMetaStore | None = None,
+        bm25_retriever: BM25Retriever | None = None,
+        thread_pool: ThreadPoolManager | None = None,
         session_factory: Callable[[], Session] | None = None,
     ) -> None:
         self._embeddings = embeddings
@@ -136,6 +140,7 @@ class RagService:
         self._settings = settings
         self._prompt_service = prompt_service
         self._stores: dict[str, ChromaStore] = {}
+        self._store_lock = threading.Lock()
         self._meta_store = meta_store
         self._bm25 = bm25_retriever
         self._bm25_dirty = True
@@ -145,27 +150,28 @@ class RagService:
     # ── 向量存储 ──────────────────────────────────────────
 
     def _get_store(self, session_id: str | None = None) -> ChromaStore:
-        """获取（或创建）向量存储实例。
+        """获取全局向量存储实例。
 
-        Args:
-            session_id: 会话 ID，非空时使用会话级 collection。
+        所有会话共享同一个 Chroma collection，session_id 参数保留用于兼容但被忽略。
+        使用 threading.Lock 保护 ChromaDB 客户端的创建过程，
+        避免多线程并发创建触发 ChromaDB SharedSystemClient 的竞态条件。
 
         Returns:
             ChromaStore 包装实例。
         """
-        collection = (
-            f"{self._base_collection}_{session_id}"
-            if session_id
-            else self._base_collection
-        )
-        if collection not in self._stores:
-            chroma = Chroma(
-                collection_name=collection,
-                embedding_function=self._embeddings,
-                persist_directory=self._persist_dir,
-            )
-            self._stores[collection] = ChromaStore(chroma)
-        return self._stores[collection]
+        if self._base_collection in self._stores:
+            return self._stores[self._base_collection]
+
+        with self._store_lock:
+            # 双重检查：获取锁后再次确认，避免重复创建
+            if self._base_collection not in self._stores:
+                chroma = Chroma(
+                    collection_name=self._base_collection,
+                    embedding_function=self._embeddings,
+                    persist_directory=self._persist_dir,
+                )
+                self._stores[self._base_collection] = ChromaStore(chroma)
+        return self._stores[self._base_collection]
 
     # ── 索引 ──────────────────────────────────────────────
 
@@ -197,9 +203,9 @@ class RagService:
                             else "",
                             chunk_count=meta.chunk_count,
                             mime_type="",
-                            session_id=session_id,
-                            scope=_scope_for(session_id),
-                            collection_name=self._get_store(session_id).collection_name,
+                            session_id=None,
+                            scope="global",
+                            collection_name=self._get_store().collection_name,
                             status="active",
                             content_hash=meta.content_hash,
                         )
@@ -222,10 +228,7 @@ class RagService:
         reindex: bool = False,
     ) -> RagDocumentInfo:
         """从 URL 下载并索引文档。"""
-        from src.ai.core.rag.loaders.url_loader import UrlLoader
-
-        url_loader = UrlLoader(self._loader)  # type: ignore[arg-type]
-        loaded_docs = url_loader.load_url(url)
+        loaded_docs = self._loader.load_url(url)
         return self._index_documents(
             loaded_docs,
             source_path=url,
@@ -243,10 +246,7 @@ class RagService:
         reindex: bool = False,
     ) -> RagDocumentInfo:
         """从字节流索引文档。"""
-        from src.ai.core.rag.loaders.stream_loader import StreamLoader
-
-        stream_loader = StreamLoader(self._loader)  # type: ignore[arg-type]
-        loaded_docs = stream_loader.load_stream(
+        loaded_docs = self._loader.load_stream(
             data, mime_type=mime_type, filename=filename
         )
         source_path = filename or "stream"
@@ -292,7 +292,7 @@ class RagService:
         reindex: bool = False,
     ) -> RagDocumentInfo:
         """通用索引逻辑：切分 → 增量检查 → 写入 Chroma。"""
-        store = self._get_store(session_id)
+        store = self._get_store()
 
         # 1. 切分
         all_chunks: list[tuple[Document, SplitChunk]] = []
@@ -337,8 +337,8 @@ class RagService:
             metadata = {
                 **doc.metadata,
                 "source_path": source_path,
-                "session_id": session_id or "",
-                "scope": _scope_for(session_id),
+                "session_id": "",
+                "scope": "global",
                 "collection_name": store.collection_name,
                 "chunk_index": chunk.index,
                 "content_hash": content_hash,
@@ -431,7 +431,7 @@ class RagService:
         top_k: int | None = None,
     ) -> list[RagSearchResult]:
         """向量相似度搜索。"""
-        store = self._get_store(session_id)
+        store = self._get_store()
         k = top_k if top_k is not None else self._top_k
 
         results_with_scores = store.similarity_search_with_score(query, k=k)
@@ -505,7 +505,7 @@ class RagService:
         if not self._bm25_dirty and self._bm25.is_built:  # type: ignore[union-attr]
             return
 
-        store = self._get_store(session_id)
+        store = self._get_store()
         all_data = store.get()
         if not all_data["ids"]:
             return
@@ -635,7 +635,7 @@ class RagService:
         Returns:
             分块详情列表。
         """
-        store = self._get_store(session_id)
+        store = self._get_store()
         existing = store.get(where={"source_path": source_path})
         if not existing["ids"]:
             return []
@@ -655,35 +655,8 @@ class RagService:
         return chunks
 
     def get_all_stats(self) -> dict:
-        """获取全局统计（跨所有会话）。
-
-        Returns:
-            包含 default_chunks、sessions、total_sessions、total_chunks 的字典。
-        """
-        # 默认知识库统计
-        default_stats = self.get_stats()
-        default_chunks = default_stats["total_chunks"]
-
-        # 会话级知识库统计
-        sessions: list[dict] = []
-        for session_id in self.list_sessions():
-            session_stats = self.get_stats(session_id=session_id)
-            docs = self.list_documents(session_id=session_id)
-            sessions.append(
-                {
-                    "session_id": session_id,
-                    "document_count": len(docs),
-                    "total_chunks": session_stats["total_chunks"],
-                }
-            )
-
-        total_chunks = default_chunks + sum(s["total_chunks"] for s in sessions)
-        return {
-            "default_chunks": default_chunks,
-            "sessions": sessions,
-            "total_sessions": len(sessions),
-            "total_chunks": total_chunks,
-        }
+        """获取全局统计信息（统一存储下等同于 get_stats）。"""
+        return self.get_stats()
 
     def delete_documents_batch(
         self,
@@ -715,7 +688,7 @@ class RagService:
     ) -> bool:
         """删除文件的所有 chunk。"""
         source_path = _normalize_source_path(path)
-        store = self._get_store(session_id)
+        store = self._get_store()
         existing = store.get(where={"source_path": source_path})
         if not existing["ids"]:
             return False
@@ -730,44 +703,15 @@ class RagService:
         return True
 
     def delete_all(self, *, session_id: str | None = None) -> int:
-        """清空指定 collection 的所有数据。"""
-        store = self._get_store(session_id)
+        """清空全局 collection 的所有数据。"""
+        store = self._get_store()
         all_data = store.get()
         count = len(all_data["ids"]) if all_data["ids"] else 0
         if count > 0:
             store.delete(ids=all_data["ids"])
-        self._mark_scope_documents_deleted(session_id=session_id)
+        self._mark_all_documents_deleted()
         self._bm25_dirty = True
         return count
-
-    # ── 会话管理 ──────────────────────────────────────────
-
-    def list_sessions(self) -> list[str]:
-        """列出所有会话级知识库的 session_id。"""
-        store = self._get_store()
-        prefix = f"{self._base_collection}_"
-        sessions: list[str] = []
-        for name in store.list_collections():
-            if name.startswith(prefix):
-                sessions.append(name[len(prefix) :])
-        return sessions
-
-    def delete_session(self, session_id: str) -> bool:
-        """删除会话级知识库。"""
-        collection_name = f"{self._base_collection}_{session_id}"
-        if collection_name in self._stores:
-            del self._stores[collection_name]
-        store = self._get_store()
-        try:
-            store.delete_collection(collection_name)
-            self._mark_scope_documents_deleted(session_id=session_id)
-            self._bm25_dirty = True
-            return True
-        except Exception:
-            logger.warning(
-                "删除会话 collection 失败: %s", collection_name, exc_info=True
-            )
-            return False
 
     # ── 查询 ──────────────────────────────────────────────
 
@@ -778,7 +722,7 @@ class RagService:
         status: str | None = "active",
     ) -> list[RagDocumentInfo]:
         """列出文档元信息，合并 Chroma 实际索引与 DB 控制面状态。"""
-        store = self._get_store(session_id)
+        store = self._get_store()
         all_data = store.get()
 
         seen: dict[str, RagDocumentInfo] = {}
@@ -790,9 +734,10 @@ class RagService:
                     title=meta.get("title", ""),
                     chunk_count=0,
                     mime_type=meta.get("mime_type", ""),
-                    session_id=session_id,
-                    scope=meta.get("scope") or _scope_for(session_id),
-                    collection_name=meta.get("collection_name") or store.collection_name,
+                    session_id=None,
+                    scope="global",
+                    collection_name=meta.get("collection_name")
+                    or store.collection_name,
                     status="active",
                     content_hash=meta.get("content_hash"),
                 )
@@ -806,7 +751,7 @@ class RagService:
 
     def get_stats(self, *, session_id: str | None = None) -> dict:
         """返回向量库统计信息。"""
-        store = self._get_store(session_id)
+        store = self._get_store()
         all_data = store.get()
         total = len(all_data["ids"]) if all_data["ids"] else 0
         return {
@@ -816,7 +761,7 @@ class RagService:
 
     # ── 异步包装（线程池执行同步 IO） ──────────────────────────
 
-    def _get_pool(self):
+    def _get_pool(self) -> ThreadPoolManager:
         """获取线程池实例。"""
         if self._thread_pool is None:
             from src.ai.utils.thread_pool import get_thread_pool
@@ -963,10 +908,6 @@ class RagService:
         """异步获取向量库统计信息。"""
         return await self._get_pool().run_io(self.get_stats, session_id=session_id)
 
-    async def alist_sessions(self) -> list[str]:
-        """异步列出所有会话级知识库。"""
-        return await self._get_pool().run_io(self.list_sessions)
-
     async def aget_all_stats(self) -> dict:
         """异步获取全局统计。"""
         return await self._get_pool().run_io(self.get_all_stats)
@@ -1011,9 +952,9 @@ class RagService:
             title=meta.get("title", ""),
             chunk_count=chunk_count,
             mime_type=meta.get("mime_type", ""),
-            session_id=session_id,
-            scope=_scope_for(session_id),
-            collection_name=collection_name or self._get_store(session_id).collection_name,
+            session_id=None,
+            scope="global",
+            collection_name=collection_name or self._get_store().collection_name,
             status="active",
             content_hash=content_hash,
         )
@@ -1025,10 +966,10 @@ class RagService:
         try:
             with self._session_factory() as session:
                 repo = RagDocumentRepository(session)
-                record = repo.get_by_source(info.source_path, session_id=info.session_id)
+                record = repo.get_by_source(info.source_path)
                 payload = {
-                    "session_id": info.session_id,
-                    "scope": info.scope,
+                    "session_id": None,
+                    "scope": "global",
                     "collection_name": info.collection_name,
                     "source_path": info.source_path,
                     "title": info.title,
@@ -1039,7 +980,7 @@ class RagService:
                     "extra": json.dumps(
                         {
                             "source_path": info.source_path,
-                            "scope": info.scope,
+                            "scope": "global",
                         },
                         ensure_ascii=False,
                     ),
@@ -1065,15 +1006,15 @@ class RagService:
         try:
             with self._session_factory() as session:
                 repo = RagDocumentRepository(session)
-                record = repo.get_by_source(source_path, session_id=session_id)
+                record = repo.get_by_source(source_path)
                 if record is not None:
                     repo.update(record, status=status, chunk_count=0)
                     session.commit()
         except Exception:
             logger.debug("更新 RAG 文档状态失败: %s", source_path, exc_info=True)
 
-    def _mark_scope_documents_deleted(self, *, session_id: str | None = None) -> None:
-        """将指定作用域下的 RAG 文档标记为已删除。"""
+    def _mark_all_documents_deleted(self) -> None:
+        """将所有 RAG 文档标记为已删除。"""
         if self._session_factory is None:
             return
         try:
@@ -1083,7 +1024,6 @@ class RagService:
                     limit=10000,
                     order_by="updated_at",
                     descending=True,
-                    session_id=session_id,
                 )
                 for record in records:
                     repo.update(record, status="deleted", chunk_count=0)
@@ -1100,11 +1040,7 @@ class RagService:
     ) -> list[RagDocumentInfo]:
         """将 DB 控制面状态合并到 Chroma 文档列表。"""
         if self._session_factory is None:
-            return [
-                doc
-                for doc in docs
-                if status is None or doc.status == status
-            ]
+            return [doc for doc in docs if status is None or doc.status == status]
 
         try:
             with self._session_factory() as session:
@@ -1112,7 +1048,6 @@ class RagService:
                     limit=10000,
                     order_by="updated_at",
                     descending=True,
-                    session_id=session_id,
                 )
         except Exception:
             logger.debug("读取 RAG 文档控制面失败", exc_info=True)
@@ -1163,8 +1098,8 @@ def _sha256(text: str) -> str:
 
 
 def _scope_for(session_id: str | None) -> str:
-    """根据 session_id 生成 RAG 文档作用域。"""
-    return "session" if session_id else "global"
+    """RAG 文档作用域，全局统一存储下始终返回 global。"""
+    return "global"
 
 
 def _normalize_source_path(path: str | Path, *, force_path: bool = False) -> str:
@@ -1178,7 +1113,12 @@ def _normalize_source_path(path: str | Path, *, force_path: bool = False) -> str
     ):
         return raw
     path_obj = Path(raw)
-    if force_path or path_obj.is_absolute() or path_obj.exists() or len(path_obj.parts) > 1:
+    if (
+        force_path
+        or path_obj.is_absolute()
+        or path_obj.exists()
+        or len(path_obj.parts) > 1
+    ):
         return str(path_obj.resolve())
     return raw
 

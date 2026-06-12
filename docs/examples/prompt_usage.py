@@ -11,8 +11,11 @@ import io
 
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
 
-from src.ai.core.prompts import PromptRenderRequest, prompt_service
+from src.ai.core.container import container
+from src.ai.core.prompts import PromptRenderRequest
 from src.ai.exception.prompt_exception import PromptNotFoundError, PromptRenderError
+
+prompt_service = container.prompt_container.prompt_service()
 
 
 def demo_seed_defaults() -> None:

@@ -24,6 +24,15 @@ class SkillApiService:
     def __init__(self, *, skill_service: Any) -> None:
         self._svc = skill_service
 
+    @staticmethod
+    def _to_dict(skill) -> dict[str, Any]:
+        """将 SkillIndex dataclass 转为 API 字典，Path → str。"""
+        d = asdict(skill)
+        # Path 对象不能直接传入 pydantic str 字段
+        if "source_path" in d and d["source_path"] is not None:
+            d["source_path"] = str(d["source_path"])
+        return d
+
     def discover(self) -> list[dict[str, Any]]:
         """重新发现技能。
 
@@ -31,7 +40,7 @@ class SkillApiService:
             技能索引列表。
         """
         skills = self._svc.discover()
-        return [asdict(s) for s in skills]
+        return [self._to_dict(s) for s in skills]
 
     def list_skills(self) -> list[dict[str, Any]]:
         """列出所有技能。
@@ -40,7 +49,7 @@ class SkillApiService:
             技能索引列表。
         """
         skills = self._svc.list_skills()
-        return [asdict(s) for s in skills]
+        return [self._to_dict(s) for s in skills]
 
     def get_skill(self, name: str) -> dict[str, Any] | None:
         """获取指定技能。
@@ -54,7 +63,7 @@ class SkillApiService:
         skill = self._svc.get(name)
         if skill is None:
             return None
-        return asdict(skill)
+        return self._to_dict(skill)
 
     def get_slash_commands(self) -> list[dict[str, str]]:
         """获取可用的斜杠命令列表。

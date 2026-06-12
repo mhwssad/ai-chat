@@ -5,7 +5,7 @@
 - 会话文件（多条目）：文件头 frontmatter + 多个条目（每个条目有自己的 frontmatter）
 """
 
-import logging
+from src.ai.config.logging_setup import get_logger
 import re
 from datetime import datetime
 from pathlib import Path
@@ -13,7 +13,7 @@ from typing import Any
 
 from .types import MEMORY_TYPES, MemoryEntry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 

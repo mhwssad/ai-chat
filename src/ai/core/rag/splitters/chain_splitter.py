@@ -1,6 +1,6 @@
 """职责链切割器编排器。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from pathlib import Path
 from typing import Any
 
@@ -9,7 +9,7 @@ from langchain_core.documents import Document
 from .base import SplitChunk, SplitterStrategy
 from .registry import SplitterRegistry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ChainSplitter(SplitterStrategy):

@@ -60,34 +60,6 @@ from src.ai.core.models.tts import (
 from src.ai.core.models.types import AudioData, ImageData
 
 
-# 惰性导入：DI 容器单例
-def __getattr__(name: str):
-    if name in (
-        "model_registry",
-        "model_service",
-        "chat_model_factory",
-        "embedding_model_factory",
-        "image_model_factory",
-        "tts_model_factory",
-    ):
-        from src.ai.core.container import container
-
-        if name == "model_service":
-            return container.model_container.model_service()
-        reg = container.model_container.model_registry()
-        if name == "model_registry":
-            return reg
-        if name == "chat_model_factory":
-            return reg.chat
-        if name == "embedding_model_factory":
-            return reg.embedding
-        if name == "image_model_factory":
-            return reg.image
-        if name == "tts_model_factory":
-            return reg.tts
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 __all__ = [
     "AudioData",
     "ChatModelBuilder",
@@ -114,10 +86,4 @@ __all__ = [
     "StabilityAIImageBuilder",
     "TTSModelBuilder",
     "TTSModelFactory",
-    "chat_model_factory",
-    "embedding_model_factory",
-    "image_model_factory",
-    "model_registry",
-    "model_service",
-    "tts_model_factory",
 ]

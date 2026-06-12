@@ -18,6 +18,7 @@ from typing import Generator
 
 from sqlalchemy import create_engine, Engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, Session
 from src.ai.config.base_config import get_bootstrap_settings
 
@@ -51,15 +52,23 @@ def get_engine() -> Engine:
     global _engine
     if _engine is None:
         database_url = _get_database_url()
+        echo = get_bootstrap_settings().sqlalchemy_echo
         connect_args: dict = {}
-        # SQLite 特定配置
+        # SQLite 特定配置：StaticPool 单连接，避免 QueuePool 耗尽
         if database_url.startswith("sqlite"):
             connect_args["check_same_thread"] = False
-        _engine = create_engine(
-            database_url,
-            echo=get_bootstrap_settings().sqlalchemy_echo,
-            connect_args=connect_args,
-        )
+            _engine = create_engine(
+                database_url,
+                echo=echo,
+                connect_args=connect_args,
+                poolclass=StaticPool,
+            )
+        else:
+            _engine = create_engine(
+                database_url,
+                echo=echo,
+                connect_args=connect_args,
+            )
     return _engine
 
 

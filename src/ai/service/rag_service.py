@@ -59,9 +59,7 @@ class RagApiService:
         Returns:
             索引结果信息。
         """
-        return await self._get_pool().run_io(
-            self._rag.aindex_file, path, session_id=session_id
-        )
+        return await self._rag.aindex_file(path, session_id=session_id)
 
     async def index_url(
         self,
@@ -79,9 +77,7 @@ class RagApiService:
         Returns:
             索引结果信息。
         """
-        return await self._get_pool().run_io(
-            self._rag.aindex_url, url, session_id=session_id
-        )
+        return await self._rag.aindex_url(url, session_id=session_id)
 
     async def index_text(
         self,
@@ -101,9 +97,7 @@ class RagApiService:
         Returns:
             索引结果信息。
         """
-        return await self._get_pool().run_io(
-            self._rag.aindex_text, text, title=title, session_id=session_id
-        )
+        return await self._rag.aindex_text(text, title=title, session_id=session_id)
 
     async def index_directory(
         self,
@@ -123,8 +117,8 @@ class RagApiService:
         Returns:
             索引结果列表。
         """
-        return await self._get_pool().run_io(
-            self._rag.aindex_directory, path, patterns=patterns, session_id=session_id
+        return await self._rag.aindex_directory(
+            path, patterns=patterns, session_id=session_id
         )
 
     # ── 检索 ──────────────────────────────────────────────────
@@ -146,9 +140,7 @@ class RagApiService:
         Returns:
             搜索结果列表。
         """
-        result = await self._get_pool().run_io(
-            self._rag.asearch, query, session_id=session_id, top_k=top_k
-        )
+        result = await self._rag.asearch(query, session_id=session_id, top_k=top_k)
         return self._search_result_to_dicts(result)
 
     async def hybrid_search(
@@ -168,8 +160,8 @@ class RagApiService:
         Returns:
             搜索结果列表。
         """
-        result = await self._get_pool().run_io(
-            self._rag.ahybrid_search, query, session_id=session_id, top_k=top_k
+        result = await self._rag.ahybrid_search(
+            query, session_id=session_id, top_k=top_k
         )
         return self._search_result_to_dicts(result)
 
@@ -190,9 +182,7 @@ class RagApiService:
         Returns:
             是否删除成功。
         """
-        return await self._get_pool().run_io(
-            self._rag.adelete_file, path, session_id=session_id
-        )
+        return await self._rag.adelete_file(path, session_id=session_id)
 
     async def delete_all(
         self,
@@ -207,9 +197,7 @@ class RagApiService:
         Returns:
             删除的文档数量。
         """
-        return await self._get_pool().run_io(
-            self._rag.adelete_all, session_id=session_id
-        )
+        return await self._rag.adelete_all(session_id=session_id)
 
     async def list_documents(
         self,
@@ -219,19 +207,18 @@ class RagApiService:
     ) -> list[dict[str, Any]]:
         """列出已索引的文档。
 
+        全局统一存储下 session_id 被忽略，所有会话共享同一份文档。
+
         Args:
-            session_id: 会话 ID（可选）。
+            session_id: 会话 ID（保留用于兼容，实际被忽略）。
             status: 文档状态过滤。
 
         Returns:
             文档信息列表。
         """
-        docs = await self._get_pool().run_io(
-            self._rag.alist_documents, session_id=session_id
-        )
-        results: list[dict[str, Any]] = []
-        for doc in docs:
-            doc_dict = {
+        docs = await self._rag.alist_documents(status=status)
+        return [
+            {
                 "source_path": doc.source_path,
                 "title": doc.title,
                 "chunk_count": doc.chunk_count,
@@ -242,9 +229,8 @@ class RagApiService:
                 "status": doc.status,
                 "content_hash": doc.content_hash,
             }
-            if status is None or doc_dict["status"] == status:
-                results.append(doc_dict)
-        return results
+            for doc in docs
+        ]
 
     async def get_stats(
         self,
@@ -259,9 +245,7 @@ class RagApiService:
         Returns:
             统计信息字典。
         """
-        return await self._get_pool().run_io(
-            self._rag.aget_stats, session_id=session_id
-        )
+        return await self._rag.aget_stats(session_id=session_id)
 
     # ── 内部工具 ──────────────────────────────────────────────
 

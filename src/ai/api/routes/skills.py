@@ -1,6 +1,5 @@
 """技能管理路由 — 发现、列表、详情、斜杠命令。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

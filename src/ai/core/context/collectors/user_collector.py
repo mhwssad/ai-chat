@@ -1,6 +1,6 @@
 """用户上下文收集器 — 从 DB 模板收集系统提示词。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import Any
 
 from src.ai.core.context.collector import ContextCollector
@@ -10,7 +10,7 @@ from src.ai.core.context.types import (
     ContextSection,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UserCollector(ContextCollector):

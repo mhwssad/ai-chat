@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+from src.ai.config.logging_setup import get_logger
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -27,7 +27,7 @@ from src.ai.core.scheduler.types import (
 if TYPE_CHECKING:
     from src.ai.core.tools.manager import ToolManager
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class TaskExecutor:

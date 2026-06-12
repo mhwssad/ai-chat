@@ -68,11 +68,11 @@ def _create_sections():
     return SystemPromptSections()
 
 
-def _create_assembler(settings):
+def _create_assembler(chat_model_config):
     """token 预算组装器。"""
     from src.ai.core.context.assembler import ContextAssembler
 
-    return ContextAssembler(settings=settings)
+    return ContextAssembler(settings=chat_model_config)
 
 
 def _create_micro_compact(settings):
@@ -160,6 +160,7 @@ class ContextContainer(containers.DeclarativeContainer):
 
     # 外部依赖
     settings: Any = providers.Dependency()
+    chat_model_config: Any = providers.Dependency()
     memory_service: Any = providers.Dependency()
     tool_registry: Any = providers.Dependency()
     prompt_service: Any = providers.Dependency()
@@ -216,7 +217,7 @@ class ContextContainer(containers.DeclarativeContainer):
         ),
     )
     sections = providers.Singleton(_create_sections)
-    assembler = providers.Singleton(_create_assembler, settings=settings)
+    assembler = providers.Singleton(_create_assembler, chat_model_config=chat_model_config)
     micro_compact = providers.Singleton(
         _create_micro_compact,
         settings=settings,

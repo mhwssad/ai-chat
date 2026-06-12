@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

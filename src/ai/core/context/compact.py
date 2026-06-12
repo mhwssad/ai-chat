@@ -1,13 +1,18 @@
 """上下文压缩 — 微压缩（工具结果清理）和全量/增量压缩（LLM 摘要）。"""
 
-import logging
-from typing import Any
+from __future__ import annotations
+
+from src.ai.config.logging_setup import get_logger
+from typing import TYPE_CHECKING, Any
 
 from langchain_core.language_models import BaseChatModel
 
 from src.ai.utils.llm_utils import build_llm_chain
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from src.ai.core.prompts.service import PromptService
+
+logger = get_logger(__name__)
 
 # ── 模块级函数（无状态，纯函数） ─────────────────────────────────
 
@@ -199,7 +204,7 @@ class FullCompact:
     STANDARD_SECTIONS: list[str] = STANDARD_SECTIONS
 
     def __init__(
-        self, llm: BaseChatModel, prompt_service: object, keep_recent: int = 10
+        self, llm: BaseChatModel, prompt_service: PromptService, keep_recent: int = 10
     ) -> None:
         self._llm = llm
         self._keep_recent = keep_recent
@@ -349,7 +354,7 @@ class FullCompact:
         return extract_message_content(msg)
 
     @staticmethod
-    def _get_template(prompt_service: object, prompt_key: str) -> str:
+    def _get_template(prompt_service: PromptService, prompt_key: str) -> str:
         """从 prompt_service 获取模板原始内容。"""
         template = prompt_service.get_template(prompt_key)  # type: ignore[attr-defined]
         if template is None:

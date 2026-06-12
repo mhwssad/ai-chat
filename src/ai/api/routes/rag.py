@@ -1,6 +1,5 @@
 """RAG 管理路由 — 文档索引、搜索、管理。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

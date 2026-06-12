@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 from langchain_core.tools import tool
 
 from src.ai.core.tools.register import register_tool
 
+if TYPE_CHECKING:
+    from src.ai.core.models import ModelService
 
-def create_image_generate_tool(model_service: Any) -> Any:
+def create_image_generate_tool(model_service: ModelService) -> Any:
     """工厂函数：创建绑定了 model_service 的 image_generate 工具。"""
 
     @tool
@@ -64,7 +66,7 @@ def create_image_generate_tool(model_service: Any) -> Any:
     return image_generate
 
 
-def register(model_service: Any) -> None:
+def register(model_service: ModelService) -> None:
     """注册图像生成工具。"""
     tool_obj = create_image_generate_tool(model_service)
     register_tool(

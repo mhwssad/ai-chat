@@ -21,5 +21,5 @@ class SkillIndexResponse(BaseModel):
 class SlashCommandResponse(BaseModel):
     """斜杠命令信息。"""
 
-    name: str = Field(description="命令名称")
+    command: str = Field(description="斜杠命令（含 / 前缀）")
     description: str = Field(description="命令描述")

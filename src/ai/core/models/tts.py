@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import io
-import logging
+from src.ai.config.logging_setup import get_logger
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -19,7 +19,7 @@ from src.ai.exception.media_exception import TTSException
 if TYPE_CHECKING:
     from src.ai.config.model_settings import TTSModelConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ── 语音合成器抽象 ──────────────────────────────────────

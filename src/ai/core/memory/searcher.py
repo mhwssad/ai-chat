@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 import re
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
@@ -19,10 +19,12 @@ from .types import MemoryEntry, MemorySearchResult
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
+    from src.ai.core.prompts.service import PromptService
+
     from .store import MemoryStore
     from .vector_store import MemoryVectorStore
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 中文停用词
 _STOPWORDS = frozenset(
@@ -67,7 +69,7 @@ class MemorySearcher:
         self,
         store: MemoryStore,
         llm: BaseChatModel,
-        prompt_service: object,
+        prompt_service: PromptService,
         max_results: int = 5,
         vector_store: MemoryVectorStore | None = None,
     ) -> None:

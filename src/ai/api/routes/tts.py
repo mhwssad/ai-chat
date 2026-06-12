@@ -1,6 +1,5 @@
 """TTS 路由 — 语音合成、列表、删除。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

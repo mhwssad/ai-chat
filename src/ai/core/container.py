@@ -2,10 +2,13 @@
 
 AppContainer 组合各模块子容器，测试时可通过
 ``container.xxx.override(mock_obj)`` 替换任意 Provider。
+
+配置通过统一的 ConfigContainer 管理，支持热更新和生命周期控制。
 """
 
 from dependency_injector import containers, providers
 
+from src.ai.config.container import config as config_container
 from src.ai.core.agent.container import AgentContainer
 from src.ai.core.context.container import ContextContainer
 from src.ai.core.mcp.container import MCPContainer
@@ -21,21 +24,7 @@ from src.ai.storage.container import StorageContainer
 from src.ai.utils.http.container import HTTPContainer
 
 
-# ── 工厂函数（延迟导入，避免循环依赖和 import 时副作用） ─────────
-
-
-def _create_bootstrap_settings():
-    """启动期最小配置。"""
-    from src.ai.config.base_config import BootstrapSettings
-
-    return BootstrapSettings()
-
-
-def _create_settings():
-    """全局配置。"""
-    from src.ai.config.settings import Settings
-
-    return Settings()
+# -- 工厂函数（延迟导入，避免循环依赖和 import 时副作用） --
 
 
 def _create_chat_llm(model_service):
@@ -69,31 +58,19 @@ class AppContainer(containers.DeclarativeContainer):
     - Layer 1: 基础设施（线程池、注册表、LLM 实例）
     - Layer 2: 子容器（服务）
     - Layer 3: 跨容器依赖
+
+    注意：不使用 wiring_config 自动 wire。因为 container = AppContainer()
+    在模块顶层执行，自动 wire 会在路由模块尚未完全加载时触发，导致 wire 不完整。
+    所有 wiring 通过 container_wiring.initialize_container() 在 lifespan
+    阶段显式完成（此时所有模块已加载完毕）。
     """
 
-    wiring_config = containers.WiringConfiguration(
-        modules=[
-            "src.ai.api.routes.chat",
-            "src.ai.api.routes.tools",
-            "src.ai.api.routes.system",
-            "src.ai.api.routes.rag",
-            "src.ai.api.routes.agent",
-            "src.ai.api.routes.prompts",
-            "src.ai.api.routes.memory",
-            "src.ai.api.routes.models",
-            "src.ai.api.routes.sessions",
-            "src.ai.api.routes.image",
-            "src.ai.api.routes.tts",
-            "src.ai.api.routes.scheduler",
-            "src.ai.api.routes.skills",
-        ],
-    )
+    # -- Layer 0: 配置（委托给统一 ConfigContainer） --
+    bootstrap_settings = providers.Callable(lambda: config_container.bootstrap_settings)
+    settings = providers.Callable(lambda: config_container.settings)
+    chat_model_config = providers.Callable(lambda: config_container.chat_model_config)
 
-    # ── Layer 0: 配置 ──
-    bootstrap_settings = providers.Singleton(_create_bootstrap_settings)
-    settings = providers.Singleton(_create_settings)
-
-    # ── Layer 1: 基础设施 ──
+    # -- Layer 1: 基础设施 --
     thread_pool = providers.Singleton(_create_thread_pool, settings=settings)
     model_container = providers.Container(ModelContainer)
     chat_llm = providers.Singleton(
@@ -101,7 +78,7 @@ class AppContainer(containers.DeclarativeContainer):
         model_service=model_container.model_service,
     )
 
-    # ── Layer 2: 子容器 ──
+    # -- Layer 2: 子容器 --
     storage_container = providers.Container(
         StorageContainer,
         bootstrap_settings=bootstrap_settings,
@@ -150,6 +127,7 @@ class AppContainer(containers.DeclarativeContainer):
     context_container = providers.Container(
         ContextContainer,
         settings=settings,
+        chat_model_config=chat_model_config,
         memory_service=memory_container.memory_service,
         tool_registry=tool_container.tool_registry,
         prompt_service=prompt_container.prompt_service,

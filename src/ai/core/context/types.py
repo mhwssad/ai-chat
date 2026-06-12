@@ -89,11 +89,12 @@ class ContextBuildRequest:
     session_id: str | None = None
     enable_memory: bool = True
     enable_tools: bool = False
+    enable_rag: bool = False
+    enable_agent: bool = False
     rag_content: str = ""
     custom_system_prompt: str | None = None
     memory_search_limit: int = 5
     safety_margin: int = 200
-    enable_rag: bool = False
     rag_query: str = ""
     rag_top_k: int = 5
 

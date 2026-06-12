@@ -210,18 +210,15 @@ class RagDocumentRepository(BaseRepository[RagDocument]):
     def get_by_source(
         self, source_path: str, *, session_id: str | None = None
     ) -> RagDocument | None:
-        """按来源和作用域获取文档记录。"""
+        """按来源获取文档记录（全局统一存储，忽略 session_id）。"""
         stmt = select(RagDocument).where(RagDocument.source_path == source_path)
-        if session_id is None:
-            stmt = stmt.where(RagDocument.session_id.is_(None))  # type: ignore[attr-defined]
-        else:
-            stmt = stmt.where(RagDocument.session_id == session_id)
         return self.session.exec(stmt).first()
 
     def list_by_scope(self, *, session_id: str | None = None) -> list[RagDocument]:
-        """按全局或会话作用域列出文档。"""
-        filters: dict[str, Any] = {"status": "active", "session_id": session_id}
-        return self.list(order_by="updated_at", descending=True, **filters)
+        """列出全局文档（全局统一存储，忽略 session_id）。"""
+        return self.list(
+            status="active", order_by="updated_at", descending=True, limit=10000
+        )
 
 
 class AuditLogRepository(BaseRepository[AuditLog]):

@@ -1,6 +1,6 @@
 """字节流文档加载器 — 从内存字节数据加载文档。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 import mimetypes
 import os
 import tempfile
@@ -9,27 +9,41 @@ from pathlib import Path
 from langchain_core.documents import Document
 
 from src.ai.exception.loader_exception import LoaderError
-from .chain_loader import ChainLoader
+from .base import LoaderStrategy
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
-class StreamLoader:
-    """从字节流加载文档并委托 ChainLoader 解析。
+class StreamLoader(LoaderStrategy):
+    """从字节流加载文档并委托下游 LoaderStrategy 解析。
+
+    继承 ``LoaderStrategy``，实现 ``load_stream()`` 统一入口。
+    不注册到 LoaderRegistry（``_skip_registry = True``），
+    因为它是一个源适配器，而非文件格式加载器。
 
     工作流程：
-    1. 根据 MIME 类型推断文件扩展名
+    1. 根据 MIME 类型 / 文件名推断文件扩展名
     2. 将字节数据写入临时文件
-    3. 委托 ChainLoader 解析临时文件
+    3. 委托下游 ``LoaderStrategy.load_file()`` 解析临时文件
     4. 自动清理临时文件
     5. 补充 mime_type、size_bytes 元数据
 
     Args:
-        chain_loader: ChainLoader 实例，用于解析临时文件。
+        delegate: 下游加载器（通常是 ChainLoader），用于解析临时文件。
     """
 
-    def __init__(self, chain_loader: ChainLoader) -> None:
-        self._chain_loader = chain_loader
+    _skip_registry = True
+
+    def __init__(self, delegate: LoaderStrategy) -> None:
+        self._delegate = delegate
+
+    def can_handle(self, file_path: Path) -> bool:
+        """字节流适配器不参与文件加载链。"""
+        return False
+
+    def _load_single(self, file_path: Path) -> list[Document]:
+        """字节流适配器不支持直接文件加载。"""
+        raise LoaderError(f"StreamLoader 不支持直接文件加载: {file_path}")
 
     def load_stream(
         self,
@@ -65,8 +79,8 @@ class StreamLoader:
                 raise
             tmp_path = Path(tmp_name)
 
-            # 2. 委托 ChainLoader 解析
-            docs = self._chain_loader.load_file(tmp_path)
+            # 2. 委托下游加载器解析
+            docs = self._delegate.load_file(tmp_path)
 
             # 3. 补充元数据
             for doc in docs:

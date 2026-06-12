@@ -1,6 +1,5 @@
 """Agent 路由 — Agent 执行、取消、恢复、团队模式。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

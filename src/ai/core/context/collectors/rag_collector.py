@@ -1,6 +1,6 @@
 """RAG 检索收集器 — 收集 RAG 知识库检索结果。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING
 
 from src.ai.core.context.collector import ContextCollector
@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from src.ai.config.settings import Settings
     from src.ai.core.rag.encoder import RAGQueryEncoder
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class RAGCollector(ContextCollector):

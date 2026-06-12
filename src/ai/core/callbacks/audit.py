@@ -5,7 +5,7 @@
 """
 
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -19,7 +19,7 @@ from src.ai.storage import AuditLogRepository, ToolCallRepository
 from src.ai.storage.database import get_session
 from src.ai.utils.redaction import redact_for_audit
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)

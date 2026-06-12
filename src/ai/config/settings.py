@@ -100,6 +100,35 @@ class ThreadPoolSettings(BaseSettingsConfig):
     shutdown_timeout: float = Field(default=30.0, description="优雅关闭超时（秒）")
 
 
+class AgentSettings(BaseSettingsConfig):
+    """Agent 行为配置。"""
+
+    agent_reflection_enabled: bool = Field(
+        default=False, description="是否启用自我反思循环"
+    )
+    agent_reflection_max_rounds: int = Field(
+        default=2, description="最大反思轮次"
+    )
+    agent_recovery_enabled: bool = Field(
+        default=False, description="是否启用错误恢复策略"
+    )
+    agent_recovery_max_retries: int = Field(
+        default=2, description="工具调用失败最大重试次数"
+    )
+    agent_parallel_tools_enabled: bool = Field(
+        default=True, description="是否启用并行工具调用"
+    )
+    agent_tracing_enabled: bool = Field(
+        default=False, description="是否启用执行链路追踪"
+    )
+    agent_sandbox_enabled: bool = Field(
+        default=False, description="是否启用沙箱执行环境"
+    )
+    agent_working_memory_enabled: bool = Field(
+        default=False, description="是否启用工作记忆"
+    )
+
+
 class Settings(BaseSettingsConfig):
     """全局配置。"""
 
@@ -110,7 +139,7 @@ class Settings(BaseSettingsConfig):
     loader: LoaderSettings = LoaderSettings()
     scheduler: SchedulerSettings = SchedulerSettings()
     thread_pool: ThreadPoolSettings = ThreadPoolSettings()
+    agent: AgentSettings = AgentSettings()
 
 
-# 模块级单例 — 项目内统一通过 from src.ai.config.settings import settings 获取
 settings = Settings()

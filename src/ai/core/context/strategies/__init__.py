@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -10,17 +10,18 @@ if TYPE_CHECKING:
 
     from src.ai.core.memory.history import ChatHistoryManager
     from src.ai.core.memory.history_store import FileHistoryStore
+    from src.ai.core.prompts.service import PromptService
 
     from .base import BaseMemoryStrategy
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def create_memory_strategy(
     history_manager: ChatHistoryManager,
     file_store: FileHistoryStore,
     llm: BaseChatModel,
-    prompt_service: object,
+    prompt_service: PromptService,
     *,
     max_messages: int = 30,
     keep_recent: int = 10,

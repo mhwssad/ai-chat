@@ -1,6 +1,6 @@
 """记忆上下文收集器 — 收集 MEMORY.md 索引和相关记忆搜索结果。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING
 
 from src.ai.core.context.collector import ContextCollector
@@ -13,7 +13,7 @@ from src.ai.core.context.types import (
 if TYPE_CHECKING:
     from src.ai.core.memory.service import MemoryService
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MemoryCollector(ContextCollector):

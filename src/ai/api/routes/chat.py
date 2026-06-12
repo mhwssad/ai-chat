@@ -1,6 +1,5 @@
 """对话路由 — 非流式、SSE 流式、OpenAI 兼容。"""
 
-from __future__ import annotations
 
 import json
 from typing import Annotated, Any
@@ -36,6 +35,7 @@ def _build_options(
         enable_memory=req.enable_memory,
         enable_tools=req.enable_tools,
         enable_rag=getattr(req, "enable_rag", False),
+        enable_agent=getattr(req, "enable_agent", False),
         tools=getattr(req, "tools", None),
         streaming=streaming,
     )

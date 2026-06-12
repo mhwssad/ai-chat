@@ -1,6 +1,5 @@
 """定时任务路由 — 任务 CRUD、状态管理、执行日志。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

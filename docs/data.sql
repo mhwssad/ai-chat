@@ -535,6 +535,56 @@ CREATE INDEX IF NOT EXISTS idx_task_execution_logs_run_id
     ON task_execution_logs (run_id);  -- 按执行 ID 索引
 
 -- ============================================================
+-- agent_traces: Agent 执行链路追踪主表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS agent_traces (
+    trace_id TEXT PRIMARY KEY,                         -- 追踪唯一 ID
+    session_id TEXT,                                   -- 关联会话 ID
+    status TEXT NOT NULL DEFAULT 'running'             -- 追踪状态
+        CHECK (status IN ('running', 'completed', 'failed', 'timeout', 'cancelled')),
+    total_steps INTEGER NOT NULL DEFAULT 0,            -- 总步骤数
+    total_tokens INTEGER NOT NULL DEFAULT 0,           -- 总 token 消耗
+    total_duration_ms INTEGER NOT NULL DEFAULT 0       -- 总耗时（毫秒）
+        CHECK (total_duration_ms >= 0),
+    started_at TEXT NOT NULL DEFAULT (datetime('now')), -- 开始时间
+    finished_at TEXT,                                  -- 结束时间
+    error_message TEXT,                                -- 错误消息
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata))  -- JSON 扩展字段
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_traces_session
+    ON agent_traces (session_id, started_at DESC);  -- 按会话和时间索引
+
+CREATE INDEX IF NOT EXISTS idx_agent_traces_status
+    ON agent_traces (status);  -- 按状态索引
+
+-- ============================================================
+-- agent_trace_steps: Agent 执行步骤记录表
+-- ============================================================
+CREATE TABLE IF NOT EXISTS agent_trace_steps (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,              -- 自增主键
+    trace_id TEXT NOT NULL,                            -- 关联追踪 ID
+    step_index INTEGER NOT NULL,                       -- 步骤序号
+    step_type TEXT NOT NULL                            -- 步骤类型
+        CHECK (step_type IN ('context', 'llm', 'tool', 'reflection', 'recovery')),
+    title TEXT NOT NULL DEFAULT '',                    -- 步骤标题
+    input_summary TEXT,                                -- 输入摘要
+    output_summary TEXT,                               -- 输出摘要
+    duration_ms INTEGER NOT NULL DEFAULT 0             -- 步骤耗时（毫秒）
+        CHECK (duration_ms >= 0),
+    status TEXT NOT NULL DEFAULT 'success'             -- 步骤状态
+        CHECK (status IN ('success', 'failed', 'timeout', 'skipped')),
+    error TEXT,                                        -- 错误信息
+    created_at TEXT NOT NULL DEFAULT (datetime('now')), -- 创建时间
+    metadata TEXT NOT NULL DEFAULT '{}' CHECK (json_valid(metadata)),  -- JSON 扩展字段
+
+    FOREIGN KEY (trace_id) REFERENCES agent_traces (trace_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_trace_steps_trace
+    ON agent_trace_steps (trace_id, step_index);  -- 按追踪 ID 和步骤序号索引
+
+-- ============================================================
 -- Schema 版本记录
 -- ============================================================
 COMMIT;

@@ -20,15 +20,6 @@ from .manager import MCPManager
 from .types import MCPServerConfig, MCPHealthResult
 
 
-# 惰性导入：DI 容器单例
-def __getattr__(name: str):
-    if name == "mcp_manager":
-        from src.ai.core.container import container
-
-        return container.mcp_container.mcp_manager()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-
-
 __all__ = [
     "MCPClient",
     "MCPConfigError",
@@ -41,6 +32,5 @@ __all__ = [
     "MCPServerConfig",
     "MCPToolCallError",
     "MCPToolDiscoveryError",
-    "mcp_manager",
     "to_langchain_connections",
 ]

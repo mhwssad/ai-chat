@@ -5,7 +5,13 @@
 
 from __future__ import annotations
 
+import warnings
 from contextlib import asynccontextmanager
+
+# dependency_injector 在 FastAPI 路由中 @inject + Depends(Provide[...]) 组合
+# 会产生 DIWiringWarning，但 @inject 实际上是必需的（用于解析 Provide 标记）。
+# 在路由模块导入前抑制此警告。
+warnings.filterwarnings("ignore", message="@inject is not required here")
 from pathlib import Path
 from typing import AsyncIterator
 
@@ -29,7 +35,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     from src.ai.core.container_wiring import initialize_container, shutdown_container
 
     logger.info("初始化 DI 容器...")
-    initialize_container()
+    await initialize_container()
     logger.info("AI Chat 服务已启动")
 
     yield

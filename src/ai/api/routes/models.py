@@ -1,6 +1,5 @@
 """模型配置路由 — 供应商/模型 CRUD、测试连通性。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

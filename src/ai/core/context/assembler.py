@@ -1,6 +1,6 @@
 """上下文组装器 — token 预算分配和裁剪。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 
 from src.ai.core.context.types import (
     ContextBuildRequest,
@@ -10,7 +10,7 @@ from src.ai.core.context.types import (
 from src.ai.utils.token_utils import token_counter
 from src.ai.config.model_settings import ChatModelConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 缓存边界标记
 CACHE_BOUNDARY_STATIC = "__SYSTEM_PROMPT_STATIC_END__"

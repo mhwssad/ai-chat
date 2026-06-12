@@ -9,6 +9,11 @@ __all__ = [
     "BaseSettingsConfig",
     "project_root",
     "env_file_path",
+    # container (NEW)
+    "ConfigContainer",
+    "ConfigProvider",
+    "Lifecycle",
+    "config",
     # base_exception
     "BaseExceptions",
     # error_types
@@ -24,28 +29,35 @@ __all__ = [
     "setup_logging",
     "get_logger",
     # settings
-    "LLMSettings",
     "MemorySettings",
     "Settings",
     "settings",
 ]
 
 _SUBMODULES = {
+    # base_config
     "BaseSettingsConfig": ".base_config",
     "project_root": ".base_config",
     "env_file_path": ".base_config",
+    # container
+    "ConfigContainer": ".container",
+    "ConfigProvider": ".container",
+    "Lifecycle": ".container",
+    "config": ".container",
+    # exceptions (external module)
     "BaseExceptions": "src.ai.exception.base_exception",
     "ErrorCategory": ".error_types",
     "StructuredError": ".error_types",
     "register_classification": ".error_types",
     "classify_exception": ".error_types",
+    # logging
     "LogLevel": ".logging_setup",
     "LogFormat": ".logging_setup",
     "LogConfig": ".logging_setup",
     "ColoredFormatter": ".logging_setup",
     "setup_logging": ".logging_setup",
     "get_logger": ".logging_setup",
-    "LLMSettings": ".settings",
+    # settings
     "MemorySettings": ".settings",
     "Settings": ".settings",
     "settings": ".settings",

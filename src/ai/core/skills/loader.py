@@ -1,6 +1,9 @@
-"""Skill 文件发现和加载 — Agent Skills 开放标准。"""
+"""Skill 文件发现和加载 — Agent Skills 开放标准。
 
-import logging
+启动阶段仅扫描 YAML frontmatter，构建轻量索引。
+完整内容由 AI 按需通过文件路径读取。
+"""
+
 import re
 from pathlib import Path
 from typing import Any
@@ -8,11 +11,15 @@ from typing import Any
 import yaml
 
 from src.ai.config.base_config import project_root
-from src.ai.config.settings import settings
-from src.ai.core.skills.types import SkillDefinition
+from src.ai.config.logging_setup import get_logger
+from src.ai.config.container import config
+from src.ai.core.skills.types import SkillIndex
 from src.ai.exception.skill_exception import SkillLoadError
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
+
+# frontmatter 分隔符正则
+_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL)
 
 
 def split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
@@ -24,8 +31,7 @@ def split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     Returns:
         (frontmatter_dict, body) 元组。
     """
-    pattern = re.compile(r"^---\s*\n(.*?)\n---\s*\n?(.*)", re.DOTALL)
-    match = pattern.match(text)
+    match = _FRONTMATTER_RE.match(text)
     if not match:
         return {}, text
     try:
@@ -39,7 +45,12 @@ def split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
 
 
 class SkillLoader:
-    """扫描配置目录，解析 SKILL.md，返回 SkillDefinition 字典。"""
+    """扫描配置目录，解析 SKILL.md frontmatter，返回 SkillIndex 字典。
+
+    仅读取 name、description 等控制匹配/注入行为的最小字段。
+    其余 frontmatter 字段（model, context, agent, allowed-tools 等）
+    由 AI 激活时从原始内容自行解读。
+    """
 
     def __init__(self, *, base_dirs: list[str | Path] | None = None) -> None:
         self._base_dirs = self._resolve_dirs(base_dirs)
@@ -50,7 +61,7 @@ class SkillLoader:
         if base_dirs:
             return [Path(d) for d in base_dirs]
 
-        configured = settings.skills.skill_dirs
+        configured = config.settings.skills.skill_dirs
         if configured:
             return [Path(d.strip()) for d in configured.split(",") if d.strip()]
 
@@ -61,13 +72,15 @@ class SkillLoader:
         ]
         return defaults
 
-    def discover(self) -> dict[str, SkillDefinition]:
-        """扫描所有目录，同名 name 后出现的覆盖先出现的。
+    def discover(self) -> dict[str, SkillIndex]:
+        """扫描所有目录，仅读取 frontmatter 建立索引。
+
+        同名 name 后出现的覆盖先出现的。
 
         Returns:
-            dict[str, SkillDefinition] 按 name 索引。
+            dict[str, SkillIndex] 按 name 索引。
         """
-        result: dict[str, SkillDefinition] = {}
+        result: dict[str, SkillIndex] = {}
         for base_dir in self._base_dirs:
             if not base_dir.is_dir():
                 continue
@@ -77,25 +90,26 @@ class SkillLoader:
                 skill_file = skill_dir / "SKILL.md"
                 if skill_file.is_file():
                     try:
-                        defn = self.load(skill_file)
-                        result[defn.name] = defn
+                        index = self._scan_frontmatter(skill_file)
+                        result[index.name] = index
                     except SkillLoadError:
-                        logger.warning("跳过无效技能: %s", skill_file, exc_info=True)
+                        logger.warning(
+                            "跳过无效技能: %s", skill_file, exc_info=True
+                        )
         return result
 
-    def load(self, path: str | Path) -> SkillDefinition:
-        """解析单个 SKILL.md 文件。
+    def _scan_frontmatter(self, path: Path) -> SkillIndex:
+        """扫描单个 SKILL.md 的 frontmatter，构建索引条目。
 
         Args:
             path: SKILL.md 文件路径。
 
         Returns:
-            解析后的 SkillDefinition。
+            仅含元数据的 SkillIndex。
 
         Raises:
             SkillLoadError: 文件无法读取或格式错误。
         """
-        path = Path(path)
         try:
             text = path.read_text(encoding="utf-8")
         except OSError as exc:
@@ -103,43 +117,19 @@ class SkillLoader:
                 f"无法读取技能文件: {path}", context={"error": str(exc)}
             ) from exc
 
-        meta, body = split_frontmatter(text)
+        meta, _body = split_frontmatter(text)
         if not meta.get("name"):
             raise SkillLoadError(f"技能缺少 name 字段: {path}")
-        if not body.strip():
-            raise SkillLoadError(f"技能指令模板为空: {path}")
 
-        # 解析 allowed-tools（逗号分隔）
-        allowed_tools_str = meta.get("allowed-tools", "")
-        if isinstance(allowed_tools_str, list):
-            allowed_tools = [
-                str(t).strip() for t in allowed_tools_str if str(t).strip()
-            ]
-        elif isinstance(allowed_tools_str, str) and allowed_tools_str:
-            allowed_tools = [
-                t.strip() for t in allowed_tools_str.split(",") if t.strip()
-            ]
-        else:
-            allowed_tools = []
-
-        # 解析 context: fork
-        context_val = str(meta.get("context", "")).lower().strip()
-        context_fork = context_val == "fork"
-        agent_type = meta.get("agent") if context_fork else None
-
-        return SkillDefinition(
+        return SkillIndex(
             name=str(meta["name"]),
             description=str(meta.get("description", "")),
             source_path=path,
-            skill_dir=path.parent,
-            instruction_template=body,
-            disable_model_invocation=bool(meta.get("disable-model-invocation", False)),
+            disable_model_invocation=bool(
+                meta.get("disable-model-invocation", False)
+            ),
             user_invocable=bool(
                 meta.get("user-invocable", meta.get("user_invocable", True))
             ),
-            allowed_tools=allowed_tools,
             argument_hint=meta.get("argument-hint") or meta.get("argument_hint"),
-            model=meta.get("model"),
-            context_fork=context_fork,
-            agent_type=str(agent_type) if agent_type else None,
         )

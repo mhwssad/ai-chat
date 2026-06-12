@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+from src.ai.config.logging_setup import get_logger
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.ai.core.tools.register import _set_active_registry
@@ -12,13 +13,16 @@ from src.ai.core.tools.registry import ToolRegistry
 from src.ai.core.tools.types import ToolPlugin, ToolProgress
 
 if TYPE_CHECKING:
+    from src.ai.core.models.service import ModelService
+    from src.ai.core.scheduler.service import SchedulerService
     from src.ai.core.tools.permissions import (
         ConfirmHandler,
         PermissionChecker,
         PermissionDecision,
     )
+    from src.ai.utils.http.client import _AsyncClientWrapper
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolManager:
@@ -35,8 +39,8 @@ class ToolManager:
         self,
         registry: ToolRegistry,
         *,
-        http_aclient: object,
-        model_service: object | None = None,
+        http_aclient: _AsyncClientWrapper,
+        model_service: ModelService | None = None,
         permission_checker: PermissionChecker | None = None,
     ) -> None:
         self._registry = registry
@@ -78,12 +82,16 @@ class ToolManager:
     # ── 生命周期 ────────────────────────────────────────────
 
     def load_builtin_tools(
-        self, *, scheduler_service: object | None = None
+        self,
+        *,
+        scheduler_service: SchedulerService | None = None,
+        mcp_manager: Any | None = None,
     ) -> None:
         """导入 builtins/ 包触发自注册（仅首次）。
 
         Args:
             scheduler_service: 定时任务服务实例（可选）。
+            mcp_manager: MCP 管理器实例（可选，用于网络搜索工具）。
         """
         if self._builtin_loaded:
             return
@@ -95,6 +103,7 @@ class ToolManager:
             registry=self._registry,
             model_service=self._model_service,
             scheduler_service=scheduler_service,
+            mcp_manager=mcp_manager,
         )
 
         # 执行所有插件的注册
@@ -150,12 +159,29 @@ class ToolManager:
 
         # 带超时执行
         effective_timeout = timeout if timeout is not None else 120.0
+        meta = self._registry.get_meta(tool_name)
         try:
+            # 沙箱路径校验：如果工具需要沙箱，验证文件路径参数
+            if meta.requires_sandbox:
+                self._validate_sandbox_args(tool_name, arguments)
+
+            # MCP 工具执行日志
+            if meta.source_type == "mcp" and meta.source_id:
+                logger.info(
+                    "MCP 工具调用: %s (server=%s) timeout=%.0fs",
+                    tool_name, meta.source_id, effective_timeout,
+                )
+
             return await asyncio.wait_for(
                 tool.ainvoke(arguments, config=config),  # type: ignore[arg-type]
                 timeout=effective_timeout,
             )
         except TimeoutError:
+            if meta.source_type == "mcp":
+                logger.warning(
+                    "MCP 工具超时: %s (server=%s, timeout=%.0fs)",
+                    tool_name, meta.source_id, effective_timeout,
+                )
             raise ToolExecutionError(
                 f"工具 {tool_name} 执行超时 ({effective_timeout}s)",
                 context={"tool": tool_name, "timeout": effective_timeout},
@@ -229,6 +255,19 @@ class ToolManager:
                     message=str(e),
                 )
 
+    # ── 查询 ────────────────────────────────────────────────
+
+    def list_tools(self, *, enabled_only: bool = True) -> list[Any]:
+        """列出已注册的工具实例。
+
+        Args:
+            enabled_only: 仅返回已启用的工具。
+
+        Returns:
+            工具实例列表。
+        """
+        return self._registry.list(enabled_only=enabled_only)
+
     # ── 格式化 ──────────────────────────────────────────────
 
     def list_schemas(self, *, enabled_only: bool = True) -> list[dict[str, Any]]:
@@ -252,3 +291,36 @@ class ToolManager:
                 }
             )
         return schemas
+
+    # ── 沙箱校验 ────────────────────────────────────────────
+
+    @staticmethod
+    def _validate_sandbox_args(tool_name: str, arguments: dict[str, Any]) -> None:
+        """沙箱参数校验 — 检查路径类参数是否在安全范围内。
+
+        仅在全局配置启用沙箱时执行实际校验。
+
+        Args:
+            tool_name: 工具名称。
+            arguments: 工具参数。
+
+        Raises:
+            ToolExecutionError: 路径参数不合法。
+        """
+        from src.ai.config.container import config
+
+        if not config.settings.agent.agent_sandbox_enabled:
+            return
+
+        from src.ai.core.tools.sandbox import SandboxConfig, FileSystemSandbox
+
+        config = SandboxConfig(
+            allowed_dirs=[str(Path.cwd())],  # 默认允许项目目录
+        )
+        fs_sandbox = FileSystemSandbox(config)
+
+        # 检查常见路径参数名
+        path_keys = {"path", "file_path", "directory", "dir", "filename", "dest"}
+        for key, value in arguments.items():
+            if key in path_keys and isinstance(value, str):
+                fs_sandbox.validate_path(value)

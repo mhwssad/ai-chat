@@ -17,9 +17,13 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src.ai.config.model_settings import chat_model_config
-from src.ai.core.models import model_registry
-from src.ai.core.skills import SkillLoader, skill_service
+from src.ai.core.container import container
+from src.ai.core.skills import SkillLoader
 from src.ai.exception.skill_exception import SkillError
+
+# 从容器获取服务实例
+model_registry = container.model_container.model_registry()
+skill_service = container.skill_container.skill_service()
 
 
 def _build_llm():

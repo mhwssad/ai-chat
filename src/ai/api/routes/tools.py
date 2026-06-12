@@ -1,6 +1,5 @@
 """工具管理路由。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

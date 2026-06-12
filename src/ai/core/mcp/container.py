@@ -8,10 +8,10 @@ def _create_mcp_config_repo(session_factory):
     from pathlib import Path
 
     from src.ai.config.base_config import project_root
-    from src.ai.config.settings import settings
+    from src.ai.config.container import config
     from src.ai.core.mcp.config import MCPConfigRepository
 
-    config_path = Path(settings.mcp.mcp_config_file)
+    config_path = Path(config.settings.mcp.mcp_config_file)
     if not config_path.is_absolute():
         config_path = project_root / config_path
     return MCPConfigRepository(

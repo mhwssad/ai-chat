@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any, Awaitable, Callable, Literal
 if TYPE_CHECKING:
     from src.ai.core.tools.registry import ToolRegistry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 确认回调类型：接收工具名和参数，返回是否允许执行
 ConfirmHandler = Callable[[str, dict[str, Any]], Awaitable[bool]]
@@ -67,6 +67,7 @@ class PermissionChecker:
 
     根据工具的权限标签和策略映射决定是否允许执行。
     对于 CONFIRM 级别的工具，通过 confirm_handler 回调请求用户确认。
+    支持细粒度的参数模式匹配（通过 PermissionPolicyEngine）。
 
     缓存策略：
     - 按工具名 + 参数哈希缓存确认结果
@@ -75,6 +76,7 @@ class PermissionChecker:
     Args:
         registry: 工具注册表。
         policy: 权限策略映射（覆盖默认策略）。
+        policy_engine: 细粒度策略引擎（可选，用于参数模式匹配）。
     """
 
     def __init__(
@@ -82,9 +84,11 @@ class PermissionChecker:
         registry: ToolRegistry,
         *,
         policy: dict[str, PermissionLevel] | None = None,
+        policy_engine: Any | None = None,
     ) -> None:
         self._registry = registry
         self._policy = {**DEFAULT_POLICY, **(policy or {})}
+        self._policy_engine = policy_engine
         self._confirm_handler: ConfirmHandler | None = None
         # 缓存已确认的工具：{cache_key: expire_time}
         self._confirmed_cache: dict[str, float] = {}
@@ -134,17 +138,44 @@ class PermissionChecker:
         meta = self._registry.get_meta(tool_name)
         permissions = meta.permissions
 
-        # 无权限标签的工具自动放行
-        if not permissions:
-            return PermissionDecision(
-                decision="allow",
-                tool_name=tool_name,
-                permissions=[],
-                reason="no_permissions_required",
-            )
+        # 优先使用策略引擎（支持参数模式匹配）
+        if self._policy_engine is not None:
+            policy_level = self._policy_engine.evaluate(tool_name, arguments)
+            if policy_level is not None:
+                if policy_level == PermissionLevel.DENY:
+                    return PermissionDecision(
+                        decision="deny",
+                        tool_name=tool_name,
+                        permissions=permissions,
+                        reason="policy_engine_deny",
+                        context={"source": "policy_engine"},
+                    )
+                if policy_level == PermissionLevel.CONFIRM:
+                    # 走 CONFIRM 流程
+                    level = PermissionLevel.CONFIRM
+                else:
+                    return PermissionDecision(
+                        decision="allow",
+                        tool_name=tool_name,
+                        permissions=permissions,
+                        reason="policy_engine_auto",
+                        context={"source": "policy_engine"},
+                    )
+            else:
+                # 策略引擎无匹配规则，使用标签策略
+                level = self._resolve_level(permissions) if permissions else PermissionLevel.AUTO
+        else:
+            # 无权限标签的工具自动放行
+            if not permissions:
+                return PermissionDecision(
+                    decision="allow",
+                    tool_name=tool_name,
+                    permissions=[],
+                    reason="no_permissions_required",
+                )
 
-        # 确定最高权限级别
-        level = self._resolve_level(permissions)
+            # 确定最高权限级别
+            level = self._resolve_level(permissions)
 
         if level == PermissionLevel.AUTO:
             return PermissionDecision(

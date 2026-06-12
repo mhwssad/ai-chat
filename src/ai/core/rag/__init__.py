@@ -30,10 +30,6 @@ def __getattr__(name: str) -> Any:
         module_path, attr_name = _LAZY_IMPORTS[name]
         mod = importlib.import_module(module_path)
         return getattr(mod, attr_name)
-    if name == "rag_service":
-        from src.ai.core.container import container
-
-        return container.rag_container.rag_service()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -48,5 +44,4 @@ __all__ = [
     "RAGSearchConfig",
     "RAGSearchResult",
     "create_rag_service",
-    "rag_service",
 ]

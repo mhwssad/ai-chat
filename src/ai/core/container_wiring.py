@@ -1,9 +1,9 @@
 """容器启动 — 初始化 DI 容器并执行后置组装。"""
 
 import asyncio
-from src.ai.config.logging_setup import get_logger
 import threading
 
+from src.ai.config.logging_setup import get_logger
 from src.ai.core.container import container
 
 logger = get_logger(__name__)
@@ -11,7 +11,7 @@ logger = get_logger(__name__)
 _initialized = False
 
 
-def initialize_container() -> None:
+async def initialize_container() -> None:
     """初始化 DI 容器并执行所有后置组装。
 
     幂等操作：首次调用时依次执行建表、种子数据、技能发现、工具注册、
@@ -54,8 +54,8 @@ def initialize_container() -> None:
     # 技能发现 — 仅扫描 frontmatter 建立内存索引
     _initialize_skills()
 
-    # 注册有依赖的工具（包括定时任务工具）
-    _register_dependent_tools()
+    # 注册有依赖的工具（包括定时任务工具），等待 MCP 工具发现完成
+    await _register_dependent_tools()
 
     # 启动定时任务调度器
     _start_scheduler()
@@ -80,11 +80,16 @@ def shutdown_container() -> None:
     # 停止定时任务调度器
     _stop_scheduler()
 
+    # 释放数据库引擎和连接池
+    from src.ai.storage.database import close_database
+
+    close_database()
+
     _initialized = False
 
 
-def _register_dependent_tools() -> None:
-    """注册所有工具和插件。"""
+async def _register_dependent_tools() -> None:
+    """注册所有工具和插件，等待 MCP 工具发现完成。"""
     mgr = container.tool_container.tool_manager()
 
     # 1. 注册插件（必须在 load_builtin_tools 之前）
@@ -102,6 +107,9 @@ def _register_dependent_tools() -> None:
     #    load_builtin_tools 内部会设置活跃注册表、导入 builtins 模块、
     #    调用 register_dependent_tools 并执行所有插件的 register_tools
     mgr.load_builtin_tools(scheduler_service=scheduler_service, mcp_manager=mcp_mgr)
+
+    # 4. 等待 MCP 工具同步完成（超时 30s）
+    await mcp_mgr.await_sync(timeout=30.0)
 
 
 def _start_scheduler() -> None:

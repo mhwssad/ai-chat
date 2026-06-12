@@ -1,10 +1,13 @@
 """提示词服务 — CRUD 和渲染。"""
 
 import json
-import logging
+
+from jinja2 import Environment, StrictUndefined, TemplateError
+
+from src.ai.config.logging_setup import get_logger
+from src.ai.exception.prompt_exception import PromptRenderError
 
 from .ports import PromptStore
-from .renderer import PromptRenderer
 from .types import (
     PromptData,
     PromptRenderRequest,
@@ -12,7 +15,7 @@ from .types import (
     PromptVersionData,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class PromptService:
@@ -22,13 +25,14 @@ class PromptService:
     初始化种子数据由 seeder.py 负责，不在此处。
     """
 
-    def __init__(
-        self,
-        renderer: PromptRenderer,
-        store: PromptStore,
-    ) -> None:
-        self._renderer = renderer
+    def __init__(self, store: PromptStore) -> None:
         self._store = store
+        self._jinja_env = Environment(
+            autoescape=False,
+            trim_blocks=True,
+            lstrip_blocks=True,
+            undefined=StrictUndefined,
+        )
 
     def save_template(
         self,
@@ -92,7 +96,7 @@ class PromptService:
             raise PromptNotFoundError(
                 "提示词不存在", context={"prompt_key": request.prompt_key}
             )
-        content = self._renderer.render(prompt.template, request.variables)
+        content = self._render_template(prompt.template, request.variables)
         metadata = self._parse_extra(prompt.extra)
         return PromptRenderResult(
             prompt_key=prompt.prompt_key,
@@ -275,6 +279,26 @@ class PromptService:
         return self._store.list_all(
             category=category, enabled=enabled, limit=page_size, offset=offset
         )
+
+    def _render_template(self, template: str, variables: dict) -> str:
+        """渲染 Jinja2 模板。
+
+        Args:
+            template: 模板字符串。
+            variables: 模板变量。
+
+        Returns:
+            渲染后的字符串。
+
+        Raises:
+            PromptRenderError: 渲染失败。
+        """
+        try:
+            return self._jinja_env.from_string(template).render(**variables)
+        except TemplateError as exc:
+            raise PromptRenderError(
+                "提示词渲染失败", context={"error": str(exc)}
+            ) from exc
 
     @staticmethod
     def _parse_extra(value: str | None) -> dict:

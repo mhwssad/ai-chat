@@ -15,12 +15,15 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="repla
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from src.ai.config.model_settings import chat_model_config
-from src.ai.core.models import model_registry
+from src.ai.core.container import container
 from src.ai.core.rag import (
     HashEmbeddings,
     create_rag_service,
-    rag_service,
 )
+
+# 从容器获取服务实例
+model_registry = container.model_container.model_registry()
+rag_service = container.rag_container.rag_service()
 
 # 示例文件目录
 SAMPLES_DIR = r"E:\project\ai-chat\docs\examples\samples"

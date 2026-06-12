@@ -3,11 +3,11 @@
 独立于 PromptService，仅在启动时由 container_wiring 调用。
 """
 
-import logging
+from src.ai.config.logging_setup import get_logger
 
 from .ports import PromptStore
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 预置默认模板：prompt_key → (display_name, description, category, template)
 DEFAULT_TEMPLATES: dict[str, tuple[str, str, str, str]] = {

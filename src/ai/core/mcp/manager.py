@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.tools import BaseTool
@@ -18,7 +18,7 @@ from .client import MCPClient
 from .config import MCPConfigRepository
 from .types import MCPHealthResult
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MCPManager(ToolPlugin):
@@ -32,6 +32,7 @@ class MCPManager(ToolPlugin):
     def __init__(self, config_repo: MCPConfigRepository) -> None:
         self._config_repo = config_repo
         self._client = MCPClient(config_repo=config_repo)
+        self._sync_task: asyncio.Task[None] | None = None
 
     @property
     def client(self) -> MCPClient:
@@ -160,8 +161,8 @@ class MCPManager(ToolPlugin):
                         error_message="MCP 工具发现失败",
                     )
                 )
-                logger.debug(
-                    "MCP 工具同步失败: server_key=%s",
+                logger.warning(
+                    "MCP 工具发现失败: server_key=%s",
                     config.server_key,
                     exc_info=True,
                 )
@@ -193,6 +194,7 @@ class MCPManager(ToolPlugin):
         """将 MCP 资源工具和已发现的 server 工具注册到工具注册表。
 
         实现 ToolPlugin 接口，由 ToolManager 在加载内置工具时调用。
+        同步操作在后台启动，调用方可使用 await_sync() 等待完成。
 
         Args:
             registry: ToolRegistry 实例。
@@ -211,20 +213,50 @@ class MCPManager(ToolPlugin):
                 ),
             )
 
-        self._schedule_or_run_sync(registry)
+        self._sync_task = self._schedule_or_run_sync(registry)
 
-    def _schedule_or_run_sync(self, registry: ToolRegistry) -> None:
-        """在当前上下文中安全触发 MCP 工具同步。"""
+    async def await_sync(self, timeout: float = 30.0) -> None:
+        """等待 MCP 工具同步完成。
+
+        Args:
+            timeout: 最大等待秒数，超时后记录警告但继续执行。
+        """
+        if self._sync_task is None:
+            return
+        try:
+            await asyncio.wait_for(self._sync_task, timeout=timeout)
+            logger.info("MCP 工具同步完成")
+        except asyncio.TimeoutError:
+            logger.warning(
+                "MCP 工具同步超时 (%.1fs)，部分 MCP 工具可能不可用", timeout
+            )
+        except Exception as e:
+            logger.warning("MCP 工具同步异常: %s", e)
+
+    def _schedule_or_run_sync(
+        self, registry: ToolRegistry
+    ) -> asyncio.Task[None] | None:
+        """在当前上下文中安全触发 MCP 工具同步，返回同步任务。
+
+        在有运行中的事件循环时创建后台任务，
+        在无事件循环时同步运行（阻塞）。
+        """
+        async def _sync_wrapper() -> None:
+            try:
+                await self.sync_tools(registry)
+            except Exception:
+                logger.warning("MCP 工具同步失败", exc_info=True)
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
             try:
                 asyncio.run(self.sync_tools(registry))
             except Exception:
-                logger.debug("同步 MCP 工具失败", exc_info=True)
-            return
+                logger.warning("MCP 工具同步失败", exc_info=True)
+            return None
 
-        loop.create_task(self.sync_tools(registry))
+        return loop.create_task(_sync_wrapper())
 
     @staticmethod
     def _permissions_from_policy(policy: dict[str, Any]) -> list[str]:

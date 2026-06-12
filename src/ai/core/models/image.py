@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import base64
-import logging
+from src.ai.config.logging_setup import get_logger
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
@@ -19,7 +19,7 @@ from src.ai.exception.media_exception import ImageGenerationException
 if TYPE_CHECKING:
     from src.ai.config.model_settings import ImageModelConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 # ── 图像生成器抽象 ──────────────────────────────────────

@@ -17,7 +17,7 @@ import httpx
 from pydantic import BaseModel
 
 from src.ai.config.logging_setup import get_logger
-from src.ai.config.settings import settings
+from src.ai.config.container import config
 from src.ai.exception.http_exception import HttpError
 from src.ai.utils.http.converter import (
     ConverterError,
@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 # ── 基础设施 ─────────────────────────────────────────────
 
 _DEFAULT_TIMEOUT = float(
-    getattr(settings, "llm", None) and settings.llm.request_timeout or 60  # type: ignore[attr-defined]
+    getattr(config.settings, "llm", None) and config.settings.llm.request_timeout or 60  # type: ignore[attr-defined]
 )
 
 

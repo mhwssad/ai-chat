@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 from collections.abc import Callable
 from dataclasses import replace
 from typing import TYPE_CHECKING
@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from .store import MemoryStore
     from .vector_store import MemoryVectorStore
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # 触发自动维护的记忆数量阈值
 _AUTO_MAINTENANCE_THRESHOLD = 500

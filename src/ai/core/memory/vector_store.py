@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .types import MemoryEntry
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class MemoryVectorStore:

@@ -4,9 +4,9 @@
 注入到 core 层的 Protocol/Callback 依赖中。
 """
 
-import logging
+from src.ai.config.logging_setup import get_logger
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _wired = False
 

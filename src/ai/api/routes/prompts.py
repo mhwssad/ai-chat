@@ -1,6 +1,5 @@
 """提示词模板路由 — CRUD、渲染、版本管理。"""
 
-from __future__ import annotations
 
 from typing import Annotated
 

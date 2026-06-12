@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -24,7 +24,7 @@ from src.ai.utils.obj import Obj
 if TYPE_CHECKING:
     from langchain_core.messages import BaseMessage
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _get_msg_type_map() -> dict[str, type[BaseMessage]]:

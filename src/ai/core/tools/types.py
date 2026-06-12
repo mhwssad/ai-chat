@@ -25,6 +25,8 @@ class ToolMeta:
     output_description: str | None = None
     essential: bool = False
     enabled: bool = True
+    fallback_tool: str | None = None  # 失败时的备选工具
+    requires_sandbox: bool = False  # 是否需要在沙箱中执行
 
 
 @dataclass(frozen=True)

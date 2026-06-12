@@ -6,7 +6,7 @@ SQL（LangChain SQLChatMessageHistory）是运行时主存储，
 
 from __future__ import annotations
 
-import logging
+from src.ai.config.logging_setup import get_logger
 from typing import TYPE_CHECKING
 
 from sqlalchemy import Engine
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
     from src.ai.core.memory.history_store import FileHistoryStore
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _SUMMARY_MAX_MESSAGES = 8
 _SUMMARY_MAX_CONTENT = 120

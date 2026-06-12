@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import json
-import logging
+from src.ai.config.logging_setup import get_logger
 import re
 from typing import TYPE_CHECKING
 
@@ -17,7 +17,9 @@ from .types import MemoryType, MemoryWriteRequest, generate_memory_name
 if TYPE_CHECKING:
     from langchain_core.language_models import BaseChatModel
 
-logger = logging.getLogger(__name__)
+    from src.ai.core.prompts.service import PromptService
+
+logger = get_logger(__name__)
 
 # 各类型的关键词模式：(正则, 基础置信度)
 _PATTERNS: dict[MemoryType, list[tuple[str, float]]] = {
@@ -65,7 +67,7 @@ class MemoryExtractor:
         prompt_service: 提示词服务（从 DB 获取提示词模板）。
     """
 
-    def __init__(self, llm: BaseChatModel, prompt_service: object) -> None:
+    def __init__(self, llm: BaseChatModel, prompt_service: PromptService) -> None:
         self._llm = llm
         self._prompt_service = prompt_service
         self._compiled: dict[str, list[tuple[re.Pattern, float]]] = {

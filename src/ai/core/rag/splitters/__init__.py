@@ -17,7 +17,8 @@
     chunks = splitter.split_document(doc)
 
     # 注册自定义切割器
-    from src.ai.core.rag.splitters import splitter_registry
+    from src.ai.core.container import container
+    splitter_registry = container.rag_container.splitter_registry()
     splitter_registry.register(MySplitter, priority=150, name="my_splitter")
 """
 
@@ -42,10 +43,6 @@ def __getattr__(name: str):
 
         module = importlib.import_module(_LAZY_IMPORTS[name], __name__)
         return getattr(module, name)
-    if name == "splitter_registry":
-        from src.ai.core.container import container
-
-        return container.rag_container.splitter_registry()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -56,7 +53,6 @@ __all__ = [
     "LangchainSplitterAdapter",
     # 注册表
     "SplitterRegistry",
-    "splitter_registry",
     # 编排器
     "ChainSplitter",
     # 切割器

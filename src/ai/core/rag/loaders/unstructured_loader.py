@@ -1,6 +1,6 @@
 """基于 langchain_unstructured 的文档加载器。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 import mimetypes
 from pathlib import Path
 from typing import Any
@@ -11,7 +11,7 @@ from src.ai.config.loader_settings import UnstructuredSettings
 from src.ai.exception.loader_exception import LoaderError
 from .base import LoaderStrategy
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class UnstructuredLoader(LoaderStrategy):

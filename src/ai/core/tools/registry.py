@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import builtins
-import logging
+from src.ai.config.logging_setup import get_logger
 
 from langchain_core.tools import BaseTool
 
 from src.ai.exception.tool_exception import ToolNotFoundError
 from src.ai.core.tools.types import ToolDescriptor, ToolMeta
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class ToolRegistry:

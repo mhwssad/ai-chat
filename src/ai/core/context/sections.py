@@ -1,10 +1,10 @@
 """系统提示段管理 — 支持缓存和按需失效。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 
 from src.ai.core.context.types import ContextSection
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class SystemPromptSections:

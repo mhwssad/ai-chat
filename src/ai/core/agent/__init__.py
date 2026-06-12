@@ -2,26 +2,30 @@
 
 核心组件：
 - AgentOrchestrator: 编排 ReAct 循环（推理 → 工具调用 → 观察）
+- ReflectionLoop: 自我反思循环（执行 → 评估 → 改进）
+- AgentRouter: 多 Agent 路由（分析意图 → 分发给专业 Agent）
+- AgentHandoff: Agent 间任务交接协议
+- AgentTeam: 多 Agent 团队编排（编排者/辩论模式）
 - GraphState: LangGraph 图状态定义
 - AgentResult / AgentStatus: 执行结果类型
 """
 
 from src.ai.core.agent.orchestrator import AgentOrchestrator
+from src.ai.core.agent.reflection import ReflectionLoop, ReflectionResult
+from src.ai.core.agent.roles import AgentProfile, AgentRole
 from src.ai.core.agent.types import AgentResult, AgentStatus
-
-
-# 惰性导入：DI 容器单例
-def __getattr__(name: str):
-    if name == "agent_orchestrator":
-        from src.ai.core.container import container
-
-        return container.agent_container.agent_orchestrator()
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+from src.ai.core.agent.team import AgentTeam, TeamMode, TeamResult
 
 
 __all__ = [
     "AgentOrchestrator",
     "AgentResult",
+    "AgentRole",
+    "AgentProfile",
     "AgentStatus",
-    "agent_orchestrator",
+    "AgentTeam",
+    "ReflectionLoop",
+    "ReflectionResult",
+    "TeamMode",
+    "TeamResult",
 ]

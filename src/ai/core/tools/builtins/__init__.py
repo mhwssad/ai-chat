@@ -4,7 +4,7 @@
 有依赖的工具通过 register() 工厂函数注册，需要外部传入依赖。
 
 MCP 工具由 MCPManager.register_tools() 自行注册。
-Skills 工具由 SkillService.register_tools() 自行注册。
+Skills 工具由 SkillToolAdapter（在 container_wiring 注册）提供。
 """
 
 # 无依赖的工具：导入即自注册
@@ -46,6 +46,7 @@ def register_dependent_tools(
     registry,
     scheduler_service=None,
     model_service=None,
+    mcp_manager=None,
 ) -> None:
     """注册有依赖的内置工具。
 
@@ -54,8 +55,9 @@ def register_dependent_tools(
         registry: 工具注册表实例。
         scheduler_service: 定时任务服务实例（可选）。
         model_service: 模型服务实例（可选，用于图像生成和 TTS 工具）。
+        mcp_manager: MCP 管理器实例（可选，用于网络搜索工具）。
     """
-    web_tools.register(http_aclient)
+    web_tools.register(http_aclient, mcp_manager=mcp_manager)
     search_tools.register(registry)
     if scheduler_service:
         scheduler_tools.register(scheduler_service)

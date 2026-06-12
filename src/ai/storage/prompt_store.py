@@ -1,6 +1,6 @@
 """DbPromptStore — 基于 PromptTemplateRepository 的 PromptStore 实现。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 
 from src.ai.core.prompts.types import PromptData, PromptVersionData
 from src.ai.storage.database import get_session
@@ -9,7 +9,7 @@ from src.ai.storage.prompt_repository import (
     PromptVersionRepository,
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 class DbPromptStore:

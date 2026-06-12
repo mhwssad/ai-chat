@@ -1,10 +1,10 @@
 """压缩后上下文恢复器 — 从压缩摘要中提取关键信息恢复为可注入的上下文。"""
 
-import logging
+from src.ai.config.logging_setup import get_logger
 import re
 from dataclasses import dataclass, field
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass(frozen=True)
