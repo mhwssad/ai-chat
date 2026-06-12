@@ -1,6 +1,6 @@
 """TTS 服务 — 语音合成、存储和管理。
 
-共享服务层，CLI 和 API 统一使用。
+共享服务层，API 统一使用。
 """
 
 from __future__ import annotations

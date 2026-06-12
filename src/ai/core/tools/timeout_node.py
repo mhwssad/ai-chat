@@ -7,10 +7,16 @@ from src.ai.config.logging_setup import get_logger
 from typing import Any
 
 from langchain_core.messages import AIMessage, ToolMessage
-from langgraph.prebuilt import ToolNode
 
 from src.ai.exception.tool_exception import ToolConfirmationRequiredError, ToolNotFoundError
 from src.ai.core.tools.recovery import RecoveryManager, RecoveryStrategy
+
+
+def _get_tool_node_base():
+    """延迟导入 ToolNode 基类，避免启动时触发 langgraph.prebuilt 冷导入链。"""
+    from langgraph.prebuilt import ToolNode
+
+    return ToolNode
 
 logger = get_logger(__name__)
 
@@ -84,7 +90,7 @@ def analyze_tool_dependencies(
     return groups
 
 
-class TimeoutToolNode(ToolNode):
+class TimeoutToolNode(_get_tool_node_base()):
     """带超时和依赖分组的 ToolNode。
 
     继承 LangGraph ToolNode，在每个工具调用上包装 asyncio.wait_for()。

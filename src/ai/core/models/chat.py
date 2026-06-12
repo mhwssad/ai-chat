@@ -36,6 +36,7 @@ class AnthropicChatBuilder(ChatModelBuilder):
             temperature: float | None = None,
             max_tokens: int | None = None,
             streaming: bool = False,
+            enable_thinking: bool = False,
     ) -> BaseChatModel:
         from langchain_anthropic import ChatAnthropic
 
@@ -51,6 +52,8 @@ class AnthropicChatBuilder(ChatModelBuilder):
             kwargs["temperature"] = temperature
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        if enable_thinking:
+            kwargs["thinking"] = {"type": "enabled"}
         return ChatAnthropic(**kwargs)
 
 
@@ -66,6 +69,7 @@ class InitChatModelBuilder(ChatModelBuilder):
             temperature: float | None = None,
             max_tokens: int | None = None,
             streaming: bool = False,
+            enable_thinking: bool = False,
     ) -> BaseChatModel:
         from langchain.chat_models import init_chat_model
 
@@ -82,6 +86,8 @@ class InitChatModelBuilder(ChatModelBuilder):
             kwargs["temperature"] = temperature
         if max_tokens is not None:
             kwargs["max_tokens"] = max_tokens
+        # 注意：OpenAI / google_genai / ollama 标准 API 不支持 enable_thinking，
+        # 传递该参数会导致 TypeError。深度思考仅在 Anthropic 后端通过原生 thinking 参数支持。
         return init_chat_model(**kwargs)
 
 

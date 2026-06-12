@@ -1,6 +1,6 @@
 """技能 API 服务 — SkillService 的薄包装。
 
-共享服务层，CLI 和 API 路由统一使用。
+共享服务层，API 路由统一使用。
 """
 
 from __future__ import annotations

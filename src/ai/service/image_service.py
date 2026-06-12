@@ -1,6 +1,6 @@
 """图像服务 — 图像生成、存储和管理。
 
-共享服务层，CLI 和 API 统一使用。
+共享服务层，API 统一使用。
 """
 
 from __future__ import annotations
@@ -87,6 +87,9 @@ class ImageService:
         Returns:
             包含 files、images、revised_prompts 的字典。
         """
+        import time as _time
+        _t0 = _time.monotonic()
+        logger.info("[image] generate prompt=%s... size=%s n=%d", prompt[:80], size, n)
         generator = self._model_service.get_image_generator()
         results = await generator.generate(
             prompt=prompt,
@@ -111,6 +114,11 @@ class ImageService:
             images_b64.append(base64.b64encode(img_data.image_bytes).decode("ascii"))
             revised_prompts.append(img_data.revised_prompt)
 
+        _duration = _time.monotonic() - _t0
+        logger.info(
+            "[image] done prompt=%s... duration=%.2fs files=%d",
+            prompt[:80], _duration, len(files),
+        )
         return {
             "files": files,
             "images": images_b64,

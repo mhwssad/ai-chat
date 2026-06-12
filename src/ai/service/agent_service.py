@@ -1,6 +1,6 @@
 """Agent API 服务 — 包装 AgentOrchestrator 和 AgentTeam。
 
-共享服务层，CLI 和 API 路由统一使用。
+共享服务层，API 路由统一使用。
 """
 
 from __future__ import annotations
@@ -41,19 +41,13 @@ class AgentApiService:
         tools: list[str] | None = None,
         agent_timeout: float = 300,
     ) -> dict[str, Any]:
-        """运行 Agent 编排循环。
-
-        Args:
-            session_id: 会话 ID。
-            user_message: 用户输入。
-            system_prompt: 自定义系统提示词。
-            max_iterations: 最大迭代轮数。
-            tools: 工具白名单。
-            agent_timeout: Agent 超时秒数。
-
-        Returns:
-            AgentResult 字典。
-        """
+        """运行 Agent 编排循环。"""
+        import time as _time
+        _t0 = _time.monotonic()
+        logger.info(
+            "[agent] run session=%s max_iter=%d timeout=%.0fs input_len=%d",
+            session_id, max_iterations, agent_timeout, len(user_message),
+        )
         result = await self._run_in_pool(
             self._orchestrator.run,
             session_id=session_id,
@@ -62,6 +56,11 @@ class AgentApiService:
             max_iterations=max_iterations,
             tools=tools,
             agent_timeout=agent_timeout,
+        )
+        _duration = _time.monotonic() - _t0
+        logger.info(
+            "[agent] done session=%s duration=%.2fs status=%s iterations=%d",
+            session_id, _duration, result.status.value, result.iterations,
         )
         return self._result_to_dict(result)
 
@@ -101,6 +100,11 @@ class AgentApiService:
             max_iterations=max_iterations,
             tools=tools,
             agent_timeout=agent_timeout,
+        )
+        _duration = _time.monotonic() - _t0
+        logger.info(
+            "[agent] done session=%s duration=%.2fs status=%s iterations=%d",
+            session_id, _duration, result.status.value, result.iterations,
         )
         return self._result_to_dict(result)
 

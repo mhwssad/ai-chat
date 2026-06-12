@@ -120,7 +120,7 @@ class ChatHistoryManager:
             return [row[0] for row in result.fetchall()]
 
     def get_session_summary(self, session_id: str) -> dict[str, object]:
-        """获取会话历史摘要，供 TUI 检视区展示。"""
+        """获取会话历史摘要，供 API 查询。"""
         messages = self.get_messages(session_id)
         role_counts: dict[str, int] = {}
         for msg in messages:

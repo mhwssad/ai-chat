@@ -1,6 +1,6 @@
 """模型配置服务 — 供应商和模型 CRUD。
 
-共享服务层，CLI 和 API 路由统一使用。
+共享服务层，API 路由统一使用。
 """
 
 from __future__ import annotations

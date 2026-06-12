@@ -59,6 +59,7 @@ class ModelService:
         temperature: float | None = None,
         max_tokens: int | None = None,
         streaming: bool = False,
+        enable_thinking: bool = False,
     ) -> BaseChatModel:
         """获取 Chat LLM 实例。
 
@@ -68,6 +69,7 @@ class ModelService:
             temperature: 温度参数。
             max_tokens: 最大输出 token 数。
             streaming: 是否启用流式。
+            enable_thinking: 是否启用深度思考（思维链）。
 
         Returns:
             BaseChatModel 实例。
@@ -78,6 +80,7 @@ class ModelService:
             temperature=temperature,
             max_tokens=max_tokens,
             streaming=streaming,
+            enable_thinking=enable_thinking,
         )
 
     def get_embedding(self) -> Embeddings:

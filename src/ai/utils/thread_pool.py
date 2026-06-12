@@ -6,14 +6,14 @@
     ThreadPoolManager (单例)
       ├── io_pool:  ThreadPoolExecutor  — 文件 IO、数据库查询、Chroma 查询
       ├── cpu_pool: ProcessPoolExecutor — CPU 密集型任务（预留）
-      └── bg_pool:  ThreadPoolExecutor  — 后台任务、TUI 数据加载、状态刷新
+      └── bg_pool:  ThreadPoolExecutor  — 后台任务、数据加载、状态刷新
 
 用法:
     # 异步上下文（FastAPI 路由、async def 函数）
     pool = get_thread_pool()
     result = await pool.run_io(sync_func, arg1, arg2)
 
-    # 同步上下文（TUI 主线程、fire-and-forget）
+    # 同步上下文（fire-and-forget）
     pool = get_thread_pool()
     pool.run_bg(heavy_func, arg1)  # 不阻塞，返回 Future
 """
@@ -40,7 +40,7 @@ class ThreadPoolManager:
     提供三个分类线程池：
     - io_pool:  IO 密集型（文件读写、数据库、Chroma 查询）
     - cpu_pool: CPU 密集型（embedding 计算、文本切分）
-    - bg_pool:  后台任务（TUI 数据加载、状态刷新、索引维护）
+    - bg_pool:  后台任务（数据加载、状态刷新、索引维护）
 
     Attributes:
         _io_pool:  IO 密集型线程池。
@@ -231,7 +231,7 @@ class ThreadPoolManager:
     def run_bg(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> Future[T]:
         """在后台线程池中执行函数（fire-and-forget）。
 
-        用于同步上下文（TUI 主线程），提交任务后立即返回不阻塞。
+        用于同步上下文，提交任务后立即返回不阻塞。
 
         Args:
             func: 要执行的函数。

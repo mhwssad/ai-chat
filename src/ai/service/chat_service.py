@@ -2,10 +2,10 @@
 还包含 Agent 模式的规划阶段：分析需求 → 生成计划 → 自动执行。
 
 合并自：
-- cli/chat_executor.py — 工具调用循环、记忆提取
+
 - api/services/chat_service.py — 流式支持、多模态消息转换
 
-共享服务层，CLI 和 API 统一使用。
+共享服务层，API 统一使用。
 """
 
 from __future__ import annotations
@@ -24,6 +24,14 @@ logger = get_logger(__name__)
 
 # 工具结果最大字符数
 _TOOL_RESULT_MAX_LEN = 2000
+
+# ── 结构化日志辅助 ──────────────────────────────────────
+
+
+def _ts() -> float:
+    """返回高精度时间戳，用于性能计时。"""
+    import time as _time
+    return _time.monotonic()
 
 
 def _extract_tool_calls_from_chunks(
@@ -58,6 +66,39 @@ def _extract_tool_calls_from_chunks(
                 "id": tc_data.get("id", ""),
             })
     return tool_calls
+
+
+def _extract_thinking(chunk: Any) -> str | None:
+    """从流式 chunk 中提取思考链内容。
+
+    不同 LLM 提供商的 thinking/reasoning 字段位置不同：
+    - OpenAI/DeepSeek: chunk.reasoning_content 或
+      chunk.additional_kwargs["reasoning_content"]
+    - Anthropic: chunk.additional_kwargs["thinking"]
+
+    Args:
+        chunk: LangChain 流式响应块。
+
+    Returns:
+        思考链文本片段，或 None（无思考内容）。
+    """
+    # 直接属性（DeepSeek R1 等）
+    rc = getattr(chunk, "reasoning_content", None)
+    if rc and isinstance(rc, str) and rc.strip():
+        return rc
+
+    # additional_kwargs 中的 reasoning_content
+    ak = getattr(chunk, "additional_kwargs", None) or {}
+    rc = ak.get("reasoning_content")
+    if rc and isinstance(rc, str) and rc.strip():
+        return rc
+
+    # Anthropic 的 thinking 字段
+    thinking = ak.get("thinking")
+    if thinking and isinstance(thinking, str) and thinking.strip():
+        return thinking
+
+    return None
 
 
 class CircuitBreakerOpenError(RuntimeError):
@@ -210,6 +251,13 @@ class ChatService:
         if opts.session_id is None or opts.session_id == "default":
             opts.session_id = session_id
 
+        _t0 = _ts()
+        logger.info(
+            "[chat] 进入 session=%s agent=%s think=%s tools=%s mem=%s rag=%s",
+            session_id, opts.enable_agent, opts.enable_thinking,
+            opts.enable_tools, opts.enable_memory, opts.enable_rag,
+        )
+
         # 斜杠命令拦截
         skill_body = self._resolve_slash_command(user_input)
 
@@ -249,6 +297,16 @@ class ChatService:
             content = (
                 response.content if isinstance(response, AIMessage) else str(response)
             )
+            _duration = _ts() - _t0
+            logger.info(
+                "[chat] 完成 session=%s duration=%.2fs content_len=%d tool_calls=%d "
+                "iterations=%d tokens=%d",
+                session_id, _duration, len(content or ""),
+                len(self._extract_tool_calls(response)),
+                iterations,
+                getattr(response, "usage_metadata", {}).get("total_tokens", 0)
+                if hasattr(response, "usage_metadata") else 0,
+            )
             return ChatResult(
                 content=content or "",
                 session_id=session_id,
@@ -258,7 +316,11 @@ class ChatService:
             )
 
         except Exception as e:
-            logger.error("对话执行异常: %s", e, exc_info=True)
+            _duration = _ts() - _t0
+            logger.error(
+                "[chat] 异常 session=%s duration=%.2fs error=%s",
+                session_id, _duration, e, exc_info=True,
+            )
             return ChatResult(
                 content="",
                 session_id=session_id,
@@ -288,6 +350,15 @@ class ChatService:
         if opts.session_id is None or opts.session_id == "default":
             opts.session_id = session_id
 
+        _t0 = _ts()
+        logger.info(
+            "[chat_stream] 进入 session=%s agent=%s think=%s tools=%s mem=%s rag=%s "
+            "input_len=%d",
+            session_id, opts.enable_agent, opts.enable_thinking,
+            opts.enable_tools, opts.enable_memory, opts.enable_rag,
+            len(user_input),
+        )
+
         # 斜杠命令拦截
         skill_body = self._resolve_slash_command(user_input)
 
@@ -312,9 +383,10 @@ class ChatService:
 
             # 获取可用工具列表
             tools = self._get_available_tools(opts.tools)
+            _t_context = _ts()
             logger.info(
-                "可用工具: %d 个 (enable_tools=%s)",
-                len(tools), opts.enable_tools,
+                "[chat_stream] session=%s context_built=%.2fs tools=%d",
+                session_id, _t_context - _t0, len(tools),
             )
             messages = list(context_result.messages)
 
@@ -342,7 +414,10 @@ class ChatService:
                         plan_steps = plan_event.get("data", {}).get("plan", [])
                         plan_error = plan_event.get("data", {}).get("error")
                         if plan_error:
-                            logger.warning("规划阶段出错: %s", plan_error)
+                            logger.warning(
+                                "[plan] session=%s error=%s",
+                                session_id, plan_error,
+                            )
 
                 # 将计划作为上下文追加到消息
                 if plan_steps:
@@ -350,24 +425,50 @@ class ChatService:
                         f"{s['step']}. **{s['title']}**：{s['description']}"
                         for s in plan_steps
                     )
-                    messages.append(
-                        HumanMessage(content=f"已制定以下执行计划：\n{plan_text}\n\n请按计划逐步执行，完成后汇报结果。")
+                    plan_prompt = (
+                        "## 执行指令\n"
+                        "你必须立即开始执行以下计划，直接使用工具完成每一步。\n"
+                        "不要先描述计划，不要先解释，直接用工具行动。\n\n"
+                        "### 计划\n"
+                        f"{plan_text}\n\n"
+                        "现在从第一步开始执行。"
                     )
+                    messages.append(HumanMessage(content=plan_prompt))
 
             # 获取流式 LLM
             self._check_llm_breaker()
             llm = self._get_llm(opts, streaming=True)
 
             # 绑定工具（仅在 enable_tools 为 True 时）
-            llm_with_tools = (
-                llm.bind_tools(tools, tool_choice="auto")
-                if (tools and opts.enable_tools)
-                else llm
-            )
+            # Agent 模式下首轮使用 tool_choice="required" 强制调用工具
+            if tools and opts.enable_tools:
+                llm_with_tools_required = llm.bind_tools(tools, tool_choice="required")
+                llm_with_tools_auto = llm.bind_tools(tools, tool_choice="auto")
+                # 首轮：agent 模式且有计划时用 required，否则用 auto
+                llm_with_tools = (
+                    llm_with_tools_required
+                    if (opts.enable_agent and plan_steps)
+                    else llm_with_tools_auto
+                )
+            else:
+                llm_with_tools = llm
+                llm_with_tools_required = llm
+                llm_with_tools_auto = llm
+
             logger.info(
-                "工具绑定完成: 总计 %d 个工具 bind_tools=%s enable_tools=%s",
-                len(tools), tools and opts.enable_tools, opts.enable_tools,
+                "[chat_stream] session=%s tools_bound=%d agent=%s plan=%d",
+                session_id, len(tools), opts.enable_agent, len(plan_steps),
             )
+
+            # Agent 模式：发出执行阶段开始通知
+            if opts.enable_agent and plan_steps:
+                yield {
+                    "event": "thinking",
+                    "data": {
+                        "type": "thinking",
+                        "content": "\n\n---\n⚡ **执行阶段开始**\n",
+                    },
+                }
 
             # 流式调用 LLM — 逐 token 产出 SSE 事件
             full_content = ""
@@ -376,6 +477,13 @@ class ChatService:
 
             try:
                 async for chunk in llm_with_tools.astream(messages):
+                    # 捕获思考链内容（reasoning_content / thinking）
+                    _thinking_token = _extract_thinking(chunk)
+                    if _thinking_token:
+                        yield {
+                            "event": "thinking",
+                            "data": {"type": "thinking", "content": _thinking_token},
+                        }
                     # 产出 token 事件
                     if hasattr(chunk, "content") and chunk.content:
                         token = str(chunk.content)
@@ -432,8 +540,9 @@ class ChatService:
                 )
 
             logger.info(
-                "LLM 首轮响应: content_len=%d tool_calls=%d pending_tc=%d",
-                len(full_content), len(tool_calls_raw), len(pending_tc),
+                "[chat_stream] session=%s llm_call=1 content=%d tool_calls=%d "
+                "pending=%d",
+                session_id, len(full_content), len(tool_calls_raw), len(pending_tc),
             )
 
             # 工具调用循环（流式模式下仍需执行）
@@ -456,11 +565,10 @@ class ChatService:
 
                     # 工具调用进度日志
                     import time as _time
-                    _t0 = _time.monotonic()
+                    _t_tool = _time.monotonic()
                     logger.info(
-                        "开始执行工具: %s args=%s",
-                        tool_name,
-                        str(tool_args)[:200],
+                        "[tool] session=%s tool=%s args=%s",
+                        session_id, tool_name, str(tool_args)[:200],
                     )
 
                     # MCP 工具使用较短超时（30s），其他工具使用默认（120s）
@@ -494,10 +602,10 @@ class ChatService:
                             },
                         }
 
-                    _elapsed = _time.monotonic() - _t0
+                    _elapsed = _time.monotonic() - _t_tool
                     logger.info(
-                        "工具执行完成: %s 耗时 %.1fs, 结果长度 %d",
-                        tool_name, _elapsed, len(result_str),
+                        "[tool] session=%s tool=%s duration=%.2fs result_len=%d",
+                        session_id, tool_name, _elapsed, len(result_str),
                     )
 
                     yield {
@@ -514,6 +622,10 @@ class ChatService:
                     messages.append(tool_msg)
                     new_messages.append(tool_msg)
 
+                # 首轮工具执行完成后切换到 auto 模式
+                if iterations == 1:
+                    llm_with_tools = llm_with_tools_auto
+
                 # 流式获取下一轮 — 逐 token 产出
                 self._check_llm_breaker()
                 next_content = ""
@@ -522,6 +634,13 @@ class ChatService:
 
                 try:
                     async for chunk in llm_with_tools.astream(messages):
+                        # 捕获思考链内容
+                        _thinking_token = _extract_thinking(chunk)
+                        if _thinking_token:
+                            yield {
+                                "event": "thinking",
+                                "data": {"type": "thinking", "content": _thinking_token},
+                            }
                         if hasattr(chunk, "content") and chunk.content:
                             token = str(chunk.content)
                             if token:
@@ -577,8 +696,10 @@ class ChatService:
                     content=next_content, tool_calls=tool_calls_raw
                 )
                 logger.info(
-                    "工具循环第 %d 轮: next_content_len=%d new_tool_calls=%d total_tool_calls=%d",
-                    iterations, len(next_content), len(tool_calls_raw), len(all_tool_calls),
+                    "[chat_stream] session=%s tool_loop=%d llm_content=%d "
+                    "new_tool_calls=%d total_tool_calls=%d",
+                    session_id, iterations, len(next_content),
+                    len(tool_calls_raw), len(all_tool_calls),
                 )
 
             # 保存历史
@@ -597,8 +718,8 @@ class ChatService:
                     f"请求已完成，但 AI 未生成文本回复。"
                 )
                 logger.warning(
-                    "工具执行完成但无文本回复: tools=%s iterations=%d",
-                    tool_names, iterations,
+                    "[chat_stream] session=%s empty_final_content tools=%s iterations=%d",
+                    session_id, tool_names, iterations,
                 )
             await self._save_history(
                 session_id, user_input, current_response, new_messages
@@ -609,6 +730,13 @@ class ChatService:
                 await self._extract_memory(session_id, user_input, current_response)
 
             # 完成事件
+            _duration = _ts() - _t0
+            logger.info(
+                "[chat_stream] 完成 session=%s duration=%.2fs content=%d "
+                "tool_calls=%d iterations=%d",
+                session_id, _duration, len(final_content or ""),
+                len(all_tool_calls), iterations,
+            )
             yield {
                 "event": "done",
                 "data": {
@@ -628,8 +756,11 @@ class ChatService:
             # 熔断器拒绝，不记录为失败（不是真实 LLM 故障）
             raise
         except Exception as e:
-            self._llm_breaker.record_failure()
-            logger.error("流式对话异常: %s", e, exc_info=True)
+            _duration = _ts() - _t0
+            logger.error(
+                "[chat_stream] 异常 session=%s duration=%.2fs error=%s",
+                session_id, _duration, e, exc_info=True,
+            )
             yield {
                 "event": "error",
                 "data": {"error": str(e)},
@@ -682,14 +813,19 @@ class ChatService:
     def _get_llm(self, options: ChatOptions, *, streaming: bool = False) -> Any:
         """获取 LLM 实例。
 
-        如果 options 指定了 temperature 或 max_tokens，则按请求参数创建。
-        否则使用容器预构建的 chat_llm。
+        如果 options 指定了 temperature 或 max_tokens 或 enable_thinking，
+        则按请求参数创建。否则使用容器预构建的 chat_llm。
         """
-        if options.temperature is not None or options.max_tokens is not None:
+        if (
+            options.temperature is not None
+            or options.max_tokens is not None
+            or options.enable_thinking
+        ):
             return self._model_service.get_chat_llm(
                 temperature=options.temperature,
                 max_tokens=options.max_tokens,
                 streaming=streaming,
+                enable_thinking=options.enable_thinking,
             )
         if streaming:
             return self._model_service.get_chat_llm(streaming=True)
@@ -956,7 +1092,7 @@ class ChatService:
             if attempt > 0:
                 delay = base_delay * (2 ** (attempt - 1))
                 logger.warning(
-                    "重试 (%d/%d): 延迟 %.1fs 后重试",
+                    "[retry] attempt=%d/%d delay=%.1fs",
                     attempt, max_retries, delay,
                 )
                 await asyncio.sleep(delay)
@@ -1165,7 +1301,10 @@ class ChatService:
                 return {"result": f"工具执行失败: {e}", "recovery": None}
 
             logger.warning(
-                "工具 %s 执行失败 (attempt %d): %s", tool_name, attempt, e
+                "[recovery] tool=%s attempt=%d error=%s",
+                tool_name,
+                attempt,
+                str(e),
             )
 
             # 执行恢复
@@ -1379,7 +1518,7 @@ class ChatService:
 
 
 def _context_sources_to_dict(sources: list[Any]) -> list[dict[str, Any]]:
-    """转换上下文来源摘要为 API/TUI 可序列化结构。"""
+    """转换上下文来源摘要为 API 可序列化结构。"""
     return [
         {
             "source": item.source,

@@ -1,6 +1,6 @@
 """统一工具服务 — 工具查询、启用/禁用、测试执行。
 
-共享服务层，CLI 命令、CLI 标签页和 API 路由统一使用。
+共享服务层，API 路由统一使用。
 """
 
 from __future__ import annotations
@@ -232,6 +232,10 @@ class ToolService:
                 output_summary=self._summary(result),
                 result=result,
             )
+            logger.info(
+                "[tool] execute name=%s status=success duration_ms=%d session=%s",
+                name, diagnostic.duration_ms, session_id or "-",
+            )
             self._record_diagnostic(diagnostic, session_id=session_id)
             return diagnostic
         except Exception as exc:
@@ -239,6 +243,10 @@ class ToolService:
                 "timeout"
                 if type(exc).__name__ == "ToolExecutionError" and "超时" in str(exc)
                 else "failed"
+            )
+            logger.warning(
+                "[tool] execute name=%s status=%s duration_ms=%d error=%s",
+                name, status, self._duration_ms(started), exc,
             )
             diagnostic = ToolExecutionDiagnostic(
                 tool_name=name,
@@ -273,7 +281,7 @@ class ToolService:
 
     @staticmethod
     def _descriptor_to_dict(descriptor: ToolDescriptor) -> dict[str, Any]:
-        """将统一描述对象转换为 API/TUI 共用字典。"""
+        """将统一描述对象转换为 API 共用字典。"""
         return {
             "name": descriptor.name,
             "display_name": descriptor.display_name,

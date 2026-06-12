@@ -1,9 +1,9 @@
 """文件类型识别工具类，使用 magika 库进行基于深度学习的文件类型检测。"""
 
+from __future__ import annotations
+
 from pathlib import Path
 from typing import Any, Union
-
-from magika import Magika
 
 from src.ai.utils.obj import singleton
 
@@ -29,8 +29,16 @@ class FileRecognizer:
     """
 
     def __init__(self) -> None:
-        """初始化 magika 识别器。"""
-        self._magika = Magika()
+        """初始化 magika 识别器（延迟加载）。"""
+        self._magika: Any = None
+
+    def _ensure_magika(self) -> Any:
+        """延迟加载 magika 模型和实例，避免启动时开销。"""
+        if self._magika is None:
+            from magika import Magika
+
+            self._magika = Magika()
+        return self._magika
 
     def recognize(self, path: Union[str, Path]) -> Any:
         """识别指定路径文件的类型。
@@ -44,7 +52,7 @@ class FileRecognizer:
                 - prediction: MagikaPrediction 对象，含 score 等
         """
         path = Path(path)
-        return self._magika.identify_path(path)
+        return self._ensure_magika().identify_path(path)
 
     def recognize_content(self, content: bytes) -> Any:
         """识别给定字节内容的文件类型。
@@ -55,7 +63,7 @@ class FileRecognizer:
         Returns:
             包含识别结果的 MagikaResult 对象。
         """
-        return self._magika.identify_bytes(content)
+        return self._ensure_magika().identify_bytes(content)
 
     def get_label(self, path: str | Path) -> str:
         """获取文件的类型标签。
@@ -208,8 +216,16 @@ class FileRecognizer:
         return result.output.label == "video"
 
 
-# 全局单例实例，供模块级别使用
-file_recognizer = FileRecognizer()
+# 全局单例实例（延迟初始化，避免启动时加载 ONNX 模型）
+_file_recognizer: FileRecognizer | None = None
+
+
+def _get_recognizer() -> FileRecognizer:
+    """获取或创建全局 FileRecognizer 单例。"""
+    global _file_recognizer
+    if _file_recognizer is None:
+        _file_recognizer = FileRecognizer()
+    return _file_recognizer
 
 
 def recognize_file(path: str | Path) -> Any:
@@ -221,7 +237,7 @@ def recognize_file(path: str | Path) -> Any:
     Returns:
         MagikaResult 识别结果对象。
     """
-    return file_recognizer.recognize(path)
+    return _get_recognizer().recognize(path)
 
 
 def get_file_label(path: str | Path) -> str:
@@ -233,7 +249,7 @@ def get_file_label(path: str | Path) -> str:
     Returns:
         文件类型标签字符串。
     """
-    return file_recognizer.get_label(path)
+    return _get_recognizer().get_label(path)
 
 
 def get_file_mime_type(path: str | Path) -> str:
@@ -245,4 +261,4 @@ def get_file_mime_type(path: str | Path) -> str:
     Returns:
         MIME 类型字符串。
     """
-    return file_recognizer.get_mime_type(path)
+    return _get_recognizer().get_mime_type(path)

@@ -1,6 +1,6 @@
 """会话管理服务 — 会话列表、详情、归档、删除。
 
-共享服务层，CLI 和 API 路由统一使用。
+共享服务层，API 路由统一使用。
 """
 
 from __future__ import annotations
@@ -141,6 +141,7 @@ class SessionService:
         from src.ai.storage.runtime_repository import ChatSessionRepository
 
         sid = session_id or str(uuid.uuid4())
+        logger.info("[session] create session_id=%s title=%s", sid, title)
         with self._get_session() as session:
             repo = ChatSessionRepository(session)
             existing = repo.get_by_session_id(sid)
@@ -246,7 +247,10 @@ class SessionService:
         # 3. 清理磁盘文件
         self._cleanup_session_files(session_id)
 
-        logger.info("会话 %s 已彻底删除 (%d 条 SQL 记录)", session_id, deleted_rows)
+        logger.info(
+            "[session] delete session_id=%s deleted_rows=%d",
+            session_id, deleted_rows,
+        )
         return deleted_rows > 0
 
     @staticmethod

@@ -2,11 +2,11 @@
 /**
  * ChatInput — 消息输入组件。
  *
- * 文本输入框 + 发送/停止按钮 + 深度思考模式切换。
+ * 文本输入框 + 发送/停止按钮 + Agent 模式切换 + 深度思考切换。
  * 支持从编辑重发回填内容。
  */
-import { ref, watch, inject } from 'vue'
-import { Promotion, MagicStick } from '@element-plus/icons-vue'
+import { ref, watch, inject, computed } from 'vue'
+import { Promotion, MagicStick, Cpu } from '@element-plus/icons-vue'
 
 const emit = defineEmits(['send'])
 
@@ -14,6 +14,7 @@ const emit = defineEmits(['send'])
 const chatStore = inject('chatStore')
 
 const inputText = ref('')
+const agentEnabled = ref(false)
 const deepThinking = ref(false)
 
 // 监听编辑内容回填
@@ -27,16 +28,29 @@ watch(
   },
 )
 
+const placeholder = computed(() => {
+  const parts = []
+  if (agentEnabled.value) parts.push('Agent')
+  if (deepThinking.value) parts.push('思考')
+  if (parts.length) return `${parts.join(' + ')} 模式... (Enter 发送, Shift+Enter 换行)`
+  return '输入消息... (Enter 发送, Shift+Enter 换行)'
+})
+
 function handleSend() {
   const text = inputText.value.trim()
   if (!text) return
   emit('send', text, {
-    enable_memory: true,               // 记忆始终开启
-    enable_tools: true,                // 工具始终开启
-    enable_rag: deepThinking.value,    // RAG 由开关控制
-    enable_agent: deepThinking.value,  // Agent 模式由开关控制
+    enable_memory: true,
+    enable_tools: true,
+    enable_rag: agentEnabled.value,
+    enable_agent: agentEnabled.value,
+    enable_thinking: deepThinking.value,
   })
   inputText.value = ''
+}
+
+function toggleAgent() {
+  agentEnabled.value = !agentEnabled.value
 }
 
 function toggleDeepThinking() {
@@ -57,37 +71,47 @@ function handleKeydown(e) {
 
 <template>
   <div class="chat-input border-t border-gray-200 bg-white p-4">
-    <!-- 深度思考模式切换 -->
+    <!-- 功能开关栏 -->
     <div class="flex items-center gap-2 mb-2.5">
+      <!-- Agent 模式按钮 -->
       <button
-        class="deep-toggle inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 select-none"
+        class="toggle-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 select-none"
+        :class="
+          agentEnabled
+            ? 'bg-blue-50 text-blue-600 border border-blue-300 shadow-sm'
+            : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
+        "
+        @click="toggleAgent"
+        :disabled="chatStore?.isStreaming"
+        title="Agent 模式：自动规划执行 · 工具调用 · RAG"
+      >
+        <el-icon :size="14"><Cpu /></el-icon>
+        <span>Agent</span>
+        <span
+          class="on-badge inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold transition-all duration-200"
+          :class="agentEnabled ? 'bg-blue-500 text-white' : 'bg-gray-300 text-white'"
+        >{{ agentEnabled ? 'ON' : 'OFF' }}</span>
+      </button>
+
+      <!-- 深度思考按钮 -->
+      <button
+        class="toggle-btn inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all duration-200 select-none"
         :class="
           deepThinking
-            ? 'bg-blue-50 text-blue-600 border border-blue-300 shadow-sm'
+            ? 'bg-purple-50 text-purple-600 border border-purple-300 shadow-sm'
             : 'bg-gray-50 text-gray-500 border border-gray-200 hover:bg-gray-100'
         "
         @click="toggleDeepThinking"
         :disabled="chatStore?.isStreaming"
+        title="深度思考：模型输出内部推理过程"
       >
-        <el-icon :size="14">
-          <MagicStick />
-        </el-icon>
+        <el-icon :size="14"><MagicStick /></el-icon>
         <span>深度思考</span>
         <span
-          class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold transition-all duration-200"
-          :class="
-            deepThinking
-              ? 'bg-blue-500 text-white'
-              : 'bg-gray-300 text-white'
-          "
-        >
-          {{ deepThinking ? 'ON' : 'OFF' }}
-        </span>
+          class="on-badge inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold transition-all duration-200"
+          :class="deepThinking ? 'bg-purple-500 text-white' : 'bg-gray-300 text-white'"
+        >{{ deepThinking ? 'ON' : 'OFF' }}</span>
       </button>
-
-      <span class="text-[11px] text-gray-400 transition-opacity duration-200" :class="deepThinking ? 'opacity-70' : 'opacity-40'">
-        {{ deepThinking ? '已开启 · Agent 自主分析执行' : '开启 Agent 自动规划执行（含 RAG）' }}
-      </span>
     </div>
 
     <!-- 输入区域 -->
@@ -96,7 +120,7 @@ function handleKeydown(e) {
         v-model="inputText"
         type="textarea"
         :autosize="{ minRows: 1, maxRows: 6 }"
-        :placeholder="deepThinking ? 'Agent 模式中... (Enter 发送, Shift+Enter 换行)' : '输入消息... (Enter 发送, Shift+Enter 换行)'"
+        :placeholder="placeholder"
         :disabled="chatStore?.isStreaming"
         @keydown="handleKeydown"
       />
@@ -123,7 +147,7 @@ function handleKeydown(e) {
 </template>
 
 <style scoped>
-.deep-toggle:active:not(:disabled) {
+.toggle-btn:active:not(:disabled) {
   transform: scale(0.96);
 }
 </style>

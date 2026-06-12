@@ -18,6 +18,16 @@ if _src not in sys.path:
 import click
 import uvicorn
 
+# 初始化日志系统 — 必须在其他模块导入前调用
+from src.ai.config.logging_setup import setup_logging
+setup_logging()
+
+# uvicorn 日志配置 — 继承默认配置但不覆盖已有 logger
+import copy as _copy
+import uvicorn.config as _uvicorn_config
+_uvicorn_log_config = _copy.deepcopy(_uvicorn_config.LOGGING_CONFIG)
+_uvicorn_log_config["disable_existing_loggers"] = False
+
 # 前端项目目录
 _FRONT_DIR = Path(__file__).resolve().parent / "src" / "front" / "ai-chat"
 
@@ -204,6 +214,7 @@ def _run_server_then_front(
         host=host,
         port=port,
         reload=False,
+        log_config=_uvicorn_log_config,
     )
     server = uvicorn.Server(config)
 
@@ -280,6 +291,7 @@ def _run_reload_then_front(
         host=host,
         port=port,
         reload=True,
+        log_config=_uvicorn_log_config,
     )
     server = uvicorn.Server(config)
 

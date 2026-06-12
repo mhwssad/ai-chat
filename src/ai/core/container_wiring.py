@@ -115,7 +115,7 @@ async def _register_dependent_tools() -> None:
 def _start_scheduler() -> None:
     """启动定时任务调度器。
 
-    在异步上下文（FastAPI）中使用 ensure_future；在同步上下文（CLI）
+    在异步上下文（FastAPI）中使用 ensure_future；在同步上下文
     中以后台守护线程运行，避免阻塞主线程。
     """
     try:
@@ -130,7 +130,7 @@ def _start_scheduler() -> None:
             # 已有运行中的事件循环（FastAPI lifespan 等）
             asyncio.ensure_future(scheduler_svc.start())
         else:
-            # 同步上下文（CLI），后台守护线程启动调度器
+            # 同步上下文，后台守护线程启动调度器
             def _run() -> None:
                 try:
                     asyncio.run(scheduler_svc.start())

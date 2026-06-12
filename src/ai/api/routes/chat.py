@@ -36,6 +36,7 @@ def _build_options(
         enable_tools=req.enable_tools,
         enable_rag=getattr(req, "enable_rag", False),
         enable_agent=getattr(req, "enable_agent", False),
+        enable_thinking=getattr(req, "enable_thinking", False),
         tools=getattr(req, "tools", None),
         streaming=streaming,
     )

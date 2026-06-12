@@ -10,7 +10,6 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from sqlmodel import Session
@@ -165,6 +164,8 @@ class RagService:
         with self._store_lock:
             # 双重检查：获取锁后再次确认，避免重复创建
             if self._base_collection not in self._stores:
+                from langchain_chroma import Chroma
+
                 chroma = Chroma(
                     collection_name=self._base_collection,
                     embedding_function=self._embeddings,

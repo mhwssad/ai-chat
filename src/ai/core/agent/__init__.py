@@ -8,24 +8,7 @@
 - AgentTeam: 多 Agent 团队编排（编排者/辩论模式）
 - GraphState: LangGraph 图状态定义
 - AgentResult / AgentStatus: 执行结果类型
+
+注意：子模块按需导入（from src.ai.core.agent.X import Y），
+不在 __init__.py 中预加载，避免启动时触发 langgraph 冷导入链。
 """
-
-from src.ai.core.agent.orchestrator import AgentOrchestrator
-from src.ai.core.agent.reflection import ReflectionLoop, ReflectionResult
-from src.ai.core.agent.roles import AgentProfile, AgentRole
-from src.ai.core.agent.types import AgentResult, AgentStatus
-from src.ai.core.agent.team import AgentTeam, TeamMode, TeamResult
-
-
-__all__ = [
-    "AgentOrchestrator",
-    "AgentResult",
-    "AgentRole",
-    "AgentProfile",
-    "AgentStatus",
-    "AgentTeam",
-    "ReflectionLoop",
-    "ReflectionResult",
-    "TeamMode",
-    "TeamResult",
-]

@@ -56,6 +56,7 @@ class ChatModelBuilder(ModelBuilder["ChatModelConfig", "BaseChatModel"]):
         temperature: float | None = None,
         max_tokens: int | None = None,
         streaming: bool = False,
+        enable_thinking: bool = False,
     ) -> BaseChatModel:
         """构建 Chat 模型实例。"""
 

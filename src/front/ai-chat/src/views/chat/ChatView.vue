@@ -91,9 +91,9 @@ onMounted(() => {
         @edit="handleEdit"
       />
 
-      <!-- 流式消息 -->
+      <!-- 流式消息（含 Agent 思考过程） -->
       <StreamingMessage
-        v-if="chatStore.isStreaming && chatStore.streamingContent"
+        v-if="chatStore.isStreaming && (chatStore.streamingContent || chatStore.thinkingContent || chatStore.planSteps.length)"
         :content="chatStore.streamingContent"
       />
 

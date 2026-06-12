@@ -29,7 +29,6 @@ dependencies = [
     "httpx>=0.28.1",
     "tenacity>=9.1.4",
     "pybreaker>=1.4.1",
-    "typer>=0.15.0",
     "cryptography>=45.0.0",
     "magika>=1.0.3",
     # Document loaders dependencies
@@ -43,7 +42,7 @@ dependencies = [
     "langchain-chroma>=0.2.2",
     "dependency-injector>=4.46.0",
     "croniter>=6.2.2",
-    "rich>=13.0.0",
+    "click>=8.0.0",
     "edge-tts>=6.1.0",
     # RAG 混合检索
     "rank-bm25>=0.2.2",

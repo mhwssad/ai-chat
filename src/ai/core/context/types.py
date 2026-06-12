@@ -70,7 +70,7 @@ class ContextSourceBudget:
 
 @dataclass
 class ContextSourceSummary:
-    """上下文来源摘要，用于 API/TUI 可解释展示。"""
+    """上下文来源摘要，用于 API 可解释展示。"""
 
     source: str
     item_count: int = 0

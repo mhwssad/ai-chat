@@ -20,6 +20,7 @@ class ChatRequest(BaseModel):
     enable_tools: bool = Field(default=True, description="是否启用工具")
     enable_rag: bool = Field(default=False, description="是否启用 RAG")
     enable_agent: bool = Field(default=False, description="是否启用 Agent 自动执行")
+    enable_thinking: bool = Field(default=False, description="是否启用深度思考（思维链）")
     tools: list[str] | None = Field(default=None, description="工具白名单")
 
 
@@ -52,6 +53,7 @@ class StreamChatRequest(BaseModel):
     enable_tools: bool = Field(default=True, description="是否启用工具")
     enable_rag: bool = Field(default=False, description="是否启用 RAG")
     enable_agent: bool = Field(default=False, description="是否启用 Agent 自动执行")
+    enable_thinking: bool = Field(default=False, description="是否启用深度思考（思维链）")
     tools: list[str] | None = Field(default=None, description="工具白名单")
 
 
@@ -68,3 +70,4 @@ class MessagesChatRequest(BaseModel):
     enable_tools: bool = Field(default=True, description="是否启用工具")
     enable_rag: bool = Field(default=False, description="是否启用 RAG")
     enable_agent: bool = Field(default=False, description="是否启用 Agent 自动执行")
+    enable_thinking: bool = Field(default=False, description="是否启用深度思考（思维链）")

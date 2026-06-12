@@ -64,7 +64,7 @@ class ToolManager:
     async def check_permission(
         self, tool_name: str, arguments: dict[str, Any]
     ) -> PermissionDecision | None:
-        """返回工具权限决策结果，供 API/TUI/审计消费。"""
+        """返回工具权限决策结果，供 API/审计消费。"""
         if self._permission_checker is None:
             return None
         return await self._permission_checker.decide(tool_name, arguments)

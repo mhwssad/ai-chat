@@ -2,7 +2,7 @@
 
 from src.ai.utils.file_recognition import (
     FileRecognizer,
-    file_recognizer,
+    _get_recognizer as file_recognizer,
     get_file_label,
     get_file_mime_type,
     recognize_file,

@@ -16,7 +16,6 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
-from langgraph.graph import END, START, StateGraph
 
 from src.ai.config.container import config
 from src.ai.core.agent.state import GraphState
@@ -387,6 +386,8 @@ class AgentOrchestrator:
         Returns:
             编译前的 StateGraph。
         """
+        from langgraph.graph import END, START, StateGraph
+
         # 创建 TimeoutToolNode（带超时的工具执行节点）
         # 可选：启用错误恢复时创建 RecoveryManager
         recovery_manager = None
