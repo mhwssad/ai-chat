@@ -26,6 +26,40 @@ logger = get_logger(__name__)
 _TOOL_RESULT_MAX_LEN = 2000
 
 
+def _extract_tool_calls_from_chunks(
+    full_content: str,
+    pending_tc: dict[int, dict[str, str]],
+) -> list[dict[str, Any]]:
+    """回退：从未流式化的 pending_tc 中提取完整 tool_calls。
+
+    部分 LLM 提供商的流式响应中 tool_call_chunks 为空，
+    但最终 chunk 的 additional_kwargs.tool_calls 包含完整信息。
+    此函数尝试从 pending_tc 中从未使用的条目提取工具调用。
+
+    Args:
+        full_content: 累积的文本内容。
+        pending_tc: tool_call_chunks 的待处理字典。
+
+    Returns:
+        工具调用列表。
+    """
+    tool_calls: list[dict[str, Any]] = []
+    for tc_data in pending_tc.values():
+        if tc_data.get("name"):  # 从 pending 中获取（可能不完整）
+            name = tc_data["name"]
+            args_str = tc_data.get("args", "{}")
+            try:
+                parsed_args = json.loads(args_str) if args_str else {}
+            except json.JSONDecodeError:
+                parsed_args = {"raw": args_str} if args_str else {}
+            tool_calls.append({
+                "name": name,
+                "args": parsed_args,
+                "id": tc_data.get("id", ""),
+            })
+    return tool_calls
+
+
 class CircuitBreakerOpenError(RuntimeError):
     """熔断器打开时抛出的异常，用于区分断路器拒绝和真实 LLM 故障。"""
     pass
@@ -325,7 +359,11 @@ class ChatService:
             llm = self._get_llm(opts, streaming=True)
 
             # 绑定工具（仅在 enable_tools 为 True 时）
-            llm_with_tools = llm.bind_tools(tools) if (tools and opts.enable_tools) else llm
+            llm_with_tools = (
+                llm.bind_tools(tools, tool_choice="auto")
+                if (tools and opts.enable_tools)
+                else llm
+            )
             logger.info(
                 "工具绑定完成: 总计 %d 个工具 bind_tools=%s enable_tools=%s",
                 len(tools), tools and opts.enable_tools, opts.enable_tools,
@@ -373,7 +411,7 @@ class ChatService:
                 self._llm_breaker.record_failure()
                 raise
 
-            # 解析 tool_calls
+            # 解析 tool_calls（来自流式 chunks）
             for tc_data in pending_tc.values():
                 if tc_data["name"]:
                     try:
@@ -385,6 +423,13 @@ class ChatService:
                         "args": parsed_args,
                         "id": tc_data["id"],
                     })
+
+            # 回退：部分 LLM 提供商不流式传输 tool_call_chunks，
+            # 而是将完整 tool_calls 放在最后一个 chunk 的 additional_kwargs 中
+            if not tool_calls_raw:
+                tool_calls_raw = _extract_tool_calls_from_chunks(
+                    full_content, pending_tc
+                )
 
             logger.info(
                 "LLM 首轮响应: content_len=%d tool_calls=%d pending_tc=%d",
@@ -520,6 +565,13 @@ class ChatService:
                             "args": parsed_args,
                             "id": tc_data["id"],
                         })
+
+                # 回退：部分提供商不流式传输 tool_call_chunks
+                if not tool_calls_raw:
+                    tool_calls_raw = _extract_tool_calls_from_chunks(
+                        next_content, pending_tc_next
+                    )
+
                 all_tool_calls.extend(tool_calls_raw)
                 current_response = AIMessage(
                     content=next_content, tool_calls=tool_calls_raw
